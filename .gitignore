@@ -17,3 +17,9 @@ tmp/
 *.bk
 *.rootix
 *.sam
+build/
+cmake-build-*/
+Build/
+BUILD/
+Testing/
+.vscode/
