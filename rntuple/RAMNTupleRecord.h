@@ -161,6 +161,12 @@ public:
     int GetNOPT() const { return static_cast<int>(tags.size()); }
     const std::string& GetOPT(int idx) const { return tags[idx]; }
     
+    // Return sequence length without decoding (fast)
+    int GetSEQLEN() const {
+        if (seq.size() < 4) return 0;
+        return *reinterpret_cast<const uint32_t*>(seq.data());
+    }
+    
     size_t GetNCIGAROP() const { return cigar.size(); }
     int32_t GetCIGAROPLEN(size_t idx) const;
     int32_t GetCIGAROP(size_t idx) const;
@@ -239,3 +245,4 @@ public:
 };
 
 #endif 
+
