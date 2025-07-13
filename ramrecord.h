@@ -11,7 +11,13 @@
 #include <TObject.h>
 #include <TString.h>
 #include <TError.h>
+#include <TFile.h>
+#include <TTree.h>
 #include <iostream>
+
+#include <vector>
+#include <map>
+#include <utility>
 
 
 class RAMRefs {
