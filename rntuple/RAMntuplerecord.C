@@ -19,7 +19,6 @@ std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnameRefs = nullptr;
 std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
 std::unique_ptr<RAMNTupleIndex> RAMNTupleRecord::fgIndex = nullptr;
 
-
 static const char* kCodeToSeq = "=ACMGRSVTWYHKDBN";
 static uint8_t kSeqToCode[256] = {0};
 static bool kSeqTableInit = false;
@@ -29,7 +28,8 @@ static const char* kCodeToCigar = "MIDNSHP=X";
 static uint8_t kCigarToCode[256] = {0};
 static bool kCigarTableInit = false;
 
-// Illumina quality binning table
+// Illumina 8-level quality binning: maps Q0-40+ to 8 values (0,1,6,15,22,27,33,37,40)
+// Reduces quality data ~80% with minimal accuracy loss
 const uint8_t RAMNTupleUtils::kIlluminaBinning[256] = {
     0,   1,  6,  6,  6,  6,  6,  6,  6,  6, 15, 15, 15, 15, 15, 15, 15,
     15, 15, 15, 22, 22, 22, 22, 22, 27, 27, 27, 27, 27, 33, 33, 33, 33,
@@ -487,21 +487,17 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string& sam_file,
    
    RAMNTupleRecord::InitializeRefs();
    
-
    auto file = std::unique_ptr<TFile>(TFile::Open(ram_file.c_str(), "RECREATE"));
    if (!file || !file->IsOpen()) {
        ::Error("ConvertSAMToRAMNTuple", "Cannot create RAM file: %s", ram_file.c_str());
        return;
    }
 
-  
    auto model = RAMNTupleRecord::MakeModel();
-   
    
    ROOT::RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);  // ZSTD level 5
    
-
    auto writer = RNTupleWriter::Append(std::move(model), "RAM", *file, writeOptions);
    auto defaultEntry = writer->CreateEntry();
    auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
@@ -515,7 +511,6 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string& sam_file,
    std::string line;
    int64_t entry_number = 0;
    
-
    while (std::getline(sam, line)) {
        if (line.empty() || line[0] == '@') {
         
@@ -531,7 +526,6 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string& sam_file,
            continue;
        }
        
-   
        RAMNTupleRecord rec;
        rec.SetCompressionMode(compression_flags);
        
@@ -718,3 +712,4 @@ void RAMNTupleConverter::ViewRegion(const std::string& ram_file,
        std::cout << "Found " << count << " reads in region " << region << std::endl;
    }
 }
+
