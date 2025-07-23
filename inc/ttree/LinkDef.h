@@ -7,3 +7,4 @@
 #pragma link C++ class RAMIndex + ;
 #pragma link C++ class RAMRecord + ;
 #endif
+

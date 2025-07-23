@@ -18,12 +18,8 @@
 #include <vector>
 #include <map>
 #include <utility>
-<<<<<<< HEAD:inc/ttree/RAMRecord.h
 #include <cstring> // For memset, memcpy, strlen
 #include <cstdio>  // For snprintf
-=======
-
->>>>>>> develop:ramrecord.h
 
 class RAMRefs {
 private:
@@ -625,3 +621,4 @@ inline void RAMRecord::Print(Option_t *) const
 #endif
 
 #endif
+
