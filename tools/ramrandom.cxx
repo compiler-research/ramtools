@@ -12,7 +12,7 @@
 
 using namespace std;
 
-#include "../src/ttree/RAMRecord.cxx"
+#include "RAMRecord.h"
 
 void ramrandom(const char *file = "/eos/genome/local/14007a/realigned_SAM/6148.root", const char *outfile = "out.out",
                int n = 10)

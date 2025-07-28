@@ -10,7 +10,7 @@
 #include <TTree.h>
 #include <TTreePerfStats.h>
 #include <iostream>
-#include "../inc/ttree/RAMRecord.h"
+#include "RAMRecord.h"
 
 void parsetreestats(const char *file = "treestats.root", bool saveimage = false, const char *imagefile = "canvas.png")
 {

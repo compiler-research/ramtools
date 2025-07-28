@@ -8,7 +8,7 @@
 #include <TTree.h>
 #include <TRandom.h>
 
-#include "../src/ttree/RAMRecord.cxx"
+#include "RAMRecord.h"
 
 void ramreader(const char *file = "ramexample.root")
 {

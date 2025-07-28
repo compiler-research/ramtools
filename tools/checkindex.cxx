@@ -6,8 +6,8 @@
 #include <TFile.h>
 #include <TString.h>
 #include <cstring>
-#include "../inc/ttree/Utils.h"
-#include "../src/ttree/RAMRecord.cxx"
+#include "Utils.h"
+#include "RAMRecord.h"
 
 void checkindex(const char *file = "ramexample.root")
 {

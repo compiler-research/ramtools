@@ -12,8 +12,7 @@
 #include <TFile.h>
 #include <TStopwatch.h>
 #include <TTreePerfStats.h>
-
-#include "../lib/RAMRecord.C"
+#include "RAMRecord.h"
 
 void ramview_no_index(const char *file, const char *query, bool cache = false, bool perfstats = false,
                       const char *perfstatsfilename = "perf.root")
