@@ -15,8 +15,8 @@
 #include <TTreeIndex.h>
 #include <TTreePerfStats.h>
 
-#include "Utils.h"
-#include "RAMRecord.h"
+#include "ttree/Utils.h"
+#include "ttree/RAMRecord.h"
 
 void ramview(const char *file, const char *query, bool cache = true, bool perfstats = false,
              const char *perfstatsfilename = "perf.root")

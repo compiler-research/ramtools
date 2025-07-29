@@ -15,26 +15,26 @@ find_package(ROOT 6.26 REQUIRED COMPONENTS Core RIO Tree ROOTNTuple ROOTNTupleUt
 
 include(${ROOT_USE_FILE})
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/inc/ttree)
+add_library(ramtools_tree SHARED
+    src/ttree/RAMRecord.cxx
+)
+
+target_include_directories(ramtools_tree PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:include>
+)
+
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
 ROOT_GENERATE_DICTIONARY(G__ramtools_tree
-    RAMRecord.h
-    Utils.h
-    CigarOps.h
+    ttree/RAMRecord.h
+    ttree/Utils.h
+    ttree/CigarOps.h
     LINKDEF ${CMAKE_CURRENT_SOURCE_DIR}/inc/ttree/LinkDef.h
     MODULE ramtools_tree
 )
 
-add_library(ramtools_tree SHARED
-    src/ttree/RAMRecord.cxx
-    G__ramtools_tree.cxx
-)
-
-target_include_directories(ramtools_tree PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc/ttree>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>  
-    $<INSTALL_INTERFACE:include/ttree>
-)
 target_link_libraries(ramtools_tree PUBLIC 
     ROOT::Core 
     ROOT::RIO 
@@ -45,8 +45,8 @@ add_library(ramtools_ntuple SHARED
     src/rntuple/RAMNTupleRecord.cxx
 )
 target_include_directories(ramtools_ntuple PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc/rntuple>
-    $<INSTALL_INTERFACE:include/rntuple>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
+    $<INSTALL_INTERFACE:include>
 )
 target_link_libraries(ramtools_ntuple PUBLIC 
     ROOT::Core 
@@ -80,4 +80,3 @@ endif()
 if(RAMTOOLS_BUILD_BENCHMARKS)
     add_subdirectory(benchmark)
 endif()
-

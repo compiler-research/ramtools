@@ -8,7 +8,7 @@
 #include <TFile.h>
 #include <TTree.h>
 
-#include "RAMRecord.h"
+#include "ttree/RAMRecord.h"
 
 void rammerge(const char *outfile, const char *infile1, const char *infile2)
 {

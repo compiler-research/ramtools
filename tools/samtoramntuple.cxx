@@ -1,8 +1,8 @@
 // samtoramntuple.C
 // SAM to RAM converteR
 
-#include "RAMNTupleRecord.h"
-#include "Utils.h"
+#include "rntuple/RAMNTupleRecord.h"
+#include "ttree/Utils.h"
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>

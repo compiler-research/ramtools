@@ -13,8 +13,8 @@
 #include <Compression.h>
 #include <cstring>
 
-#include "Utils.h"
-#include "RAMRecord.h"
+#include "ttree/Utils.h"
+#include "ttree/RAMRecord.h"
 
 void samtoram(const char *datafile = "samexample.sam",
               const char *treefile = "ramexample.root",

@@ -6,7 +6,7 @@
 #include <TFile.h>
 #include <TString.h>
 #include <cstring>
-#include "Utils.h"
+#include "ttree/Utils.h"
 #include "RAMRecord.h"
 
 void checkindex(const char *file = "ramexample.root")
