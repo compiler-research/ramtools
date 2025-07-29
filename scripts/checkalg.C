@@ -9,7 +9,7 @@
 #include <TRandom.h>
 #include <iostream>
 #include <Compression.h>
-#include "../lib/RAMRecord.C"
+#include "ttree/RAMRecord.h"
 
 void checkalg(const char *file = "ramexample.root")
 {
