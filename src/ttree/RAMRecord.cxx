@@ -1,4 +1,4 @@
-#include "../../inc/ttree/RAMRecord.h"
+#include "ttree/RAMRecord.h"
 
 RAMRefs *RAMRecord::fgRnameRefs = 0;
 RAMRefs *RAMRecord::fgRnextRefs = 0;

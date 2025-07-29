@@ -2,7 +2,7 @@
 // RAMNTupleRecord.cpp
 // Complete implementation of RAM format using RNTuple
 
-#include "../../inc/rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMNTupleRecord.h"
 #include <ROOT/RNTupleWriteOptions.hxx>
 #include <TError.h>
 #include <TFile.h>
