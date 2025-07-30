@@ -197,7 +197,7 @@ public:
 };
 
 // Return values of GetCIGAROP()
-#include "CigarOps.h"
+#include "ttree/CigarOps.h"
 
 // Illumina binning scheme:
 // 1      1

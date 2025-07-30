@@ -1,5 +1,5 @@
 //
-// RAMNTupleRecord.cpp
+// RAMNTupleRecord.cxx
 // Complete implementation of RAM format using RNTuple
 
 #include "rntuple/RAMNTupleRecord.h"

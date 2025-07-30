@@ -218,7 +218,7 @@ private:
 };
 
 // CIGAR operation codes (from BAM format)
-#include "../ttree/CigarOps.h"
+#include "ttree/CigarOps.h"
 
 // Sequence and Quality utilities
 namespace RAMNTupleUtils {
