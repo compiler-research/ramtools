@@ -1,5 +1,5 @@
 ROOT_EXECUTABLE(samtoramntuple samtoramntuple.cxx
-    LIBRARIES ramtools_ntuple ROOT::Core ROOT::RIO ROOT::ROOTNTuple ROOT::ROOTNTupleUtil
+    LIBRARIES ramtools  
 )
 
 configure_file(${CMAKE_SOURCE_DIR}/data/samexample.sam 
@@ -20,3 +20,4 @@ set(ROOT_MACROS
 install(FILES ${ROOT_MACROS}
     DESTINATION share/ramtools/macros
 )
+

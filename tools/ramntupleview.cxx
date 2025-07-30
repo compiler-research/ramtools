@@ -5,7 +5,7 @@
 #include <ROOT/RNTupleView.hxx>
 #include <TStopwatch.h>
 #include <TString.h>
-#include "RAMNTupleRecord.h"
+#include "rntuple/RAMNTupleRecord.h"
 
 void ramntupleview(const char *file, const char *query, bool cache = true, 
                   bool perfstats = false, const char *perfstatsfilename = "perf.root")

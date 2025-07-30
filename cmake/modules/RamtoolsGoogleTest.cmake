@@ -29,8 +29,6 @@ ExternalProject_Add(
   UPDATE_COMMAND ""
   CMAKE_ARGS -G ${CMAKE_GENERATOR}
                 -DCMAKE_BUILD_TYPE=Release
-                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-                -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
                 -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
                 -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
                 -DCMAKE_AR=${CMAKE_AR}
@@ -44,6 +42,7 @@ ExternalProject_Add(
   LOG_BUILD ON
   TIMEOUT 600
   )
+
 ExternalProject_Get_Property(googletest source_dir)
 set(GTEST_INCLUDE_DIR ${source_dir}/googletest/include)
 set(GMOCK_INCLUDE_DIR ${source_dir}/googlemock/include)
@@ -68,3 +67,4 @@ add_library(GTest::gtest ALIAS gtest)
 add_library(GTest::gtest_main ALIAS gtest_main)
 add_library(GTest::gmock ALIAS gmock)
 add_library(GTest::gmock_main ALIAS gmock_main)
+

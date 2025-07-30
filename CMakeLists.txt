@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ramtools VERSION 1.0.0 LANGUAGES C CXX)  
+project(ramtools VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -19,44 +19,27 @@ include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/inc)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
-ROOT_STANDARD_LIBRARY_PACKAGE(ramtools_tree
+ROOT_STANDARD_LIBRARY_PACKAGE(ramtools
     HEADERS
         ttree/RAMRecord.h
         ttree/Utils.h
         ttree/CigarOps.h
+        rntuple/RAMNTupleRecord.h
     SOURCES
         src/ttree/RAMRecord.cxx
+        src/rntuple/RAMNTupleRecord.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
         ROOT::Core
         ROOT::RIO
         ROOT::Tree
+        ROOT::ROOTNTuple
+        ROOT::ROOTNTupleUtil
     INSTALL_OPTIONS
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-add_library(ramtools_ntuple SHARED
-    src/rntuple/RAMNTupleRecord.cxx
-)
-
-target_include_directories(ramtools_ntuple PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
-    $<INSTALL_INTERFACE:include>
-)
-
-target_link_libraries(ramtools_ntuple PUBLIC 
-    ROOT::Core 
-    ROOT::RIO 
-    ROOT::Tree 
-    ROOT::ROOTNTuple 
-    ROOT::ROOTNTupleUtil
-)
-
-install(TARGETS ramtools_ntuple
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(DIRECTORY inc/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
@@ -73,3 +56,4 @@ endif()
 if(RAMTOOLS_BUILD_BENCHMARKS)
     add_subdirectory(benchmark)
 endif()
+
