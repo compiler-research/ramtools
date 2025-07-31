@@ -1,17 +1,9 @@
-//
-// Auxiliary common functions
-//
-// Author: Jose Javier Gonzalez Ortiz, 6/6/2017
-//
-
 #ifndef UTILS_H
 #define UTILS_H
 
 #include <cstring>
 
-void stripcrlf(char *tok);
-
-void stripcrlf(char *tok)
+inline void stripcrlf(char *tok)
 {
    int l = strlen(tok);
    if (l > 0 && tok[l - 1] == '\n') {
@@ -23,3 +15,4 @@ void stripcrlf(char *tok)
 }
 
 #endif // UTILS_H
+

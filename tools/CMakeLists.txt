@@ -1,9 +1,20 @@
-ROOT_EXECUTABLE(samtoramntuple samtoramntuple.cxx
-    LIBRARIES ramtools  
+add_executable(samtoram samtoram.cxx)
+target_link_libraries(samtoram PRIVATE
+    RAMCore
+    ROOT::Core
+    ROOT::Tree
 )
 
-configure_file(${CMAKE_SOURCE_DIR}/data/samexample.sam 
-               ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam COPYONLY)
+add_executable(samtoramntuple samtoramntuple.cxx)
+target_link_libraries(samtoramntuple PRIVATE
+    RAMCore
+    ROOT::Core
+    ROOT::ROOTNTuple
+)
+
+install(TARGETS samtoram samtoramntuple
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
 set(ROOT_MACROS
     checkindex.cxx
@@ -13,7 +24,6 @@ set(ROOT_MACROS
     ramview.cxx
     ramview_no_index.cxx
     ramntupleview.cxx
-    samtoram.cxx
     parsetreestats.cxx
 )
 

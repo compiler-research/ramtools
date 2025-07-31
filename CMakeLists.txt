@@ -21,15 +21,21 @@ set(CMAKE_INSTALL_INCLUDEDIR include)
 
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 
-ROOT_STANDARD_LIBRARY_PACKAGE(ramtools
+ROOT_STANDARD_LIBRARY_PACKAGE(RAMCore
     HEADERS
         ttree/RAMRecord.h
         ttree/Utils.h
         ttree/CigarOps.h
         rntuple/RAMNTupleRecord.h
+        RAMCore/SamParser.h
+        RAMCore/SamToTTree.h
+        RAMCore/SamToNTuple.h
     SOURCES
         src/ttree/RAMRecord.cxx
         src/rntuple/RAMNTupleRecord.cxx
+        src/RAMCore/SamParser.cxx
+        src/RAMCore/SamToTTree.cxx
+        src/RAMCore/SamToNTuple.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
@@ -51,9 +57,5 @@ endif()
 if(RAMTOOLS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
-endif()
-
-if(RAMTOOLS_BUILD_BENCHMARKS)
-    add_subdirectory(benchmark)
 endif()
 
