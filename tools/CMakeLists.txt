@@ -1,15 +1,17 @@
-add_executable(samtoram samtoram.cxx)
-target_link_libraries(samtoram PRIVATE
-    RAMCore
-    ROOT::Core
-    ROOT::Tree
+ROOT_EXECUTABLE(samtoram
+    samtoram.cxx
+    LIBRARIES
+        RAMCore
+        ROOT::Core
+        ROOT::Tree
 )
 
-add_executable(samtoramntuple samtoramntuple.cxx)
-target_link_libraries(samtoramntuple PRIVATE
-    RAMCore
-    ROOT::Core
-    ROOT::ROOTNTuple
+ROOT_EXECUTABLE(samtoramntuple
+    samtoramntuple.cxx
+    LIBRARIES
+        RAMCore
+        ROOT::Core
+        ROOT::ROOTNTuple
 )
 
 install(TARGETS samtoram samtoramntuple

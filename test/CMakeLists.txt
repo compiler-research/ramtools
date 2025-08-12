@@ -18,7 +18,9 @@ endfunction()
 
 add_ramcore_test(RAMCoreTests RAMCoreTests.cxx)
 
-configure_file(${CMAKE_SOURCE_DIR}/data/samexample.sam
-               ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam
-               COPYONLY)
+if(EXISTS ${CMAKE_SOURCE_DIR}/test/samexample.sam)
+    configure_file(${CMAKE_SOURCE_DIR}/test/samexample.sam
+                   ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam
+                   COPYONLY)
+endif()
 

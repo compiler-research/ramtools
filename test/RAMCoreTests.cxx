@@ -26,7 +26,6 @@ TEST_F(RAMCoreTest, ConversionProducesEqualEntries) {
     const char* ttreeFile = "test_ttree.root";
     const char* rntupleFile = "test_rntuple.root";
     
-    
     samtoram(samFile, ttreeFile, true, true, true, 1, 0);
     
     samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
