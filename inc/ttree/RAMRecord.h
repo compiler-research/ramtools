@@ -21,6 +21,15 @@
 #include <cstring> // For memset, memcpy, strlen
 #include <cstdio>  // For snprintf
 
+/**
+ * \class RAMRefs
+ * \brief Bidirectional mapping between reference names and numeric identifiers.
+ *
+ * While writing or reading a RAM TTree, reference sequence names (e.g. "chr1")
+ * are mapped to compact integer IDs for space efficiency.  The map is kept in
+ * memory during a session and streamed to disk alongside the data so that
+ * readers can restore the exact same mapping.
+ */
 class RAMRefs {
 private:
    typedef std::vector<std::string> Refs_t;
@@ -42,6 +51,14 @@ public:
    ClassDefNV(RAMRefs, 1)
 };
 
+/**
+ * \class RAMIndex
+ * \brief Sparse genomic index used for random access into the RAM TTree.
+ *
+ * Stores the TTree entry (row) for a pair of reference-ID and leftmost position
+ * so that viewers can jump straight to the region of interest without scanning
+ * the entire file.
+ */
 class RAMIndex {
 private:
    typedef std::pair<int, int> Key_t;         // refid (of rname) and pos
@@ -62,6 +79,26 @@ public:
    ClassDefNV(RAMIndex, 1)
 };
 
+/**
+ * \class RAMRecord
+ * \brief Compact binary representation of a SAM alignment inside a ROOT TTree.
+ *
+ * The class mirrors the SAM/BAM data model but stores the data in a highly
+ * compressed form:
+ *   * Sequence is 2-bit packed (4 bases per byte).
+ *   * Quality can be left as Phred+33, binned (Illumina 8-bin), or dropped
+ *     altogether – controlled via `compression_flags`.
+ *   * CIGAR operations are stored as 32-bit words `(len << 4 | op)` identical to
+ *     the BAM layout.
+ *
+ * Static singletons (`fgRnameRefs`, `fgRnextRefs`, `fgIndex`) provide shared
+ * metadata accessible from all instances and helper tools.
+ *
+ * ROOT I/O is enabled through `ClassDefNV(RAMRecord,1)` so that the class can
+ * be streamed efficiently into `TTree`s.
+ *
+ * \sa RAMRefs, RAMIndex, RAMNTupleRecord
+ */
 class RAMRecord : public TObject {
 public:
    enum EQualCompressionBits {

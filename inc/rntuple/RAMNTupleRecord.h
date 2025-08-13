@@ -27,7 +27,13 @@ class RNTupleReader;
 class RAMNTupleRefs;
 class RAMNTupleIndex;
 
-// RAMNTupleRefs: Manages reference name to ID mappings
+/**
+ * \class RAMNTupleRefs
+ * \brief Reference-name ↔ ID mapping used by the RNTuple backend.
+ *
+ * Conceptually identical to `RAMRefs` but serialisable as an RNTuple field so
+ * that it can be embedded directly inside the columnar file.
+ */
 class RAMNTupleRefs {
 private:
    std::vector<std::string> fRefVec;
@@ -61,7 +67,14 @@ public:
    }
 };
 
-// RAMNTupleIndex: Genomic position index for fast region queries
+/**
+ * \class RAMNTupleIndex
+ * \brief Sparse genomic index for fast region queries on RNTuple files.
+ *
+ * The index is stored as a plain `std::vector<IndexEntry>` for efficient
+ * serialisation and complemented by a lazily-initialised `std::map` that
+ * supports O(log n) look-ups by (refid,pos).
+ */
 class RAMNTupleIndex {
 public:
    struct IndexEntry {
@@ -100,7 +113,20 @@ public:
       fIndexMap.clear();
    }
 };
-// RAMNTupleRecord: Main record structure for genomic alignments
+/**
+ * \class RAMNTupleRecord
+ * \brief Alignment record stored in the ROOT Experimental RNTuple format.
+ *
+ * Uses standard C++ containers instead of raw C-style buffers and therefore
+ * integrates naturally with the columnar storage back-end.  The data model is
+ * equivalent to `RAMRecord` with the same compression options but benefits
+ * from RNTuple’s zero-copy reading and automatic schema evolution support.
+ *
+ * Static managers (`fgRnameRefs`, `fgRnextRefs`, `fgIndex`) provide shared
+ * metadata similarly to the TTree implementation.
+ *
+ * \sa RAMNTupleRefs, RAMNTupleIndex, RAMRecord
+ */
 class RAMNTupleRecord {
 public:
    // Quality compression options
@@ -233,7 +259,14 @@ std::string FormatCIGAR(const std::vector<uint32_t> &cigar_ops);
 
 extern const uint8_t kIlluminaBinning[256];
 } // namespace RAMNTupleUtils
-// SAM <-> RNTuple conversion utilities
+/**
+ * \class RAMNTupleConverter
+ * \brief High-level conversion and utility functions for RAM RNTuple files.
+ *
+ * Provides one-call helpers for converting between SAM text and RAMNTuple
+ * binaries, building an index, or viewing a genomic region – functionality
+ * reused by several command-line tools in `tools/`.
+ */
 class RAMNTupleConverter {
 public:
    static void ConvertSAMToRAMNTuple(const std::string &sam_file, const std::string &ram_file,

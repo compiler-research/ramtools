@@ -1,5 +1,5 @@
-#ifndef ramcore_SAMTOTREE_H
-#define ramcore_SAMTOTREE_H
+#ifndef RAMCORE_SAMTOTREE_H
+#define RAMCORE_SAMTOTREE_H
 
 #include <Rtypes.h> 
 
@@ -9,5 +9,5 @@ void samtoram(const char *datafile,
               Int_t compression_algorithm,
               UInt_t quality_policy);
 
-#endif 
+#endif // RAMCORE_SAMTOTREE_H 
 

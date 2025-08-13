@@ -23,3 +23,6 @@ Build/
 BUILD/
 Testing/
 .vscode/
+docs/html/
+docs/latex/
+html/

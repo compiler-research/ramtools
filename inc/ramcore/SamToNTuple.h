@@ -1,5 +1,5 @@
-#ifndef ramcore_SAMTONTUPLE_H
-#define ramcore_SAMTONTUPLE_H
+#ifndef RAMCORE_SAMTONTUPLE_H
+#define RAMCORE_SAMTONTUPLE_H
 
 #include <cstdint> 
 
@@ -9,5 +9,5 @@ void samtoramntuple(const char *datafile,
                     int compression_algorithm,
                     uint32_t quality_policy);
 
-#endif 
+#endif // RAMCORE_SAMTONTUPLE_H 
 

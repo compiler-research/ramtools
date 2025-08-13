@@ -1,5 +1,5 @@
-#ifndef ramcore_SAMPARSER_H
-#define ramcore_SAMPARSER_H
+#ifndef RAMCORE_SAMPARSER_H
+#define RAMCORE_SAMPARSER_H
 
 #include <string>
 #include <vector>
@@ -8,6 +8,20 @@
 
 namespace ramcore {
 
+/**
+ * \struct SamRecord
+ * \brief Plain-old-data container representing one SAM alignment record.
+ *
+ * Mirrors the eleven mandatory SAM columns (`QNAME`, `FLAG`, `RNAME`, `POS`, `MAPQ`,
+ * `CIGAR`, `RNEXT`, `PNEXT`, `TLEN`, `SEQ`, `QUAL`) and stores any auxiliary
+ * fields verbatim in `optional_fields`.
+ *
+ * The struct is intentionally kept trivially-constructible so that it can be
+ * allocated on the stack and cleared via `Clear()` without expensive heap
+ * operations inside tight parsing loops.
+ *
+ * \sa SamParser
+ */
 struct SamRecord {
     std::string qname;
     int flag = 0;
@@ -38,6 +52,29 @@ struct SamRecord {
     }
 };
 
+/**
+ * \class SamParser
+ * \brief Streaming parser for SAM text files.
+ *
+ * Reads a SAM file line-by-line, dispatching callbacks for header directives
+ * and alignment records.  Parsing is zero-copy: the input buffer is split in
+ * place and converted into a `SamRecord` which is then passed to the user
+ * callback.
+ *
+ * Example usage:
+ * \code
+ * ramcore::SamParser parser;
+ * parser.ParseFile("reads.sam",
+ *     [](const std::string &tag, const std::string &content) {
+ *         // handle @HD / @SQ / @PG ...
+ *     },
+ *     [](const ramcore::SamRecord &rec, size_t idx) {
+ *         // process alignment #idx
+ *     });
+ * \endcode
+ *
+ * \sa SamRecord
+ */
 class SamParser {
 public:
     using HeaderCallback = std::function<void(const std::string& tag, const std::string& content)>;
@@ -62,5 +99,5 @@ void StripCRLF(char* str);
 
 } 
 
-#endif 
+#endif // RAMCORE_SAMPARSER_H 
 
