@@ -11,7 +11,8 @@ option(RAMTOOLS_BUILD_TESTS "Build unit tests" ON)
 option(RAMTOOLS_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(RAMTOOLS_BUILD_TOOLS "Build tools" ON)
 
-find_package(ROOT 6.26 REQUIRED COMPONENTS Core RIO Tree ROOTNTuple ROOTNTupleUtil)
+set(ROOT_MIN_VERSION 6.26)
+find_package(ROOT ${ROOT_MIN_VERSION} REQUIRED COMPONENTS Core RIO Tree ROOTNTuple ROOTNTupleUtil)
 
 include(${ROOT_USE_FILE})
 
