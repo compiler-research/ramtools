@@ -1,5 +1,5 @@
-#ifndef RAMCORE_SAMTOTREE_H
-#define RAMCORE_SAMTOTREE_H
+#ifndef ramcore_SAMTOTREE_H
+#define ramcore_SAMTOTREE_H
 
 #include <Rtypes.h> 
 

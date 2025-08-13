@@ -1,12 +1,12 @@
 #include <gtest/gtest.h>
-#include "RAMCore/SamToTTree.h"
-#include "RAMCore/SamToNTuple.h"
+#include "ramcore/SamToTTree.h"
+#include "ramcore/SamToNTuple.h"
 #include <TFile.h>
 #include <TTree.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <cstdio>
 
-class RAMCoreTest : public ::testing::Test {
+class ramcoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
         
@@ -21,7 +21,7 @@ protected:
     }
 };
 
-TEST_F(RAMCoreTest, ConversionProducesEqualEntries) {
+TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
     const char* samFile = "samexample.sam";
     const char* ttreeFile = "test_ttree.root";
     const char* rntupleFile = "test_rntuple.root";

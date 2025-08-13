@@ -1,5 +1,5 @@
-#include "RAMCore/SamToNTuple.h"
-#include "RAMCore/SamParser.h"
+#include "ramcore/SamToNTuple.h"
+#include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/RNTupleModel.hxx>
@@ -41,7 +41,7 @@ void samtoramntuple(const char *datafile,
     TList headers;
     headers.SetName("headers");
     
-    RAMCore::SamParser parser;
+    ramcore::SamParser parser;
     
     auto header_callback = [&headers](const std::string& tag, const std::string& content) {
         headers.Add(new TNamed(tag.c_str(), content.c_str()));
@@ -58,7 +58,7 @@ void samtoramntuple(const char *datafile,
         }
     };
     
-    auto record_callback = [&](const RAMCore::SamRecord& sam_record, size_t record_num) {
+    auto record_callback = [&](const ramcore::SamRecord& sam_record, size_t record_num) {
         RAMNTupleRecord r;
         r.SetBit(quality_policy);
         

@@ -1,8 +1,8 @@
-#include "RAMCore/SamParser.h"
+#include "ramcore/SamParser.h"
 #include <cstring>
 #include <cstdlib>
 
-namespace RAMCore {
+namespace ramcore {
 
 void StripCRLF(char* str) {
     size_t len = strlen(str);

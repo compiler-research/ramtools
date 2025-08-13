@@ -1,5 +1,5 @@
-#include "RAMCore/SamToTTree.h"
-#include "RAMCore/SamParser.h"
+#include "ramcore/SamToTTree.h"
+#include "ramcore/SamParser.h"
 #include "ttree/RAMRecord.h"
 #include "ttree/Utils.h"
 
@@ -45,13 +45,13 @@ void samtoram(const char *datafile,
     headers->SetName("headers");
     tree->GetUserInfo()->Add(headers);
     
-    RAMCore::SamParser parser;
+    ramcore::SamParser parser;
     
     auto header_callback = [&headers](const std::string& tag, const std::string& content) {
         headers->Add(new TNamed(tag.c_str(), content.c_str()));
     };
     
-    auto record_callback = [&](const RAMCore::SamRecord& sam_record, size_t record_num) {
+    auto record_callback = [&](const ramcore::SamRecord& sam_record, size_t record_num) {
         
         r->SetQNAME(sam_record.qname.c_str());
         r->SetFLAG(sam_record.flag);

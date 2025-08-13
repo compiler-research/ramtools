@@ -1,4 +1,4 @@
-#include "RAMCore/SamToTTree.h"
+#include "ramcore/SamToTTree.h"
 #include "ttree/RAMRecord.h"
 #include <Compression.h>
 #include <cstdio>

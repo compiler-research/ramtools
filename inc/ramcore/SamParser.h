@@ -1,12 +1,12 @@
-#ifndef RAMCORE_SAMPARSER_H
-#define RAMCORE_SAMPARSER_H
+#ifndef ramcore_SAMPARSER_H
+#define ramcore_SAMPARSER_H
 
 #include <string>
 #include <vector>
 #include <functional>
 #include <cstdio>
 
-namespace RAMCore {
+namespace ramcore {
 
 struct SamRecord {
     std::string qname;

@@ -1,4 +1,4 @@
-#include "RAMCore/SamToNTuple.h"
+#include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include <iostream>
 #include <string>

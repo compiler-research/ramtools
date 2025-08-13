@@ -19,21 +19,21 @@ include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
 
-ROOT_STANDARD_LIBRARY_PACKAGE(RAMCore
+    ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
     HEADERS
         inc/ttree/RAMRecord.h
         inc/ttree/Utils.h
         inc/ttree/CigarOps.h
         inc/rntuple/RAMNTupleRecord.h
-        inc/RAMCore/SamParser.h
-        inc/RAMCore/SamToTTree.h
-        inc/RAMCore/SamToNTuple.h
+        inc/ramcore/SamParser.h
+        inc/ramcore/SamToTTree.h
+        inc/ramcore/SamToNTuple.h
     SOURCES
         src/ttree/RAMRecord.cxx
         src/rntuple/RAMNTupleRecord.cxx
-        src/RAMCore/SamParser.cxx
-        src/RAMCore/SamToTTree.cxx
-        src/RAMCore/SamToNTuple.cxx
+        src/ramcore/SamParser.cxx
+        src/ramcore/SamToTTree.cxx
+        src/ramcore/SamToNTuple.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
@@ -46,7 +46,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(RAMCore
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-target_include_directories(RAMCore
+target_include_directories(ramcore
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

@@ -1,7 +1,7 @@
 ROOT_EXECUTABLE(samtoram
     samtoram.cxx
     LIBRARIES
-        RAMCore
+        ramcore
         ROOT::Core
         ROOT::Tree
 )
@@ -9,7 +9,7 @@ ROOT_EXECUTABLE(samtoram
 ROOT_EXECUTABLE(samtoramntuple
     samtoramntuple.cxx
     LIBRARIES
-        RAMCore
+        ramcore
         ROOT::Core
         ROOT::ROOTNTuple
 )

@@ -1,5 +1,5 @@
-#ifndef RAMCORE_SAMTONTUPLE_H
-#define RAMCORE_SAMTONTUPLE_H
+#ifndef ramcore_SAMTONTUPLE_H
+#define ramcore_SAMTONTUPLE_H
 
 #include <cstdint> 
 
