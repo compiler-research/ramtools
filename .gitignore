@@ -16,7 +16,6 @@ tmp/
 *.fq
 *.bk
 *.rootix
-*.sam
 build/
 cmake-build-*/
 Build/
@@ -26,3 +25,4 @@ Testing/
 docs/html/
 docs/latex/
 html/
+
