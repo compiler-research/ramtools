@@ -17,3 +17,12 @@ tmp/
 *.bk
 *.rootix
 *.sam
+build/
+cmake-build-*/
+Build/
+BUILD/
+Testing/
+.vscode/
+docs/html/
+docs/latex/
+html/
