@@ -199,7 +199,7 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    auto rnameField = metaModel->MakeField<std::vector<std::string>>("rname_refs");
    auto rnextField = metaModel->MakeField<std::vector<std::string>>("rnext_refs");
 
-   ROOT::RNTupleWriteOptions writeOptions;
+   RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
 
    auto metaWriter = RNTupleWriter::Append(std::move(metaModel), "METADATA", file, writeOptions);
@@ -256,7 +256,7 @@ void RAMNTupleRecord::WriteIndex(TFile &file)
    auto indexModel = RNTupleModel::Create();
    auto indexField = indexModel->MakeField<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries");
 
-   ROOT::RNTupleWriteOptions writeOptions;
+   RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
 
    auto indexWriter = RNTupleWriter::Append(std::move(indexModel), "INDEX", file, writeOptions);
@@ -530,7 +530,7 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
 
    auto model = RAMNTupleRecord::MakeModel();
 
-   ROOT::RNTupleWriteOptions writeOptions;
+   RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505); // ZSTD level 5
 
    auto writer = RNTupleWriter::Append(std::move(model), "RAM", *file, writeOptions);

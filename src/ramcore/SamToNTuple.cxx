@@ -29,7 +29,7 @@ void samtoramntuple(const char *datafile,
     
     auto model = RAMNTupleRecord::MakeModel();
     
-    ROOT::RNTupleWriteOptions writeOptions;
+    ROOT::Experimental::RNTupleWriteOptions writeOptions;
     writeOptions.SetCompression(compression_algorithm);
     writeOptions.SetMaxUnzippedPageSize(64000);
     

@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-24.04  
+    
+    steps:
+    - uses: actions/checkout@v5  
+    
+    - name: Install ROOT
+      run: |
+        ROOT_URL="https://root.cern/download/root_v6.34.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz"
+        wget -O root.tar.gz $ROOT_URL
+        tar -xzf root.tar.gz -C /opt/  
+        echo "/opt/root/bin" >> $GITHUB_PATH
+        
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libvdt-dev libtbb-dev
+    
+    - name: Configure CMake
+      run: |
+        source thisroot.sh
+        mkdir build  
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DRAMTOOLS_BUILD_TESTS=ON \
+          -DRAMTOOLS_BUILD_TOOLS=ON \
+          -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+    
+    - name: Build
+      run: |
+        source thisroot.sh
+        cd build
+        cmake --build . --config Release -j $(nproc)
+    
+    - name: Run tests
+      run: |
+        source thisroot.sh
+        cd build
+        ctest --output-on-failure --build-config Release
+
