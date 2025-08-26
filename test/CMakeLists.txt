@@ -1,7 +1,13 @@
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 include(RamtoolsGoogleTest)
 
-add_executable(generate_test_sam generate_test_sam.cxx)
+find_package(benchmark REQUIRED)
+
+ROOT_EXECUTABLE(generate_test_sam
+    generate_test_sam.cxx
+    LIBRARIES
+        benchmark::benchmark
+)
 
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam
@@ -26,10 +32,17 @@ function(add_ramcore_test test_name)
             gtest
             gtest_main
     )
-    
+    target_include_directories(${test_name}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/inc>
+    )
     add_dependencies(${test_name} generate_sam_data)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
 add_ramcore_test(ramcoretests ramcoretests.cxx)
+
+install(TARGETS generate_test_sam ramcoretests
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
