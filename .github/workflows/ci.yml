@@ -24,7 +24,7 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libvdt-dev libtbb-dev
+        sudo apt-get install -y libvdt-dev libtbb-dev libbenchmark-dev
     
     - name: Configure CMake
       run: |
@@ -35,7 +35,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DRAMTOOLS_BUILD_TESTS=ON \
           -DRAMTOOLS_BUILD_TOOLS=ON \
-          -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+          -DRAMTOOLS_BUILD_BENCHMARKS=ON
     
     - name: Build
       run: |
