@@ -24,7 +24,7 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libvdt-dev libtbb-dev libbenchmark-dev
+        sudo apt-get install -y libvdt-dev libtbb-dev
     
     - name: Configure CMake
       run: |

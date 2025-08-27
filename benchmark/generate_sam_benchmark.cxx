@@ -112,7 +112,6 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--max_reads" && i + 1 < argc) {
             max_reads = std::stoi(argv[i + 1]);
-            // Remove these custom arguments before passing to Google Benchmark
             for (int j = i; j < argc - 2; ++j) {
                 argv[j] = argv[j + 2];
             }
@@ -125,7 +124,6 @@ int main(int argc, char** argv) {
     std::cout << "Scaling factor: 10x per step" << std::endl;
     
     // Register benchmark with dynamic range based on external parameter
-    // This addresses the scalability testing requirement
     ::benchmark::RegisterBenchmark("BM_GenerateSAM", BM_GenerateSAM)
         ->RangeMultiplier(10)  // Test 100, 1000, 10000, etc.
         ->Range(min_reads, max_reads)

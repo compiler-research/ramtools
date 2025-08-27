@@ -5,17 +5,24 @@
 #include <TTree.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 
 class ramcoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        
+        if (!std::filesystem::exists("samexample.sam")) {
+            
+            int result = std::system("../benchmark/generate_sam_benchmark --generate samexample.sam 100");
+            ASSERT_EQ(result, 0) << "Failed to generate SAM file";
+        }
         
         std::remove("test_ttree.root");
         std::remove("test_rntuple.root");
     }
     
     void TearDown() override {
-        
         std::remove("test_ttree.root");
         std::remove("test_rntuple.root");
     }
