@@ -9,6 +9,9 @@ target_include_directories(sam_generator PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+target_link_libraries(sam_generator PRIVATE benchmark::benchmark)
+add_dependencies(sam_generator benchmark::benchmark)
+
 ROOT_EXECUTABLE(generate_sam_benchmark
     generate_sam_benchmark.cxx
     LIBRARIES
