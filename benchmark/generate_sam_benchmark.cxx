@@ -3,6 +3,7 @@
 #include <random>
 #include <vector>
 #include <string>
+#include <iostream>
 
 static void GenerateSAMFile(const std::string& filename, int num_reads) {
     std::mt19937 rng(42);
@@ -79,21 +80,56 @@ static void GenerateSAMFile(const std::string& filename, int num_reads) {
 }
 
 static void BM_GenerateSAM(benchmark::State& state) {
+    int num_reads = state.range(0);
     for (auto _ : state) {
-        GenerateSAMFile("benchmark_temp.sam", state.range(0));
+        GenerateSAMFile("benchmark_temp.sam", num_reads);
         std::remove("benchmark_temp.sam");
     }
+    
+    state.counters["reads_per_second"] = benchmark::Counter(
+        num_reads, benchmark::Counter::kIsRate);
+    state.counters["bytes_per_second"] = benchmark::Counter(
+        num_reads * 200, benchmark::Counter::kIsRate);
 }
 
-BENCHMARK(BM_GenerateSAM)->Arg(100);
-
 int main(int argc, char** argv) {
-    if (argc >= 2) {
-        std::string filename = argv[1];
-        int num_reads = argc > 2 ? std::stoi(argv[2]) : 100;
-        GenerateSAMFile(filename, num_reads);
-        return 0;
+    // MODE 1: File generation (used during build process and manual testing)
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--generate" && i + 1 < argc) {
+            std::string filename = argv[i + 1];
+            int num_reads = (i + 2 < argc) ? std::stoi(argv[i + 2]) : 100;
+            GenerateSAMFile(filename, num_reads);
+            std::cout << "Generated SAM file: " << filename << " with " << num_reads << " reads" << std::endl;
+            return 0;
+        }
     }
+    
+    // MODE 2: Benchmark with configurable range
+    // Parse the external parameter for maximum number of entries to test
+    int min_reads = 100;
+    int max_reads = 100000;  // Default maximum if not specified
+    
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--max_reads" && i + 1 < argc) {
+            max_reads = std::stoi(argv[i + 1]);
+            // Remove these custom arguments before passing to Google Benchmark
+            for (int j = i; j < argc - 2; ++j) {
+                argv[j] = argv[j + 2];
+            }
+            argc -= 2;
+            break;
+        }
+    }
+    
+    std::cout << "Benchmarking SAM generation from " << min_reads << " to " << max_reads << " reads" << std::endl;
+    std::cout << "Scaling factor: 10x per step" << std::endl;
+    
+    // Register benchmark with dynamic range based on external parameter
+    // This addresses the scalability testing requirement
+    ::benchmark::RegisterBenchmark("BM_GenerateSAM", BM_GenerateSAM)
+        ->RangeMultiplier(10)  // Test 100, 1000, 10000, etc.
+        ->Range(min_reads, max_reads)
+        ->Unit(benchmark::kMicrosecond);
     
     ::benchmark::Initialize(&argc, argv);
     ::benchmark::RunSpecifiedBenchmarks();

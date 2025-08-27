@@ -1,19 +1,11 @@
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 include(RamtoolsGoogleTest)
 
-find_package(benchmark REQUIRED)
-
-ROOT_EXECUTABLE(generate_test_sam
-    generate_test_sam.cxx
-    LIBRARIES
-        benchmark::benchmark
-)
-
 add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam
-    COMMAND generate_test_sam ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam 100
-    DEPENDS generate_test_sam
-    COMMENT "Generating test SAM file"
+    COMMAND $<TARGET_FILE:generate_sam_benchmark> --generate ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam 100
+    DEPENDS generate_sam_benchmark
+    COMMENT "Generating test SAM file using benchmark generator"
 )
 
 add_custom_target(generate_sam_data ALL
@@ -42,7 +34,7 @@ endfunction()
 
 add_ramcore_test(ramcoretests ramcoretests.cxx)
 
-install(TARGETS generate_test_sam ramcoretests
+install(TARGETS ramcoretests
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
