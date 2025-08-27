@@ -5,7 +5,7 @@
 #include <string>
 #include <iostream>
 
-static void GenerateSAMFile(const std::string& filename, int num_reads) {
+void GenerateSAMFile(const std::string& filename, int num_reads) {
     std::mt19937 rng(42);
     std::vector<std::pair<std::string, int>> chromosomes = {
         {"chr1", 249250621}, {"chr2", 243199373}, {"chr3", 198022430},

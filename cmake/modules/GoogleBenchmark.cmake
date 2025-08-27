@@ -29,8 +29,8 @@ if(NOT benchmark_FOUND)
         add_library(benchmark::benchmark_main ALIAS benchmark_main)
     endif()
 endif()
-
 # Verify benchmark target exists
 if(NOT TARGET benchmark::benchmark)
     message(FATAL_ERROR "Google Benchmark target benchmark::benchmark not found")
 endif() 
+

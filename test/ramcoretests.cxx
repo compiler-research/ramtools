@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
+#include "generate_sam_benchmark.h"
 #include <TFile.h>
 #include <TTree.h>
 #include <ROOT/RNTupleReader.hxx>
@@ -11,11 +12,8 @@
 class ramcoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        
         if (!std::filesystem::exists("samexample.sam")) {
-            
-            int result = std::system("../benchmark/generate_sam_benchmark --generate samexample.sam 100");
-            ASSERT_EQ(result, 0) << "Failed to generate SAM file";
+            GenerateSAMFile("samexample.sam", 100);
         }
         
         std::remove("test_ttree.root");
