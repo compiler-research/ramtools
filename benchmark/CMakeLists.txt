@@ -22,3 +22,10 @@ install(TARGETS generate_sam_benchmark
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+add_custom_target(benchmark
+    COMMAND generate_sam_benchmark
+    DEPENDS generate_sam_benchmark
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running SAM generation benchmarks"
+)
+

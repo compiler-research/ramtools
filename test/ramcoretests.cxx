@@ -12,8 +12,9 @@
 class ramcoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        int benchmark_size = GetDefaultBenchmarkSize();
         if (!std::filesystem::exists("samexample.sam")) {
-            GenerateSAMFile("samexample.sam", 100);
+            GenerateSAMFile("samexample.sam", benchmark_size);
         }
         
         std::remove("test_ttree.root");
