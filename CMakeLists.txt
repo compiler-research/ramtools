@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(ramtools VERSION 1.0.0 LANGUAGES CXX)
 
+set_property(GLOBAL PROPERTY ALLOW_DUPLICATE_CUSTOM_TARGETS 1)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -20,7 +22,7 @@ include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
 
-    ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
+ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
     HEADERS
         inc/ttree/RAMRecord.h
         inc/ttree/Utils.h
