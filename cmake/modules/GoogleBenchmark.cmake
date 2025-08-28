@@ -19,18 +19,17 @@ if(NOT benchmark_FOUND)
     )
     
     FetchContent_MakeAvailable(googlebenchmark)
-    
-    # Create alias if needed
-    if(TARGET benchmark AND NOT TARGET benchmark::benchmark)
-        add_library(benchmark::benchmark ALIAS benchmark)
-    endif()
-    
-    if(TARGET benchmark_main AND NOT TARGET benchmark::benchmark_main)
-        add_library(benchmark::benchmark_main ALIAS benchmark_main)
-    endif()
 endif()
+
+# Resolve canonical target names to variables without creating aliases
+if(TARGET benchmark::benchmark)
+    set(BENCHMARK_LIB_TARGET benchmark::benchmark CACHE INTERNAL "Google Benchmark library target")
+elseif(TARGET benchmark)
+    set(BENCHMARK_LIB_TARGET benchmark CACHE INTERNAL "Google Benchmark library target")
+endif()
+
 # Verify benchmark target exists
-if(NOT TARGET benchmark::benchmark)
-    message(FATAL_ERROR "Google Benchmark target benchmark::benchmark not found")
+if(NOT DEFINED BENCHMARK_LIB_TARGET)
+    message(FATAL_ERROR "Google Benchmark target not found (neither benchmark::benchmark nor benchmark)")
 endif() 
 

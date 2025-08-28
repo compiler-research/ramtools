@@ -28,4 +28,3 @@ add_custom_target(benchmark
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running SAM generation benchmarks"
 )
-
