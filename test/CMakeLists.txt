@@ -1,6 +1,5 @@
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 include(RamtoolsGoogleTest)
-include(GoogleBenchmark)
 
 function(add_ramcore_test test_name)
     ROOT_EXECUTABLE(${test_name}
