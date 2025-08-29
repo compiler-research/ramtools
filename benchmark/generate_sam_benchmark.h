@@ -4,7 +4,6 @@
 #include <string>
 
 void GenerateSAMFile(const std::string& filename, int num_reads);
-int GetDefaultBenchmarkSize();  
 
 #endif 
 

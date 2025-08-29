@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <iostream>
-
+#include <cstdio> // For std::remove
 
 #ifndef BASE_SAM_READS
 #define BASE_SAM_READS 100
@@ -93,19 +93,11 @@ static void BM_GenerateSAM(benchmark::State& state) {
        num_reads * 200, benchmark::Counter::kIsRate);
 }
 
-int GetDefaultBenchmarkSize() {
-   const char* env_size = std::getenv("SAM_BENCHMARK_SIZE");
-   if (env_size) {
-       return std::stoi(env_size);
-   }
-   return BASE_SAM_READS;
-}
-
 int main(int argc, char** argv) {
    for (int i = 1; i < argc; ++i) {
        if (std::string(argv[i]) == "--generate" && i + 1 < argc) {
            std::string filename = argv[i + 1];
-           int num_reads = (i + 2 < argc) ? std::stoi(argv[i + 2]) : GetDefaultBenchmarkSize();
+           int num_reads = (i + 2 < argc) ? std::stoi(argv[i + 2]) : BASE_SAM_READS;
            GenerateSAMFile(filename, num_reads);
            std::cout << "Generated SAM file: " << filename << " with " << num_reads << " reads" << std::endl;
            return 0;
@@ -116,7 +108,7 @@ int main(int argc, char** argv) {
 
    ::benchmark::RegisterBenchmark("BM_GenerateSAM", BM_GenerateSAM)
        ->RangeMultiplier(10)
-       ->Range(100, 100000) 
+       ->Range(100, 100000)
        ->Unit(benchmark::kMicrosecond);
 
    ::benchmark::Initialize(&argc, argv);
