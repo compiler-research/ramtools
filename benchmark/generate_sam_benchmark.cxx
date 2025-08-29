@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 
+
 #ifndef BASE_SAM_READS
 #define BASE_SAM_READS 100
 #endif
@@ -22,15 +23,13 @@ void GenerateSAMFile(const std::string& filename, int num_reads) {
        {"chr19", 59128983}, {"chr20", 63025520}, {"chr21", 48129895},
        {"chr22", 51304566}, {"chrM", 16571}, {"chrX", 155270560}
    };
-   
+
    const char bases[4] = {'A', 'C', 'G', 'T'};
-   
    std::ofstream out(filename);
-   
    for (const auto& [chrom, length] : chromosomes) {
        out << "@SQ\tSN:" << chrom << "\tLN:" << length << "\n";
    }
-   
+
    std::uniform_int_distribution<> base_dist(0, 3);
    std::uniform_int_distribution<> flag_dist(0, 1);
    std::uniform_int_distribution<> chrom_dist(0, chromosomes.size() - 1);
@@ -40,47 +39,44 @@ void GenerateSAMFile(const std::string& filename, int num_reads) {
    std::uniform_int_distribution<> tile_dist(1, 300);
    std::uniform_int_distribution<> coord_dist(1, 1000);
    std::uniform_int_distribution<> mismatch_dist(0, 9);
-   
+
    for (int i = 0; i < num_reads; ++i) {
        auto [chrom, chrom_length] = chromosomes[chrom_dist(rng)];
        int read_length = 36;
        std::uniform_int_distribution<> pos_dist(1, std::max(1, chrom_length - read_length));
        int position = pos_dist(rng);
-       
-       out << "SOLEXA-1GA-2_2_FC" << fc_dist(rng) 
-           << ":" << lane_dist(rng) 
+
+       out << "SOLEXA-1GA-2_2_FC" << fc_dist(rng)
+           << ":" << lane_dist(rng)
            << ":" << tile_dist(rng)
            << ":" << coord_dist(rng)
            << ":" << coord_dist(rng) << "\t";
-       
+
        out << (flag_dist(rng) * 16) << "\t"
            << chrom << "\t"
            << position << "\t"
            << 25 << "\t";
-       
+
        out << read_length << "M\t";
-       
        out << "*\t0\t0\t";
-       
+
        std::string sequence;
        sequence.reserve(read_length);
        for (int j = 0; j < read_length; ++j) {
            sequence += bases[base_dist(rng)];
        }
        out << sequence << "\t";
-       
+
        for (int j = 0; j < read_length; ++j) {
            out << static_cast<char>(qual_dist(rng));
        }
-       
+
        int nm = mismatch_dist(rng) < 7 ? 0 : 1;
        out << "\tNM:i:" << nm;
        out << "\tX" << nm << ":i:1";
        out << "\tMD:Z:" << read_length;
-       
        out << "\n";
    }
-   
    out.close();
 }
 
@@ -90,7 +86,7 @@ static void BM_GenerateSAM(benchmark::State& state) {
        GenerateSAMFile("benchmark_temp.sam", num_reads);
        std::remove("benchmark_temp.sam");
    }
-   
+
    state.counters["reads_per_second"] = benchmark::Counter(
        num_reads, benchmark::Counter::kIsRate);
    state.counters["bytes_per_second"] = benchmark::Counter(
@@ -115,14 +111,14 @@ int main(int argc, char** argv) {
            return 0;
        }
    }
-   
-   int benchmark_size = GetDefaultBenchmarkSize();
-   std::cout << "Benchmarking SAM generation with size: " << benchmark_size << std::endl;
-   
+
+   std::cout << "Benchmarking SAM generation with a range of reads..." << std::endl;
+
    ::benchmark::RegisterBenchmark("BM_GenerateSAM", BM_GenerateSAM)
-       ->Arg(benchmark_size)
+       ->RangeMultiplier(10)
+       ->Range(100, 100000) 
        ->Unit(benchmark::kMicrosecond);
-   
+
    ::benchmark::Initialize(&argc, argv);
    ::benchmark::RunSpecifiedBenchmarks();
    return 0;
