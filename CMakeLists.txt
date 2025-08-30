@@ -59,6 +59,10 @@ if(RAMTOOLS_BUILD_TOOLS)
     add_subdirectory(tools)
 endif()
 
+if(RAMTOOLS_BUILD_BENCHMARKS)
+    add_subdirectory(benchmark)
+endif()
+
 if(RAMTOOLS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)

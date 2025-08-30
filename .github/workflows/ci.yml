@@ -35,7 +35,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DRAMTOOLS_BUILD_TESTS=ON \
           -DRAMTOOLS_BUILD_TOOLS=ON \
-          -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+          -DRAMTOOLS_BUILD_BENCHMARKS=ON
     
     - name: Build
       run: |

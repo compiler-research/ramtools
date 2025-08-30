@@ -6,21 +6,26 @@ function(add_ramcore_test test_name)
         ${ARGN}
         LIBRARIES
             ramcore
+            sam_generator
+            benchmark::benchmark
             ROOT::Core
             ROOT::Tree
             ROOT::ROOTNTuple
+            ROOT::RIO
             gtest
             gtest_main
     )
-
+    target_include_directories(${test_name}
+        PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/inc>
+            $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/benchmark>
+    )
     add_test(NAME ${test_name} COMMAND ${test_name})
 endfunction()
 
 add_ramcore_test(ramcoretests ramcoretests.cxx)
 
-if(EXISTS ${CMAKE_SOURCE_DIR}/test/samexample.sam)
-    configure_file(${CMAKE_SOURCE_DIR}/test/samexample.sam
-               ${CMAKE_CURRENT_BINARY_DIR}/samexample.sam
-               COPYONLY)
-endif()
+install(TARGETS ramcoretests
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
