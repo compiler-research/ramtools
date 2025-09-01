@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - '**.h'
-      - '**.hpp'
-      - '**.cpp'
       - '**.cxx'
 
 concurrency:
@@ -68,3 +66,4 @@ jobs:
       - name: Upload artifacts
         if: always()
         uses: ZedThree/clang-tidy-review/upload@v0.21.0
+

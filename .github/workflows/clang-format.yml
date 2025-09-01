@@ -4,8 +4,6 @@ on:
   pull_request:
     paths:
       - '**.h'
-      - '**.hpp'
-      - '**.cpp'
       - '**.cxx'
 
 concurrency:
@@ -50,3 +48,4 @@ jobs:
                 \t\tgit rebase -i -x \"git-clang-format-18 main && git commit -a --allow-empty --fixup=HEAD\" --strategy-option=theirs origin/main\n
                 \t\t Then inspect the results with: git log --oneline\n
                 \t\t Then squash without poluting the history with: git rebase --autosquash -i main\n" && exit 1) 
+
