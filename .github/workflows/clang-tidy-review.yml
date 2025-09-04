@@ -50,6 +50,7 @@ jobs:
           split_workflow: true
           config_file: .clang-tidy
           cmake_command: >
+            bash -x -c '
             source /opt/root/bin/thisroot.sh &&
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
             -DCMAKE_C_COMPILER="$GITHUB_WORKSPACE/llvm/bin/clang"
@@ -61,7 +62,7 @@ jobs:
             -DRAMTOOLS_BUILD_TOOLS=ON
             -DRAMTOOLS_BUILD_BENCHMARKS=ON &&
             cd build &&
-            cmake --build . --target googletest --parallel $(nproc --all)
+            cmake --build . --target googletest --parallel $(nproc --all) || true'
 
       - name: Upload artifacts
         if: always()

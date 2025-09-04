@@ -10,14 +10,7 @@ target_include_directories(sam_generator PUBLIC
 )
 
 target_link_libraries(sam_generator PRIVATE benchmark::benchmark)
-target_compile_definitions(sam_generator PRIVATE LIBRARY_BUILD)
 add_dependencies(sam_generator benchmark::benchmark)
-
-ROOT_EXECUTABLE(generate_sam_benchmark
-    generate_sam_benchmark.cxx
-    LIBRARIES
-        benchmark::benchmark
-)
 
 ROOT_EXECUTABLE(sam_to_ram_benchmark
     sam_to_ram_benchmark.cxx
@@ -27,7 +20,7 @@ ROOT_EXECUTABLE(sam_to_ram_benchmark
         sam_generator
 )
 
-install(TARGETS generate_sam_benchmark sam_to_ram_benchmark
+install(TARGETS sam_to_ram_benchmark
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
