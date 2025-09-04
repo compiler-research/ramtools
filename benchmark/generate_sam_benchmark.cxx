@@ -92,4 +92,3 @@ static void BM_GenerateSAM(benchmark::State& state) {
    state.counters["bytes_per_second"] = benchmark::Counter(
        num_reads * 200, benchmark::Counter::kIsRate);
 }
-
