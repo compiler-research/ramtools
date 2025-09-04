@@ -93,6 +93,7 @@ static void BM_GenerateSAM(benchmark::State& state) {
        num_reads * 200, benchmark::Counter::kIsRate);
 }
 
+#ifndef LIBRARY_BUILD
 int main(int argc, char** argv) {
    for (int i = 1; i < argc; ++i) {
        if (std::string(argv[i]) == "--generate" && i + 1 < argc) {
@@ -115,4 +116,5 @@ int main(int argc, char** argv) {
    ::benchmark::RunSpecifiedBenchmarks();
    return 0;
 }
+#endif
 

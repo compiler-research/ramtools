@@ -1,7 +1,7 @@
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 include(GoogleBenchmark)
 
-add_library(sam_generator STATIC
+add_library(sam_generator STATIC 
     generate_sam_benchmark.cxx
 )
 
@@ -10,6 +10,7 @@ target_include_directories(sam_generator PUBLIC
 )
 
 target_link_libraries(sam_generator PRIVATE benchmark::benchmark)
+target_compile_definitions(sam_generator PRIVATE LIBRARY_BUILD)
 add_dependencies(sam_generator benchmark::benchmark)
 
 ROOT_EXECUTABLE(generate_sam_benchmark
@@ -18,13 +19,22 @@ ROOT_EXECUTABLE(generate_sam_benchmark
         benchmark::benchmark
 )
 
-install(TARGETS generate_sam_benchmark
+ROOT_EXECUTABLE(sam_to_ram_benchmark
+    sam_to_ram_benchmark.cxx
+    LIBRARIES
+        benchmark::benchmark
+        ramcore
+        sam_generator
+)
+
+install(TARGETS generate_sam_benchmark sam_to_ram_benchmark
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 add_custom_target(benchmark
-    COMMAND generate_sam_benchmark
-    DEPENDS generate_sam_benchmark
+    COMMAND sam_to_ram_benchmark
+    DEPENDS sam_to_ram_benchmark
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running SAM generation benchmarks"
+    COMMENT "Running SAM to RAM conversion benchmark"
 )
+
