@@ -92,27 +92,3 @@ static void BM_GenerateSAM(benchmark::State& state) {
    state.counters["bytes_per_second"] = benchmark::Counter(
        num_reads * 200, benchmark::Counter::kIsRate);
 }
-
-int main(int argc, char** argv) {
-   for (int i = 1; i < argc; ++i) {
-       if (std::string(argv[i]) == "--generate" && i + 1 < argc) {
-           std::string filename = argv[i + 1];
-           int num_reads = (i + 2 < argc) ? std::stoi(argv[i + 2]) : BASE_SAM_READS;
-           GenerateSAMFile(filename, num_reads);
-           std::cout << "Generated SAM file: " << filename << " with " << num_reads << " reads" << std::endl;
-           return 0;
-       }
-   }
-
-   std::cout << "Benchmarking SAM generation with a range of reads..." << std::endl;
-
-   ::benchmark::RegisterBenchmark("BM_GenerateSAM", BM_GenerateSAM)
-       ->RangeMultiplier(10)
-       ->Range(100, 100000)
-       ->Unit(benchmark::kMicrosecond);
-
-   ::benchmark::Initialize(&argc, argv);
-   ::benchmark::RunSpecifiedBenchmarks();
-   return 0;
-}
-
