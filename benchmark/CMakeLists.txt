@@ -20,14 +20,22 @@ ROOT_EXECUTABLE(sam_to_ram_benchmark
         sam_generator
 )
 
-install(TARGETS sam_to_ram_benchmark
+ROOT_EXECUTABLE(conversion_time_benchmark
+    conversion_time_benchmark.cxx
+    LIBRARIES
+        benchmark::benchmark
+        ramcore
+        sam_generator
+)
+
+install(TARGETS sam_to_ram_benchmark conversion_time_benchmark
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 add_custom_target(benchmark
     COMMAND sam_to_ram_benchmark
-    DEPENDS sam_to_ram_benchmark
+    COMMAND conversion_time_benchmark
+    DEPENDS sam_to_ram_benchmark conversion_time_benchmark
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMENT "Running SAM to RAM conversion benchmark"
 )
 
