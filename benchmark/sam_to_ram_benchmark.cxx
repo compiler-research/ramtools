@@ -8,9 +8,9 @@
 #include <cstring>
 
 #ifdef _WIN32
-    #define NULL_DEVICE "NUL"
+#define NULL_DEVICE "NUL"
 #else
-    #define NULL_DEVICE "/dev/null"
+#define NULL_DEVICE "/dev/null"
 #endif
 
 static void BM_SamToRamComparison(benchmark::State &state)
@@ -74,4 +74,3 @@ int main(int argc, char **argv)
    ::benchmark::RunSpecifiedBenchmarks();
    return 0;
 }
-
