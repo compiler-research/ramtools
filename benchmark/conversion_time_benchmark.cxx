@@ -6,6 +6,12 @@
 #include <iostream>
 #include <cstdio>
 
+#ifdef _WIN32
+    #define NULL_DEVICE "NUL"
+#else
+    #define NULL_DEVICE "/dev/null"
+#endif
+
 static void BM_SamToTTree(benchmark::State &state)
 {
    int num_reads = state.range(0);
@@ -17,7 +23,7 @@ static void BM_SamToTTree(benchmark::State &state)
    for (auto _ : state) {
 
       FILE *original_stdout = stdout;
-      stdout = fopen("/dev/null", "w");
+      stdout = fopen(NULL_DEVICE, "w");
 
       samtoram(sam_file.c_str(), ttree_file.c_str(), true, true, true, 1, 0);
 
@@ -47,7 +53,7 @@ static void BM_SamToRNTuple(benchmark::State &state)
    for (auto _ : state) {
 
       FILE *original_stdout = stdout;
-      stdout = fopen("/dev/null", "w");
+      stdout = fopen(NULL_DEVICE, "w");
 
       samtoramntuple(sam_file.c_str(), rntuple_file.c_str(), true, true, true, 505, 0);
 
@@ -89,3 +95,4 @@ int main(int argc, char **argv)
    ::benchmark::RunSpecifiedBenchmarks();
    return 0;
 }
+
