@@ -1,7 +1,8 @@
 #ifndef RAMCORE_SAMTONTUPLE_H
 #define RAMCORE_SAMTONTUPLE_H
 
-#include <cstdint> 
+#include <cstdint>
+#include <string>
 
 void samtoramntuple(const char *datafile,
                     const char *treefile,
@@ -9,5 +10,7 @@ void samtoramntuple(const char *datafile,
                     int compression_algorithm,
                     uint32_t quality_policy);
 
-#endif // RAMCORE_SAMTONTUPLE_H 
+void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
+                                        uint32_t quality_policy);
 
+#endif

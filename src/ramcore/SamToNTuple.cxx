@@ -10,6 +10,12 @@
 #include <TNamed.h>
 #include <TFile.h>
 
+#include <map>
+#include <memory>
+#include <iostream>
+#include <fstream>
+#include <cstdio>
+
 void samtoramntuple(const char *datafile,
                     const char *treefile,
                     bool index, bool split, bool cache,
@@ -120,3 +126,66 @@ void samtoramntuple(const char *datafile,
     stopwatch.Print();
 }
 
+void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
+                                        uint32_t quality_policy)
+{
+   std::ifstream input(datafile);
+   if (!input) {
+      std::cerr << "Error: Cannot open " << datafile << std::endl;
+      return;
+   }
+
+   std::vector<std::string> headers;
+   std::map<std::string, std::unique_ptr<std::ofstream>> chr_files;
+   std::map<std::string, std::string> chr_temp_filenames;
+   std::string line;
+
+   while (std::getline(input, line)) {
+      if (line.empty())
+         continue;
+
+      if (line[0] == '@') {
+         headers.push_back(line);
+         continue;
+      }
+
+      size_t pos = line.find('\t');
+      if (pos == std::string::npos)
+         continue;
+      pos = line.find('\t', pos + 1);
+      if (pos == std::string::npos)
+         continue;
+
+      size_t end_pos = line.find('\t', pos + 1);
+      if (end_pos == std::string::npos)
+         continue;
+
+      std::string rname = line.substr(pos + 1, end_pos - pos - 1);
+      if (rname == "*")
+         continue;
+
+      if (chr_files.find(rname) == chr_files.end()) {
+         std::string temp_filename = std::string(output_prefix) + "_" + rname + ".tmp.sam";
+         chr_temp_filenames[rname] = temp_filename;
+         chr_files[rname] = std::make_unique<std::ofstream>(temp_filename);
+
+         for (const auto &header : headers) {
+            *(chr_files[rname]) << header << "\n";
+         }
+      }
+
+      *(chr_files[rname]) << line << "\n";
+   }
+
+   input.close();
+   for (auto &[chr, file] : chr_files) {
+      file->close();
+   }
+
+   for (const auto &[chr, temp_filename] : chr_temp_filenames) {
+      std::string output_filename = std::string(output_prefix) + "_" + chr + ".root";
+      samtoramntuple(temp_filename.c_str(), output_filename.c_str(), false, false, false, compression_algorithm,
+                     quality_policy);
+      std::remove(temp_filename.c_str());
+   }
+}
