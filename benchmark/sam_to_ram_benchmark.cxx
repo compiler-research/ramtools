@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "generate_sam_benchmark.h"
-#include "benchmark_utils.h" 
+#include "benchmark_utils.h"
 #include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
 #include <filesystem>
@@ -69,4 +69,3 @@ int main(int argc, char **argv)
    ::benchmark::RunSpecifiedBenchmarks();
    return 0;
 }
-

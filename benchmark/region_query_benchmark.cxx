@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "generate_sam_benchmark.h"
-#include "benchmark_utils.h" 
+#include "benchmark_utils.h"
 #include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
 #include <string>
@@ -84,4 +84,3 @@ BENCHMARK_REGISTER_F(RegionQueryFixture, RNTuple)
    ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
-

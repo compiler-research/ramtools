@@ -5,4 +5,3 @@
 #else
 #define NULL_DEVICE "/dev/null"
 #endif
-
