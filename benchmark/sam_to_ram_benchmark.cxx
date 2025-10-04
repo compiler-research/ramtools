@@ -1,17 +1,12 @@
 #include <benchmark/benchmark.h>
 #include "generate_sam_benchmark.h"
+#include "benchmark_utils.h"
 #include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
 #include <filesystem>
 #include <iostream>
 #include <cstdio>
 #include <cstring>
-
-#ifdef _WIN32
-#define NULL_DEVICE "NUL"
-#else
-#define NULL_DEVICE "/dev/null"
-#endif
 
 static void BM_SamToRamComparison(benchmark::State &state)
 {
