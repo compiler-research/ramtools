@@ -48,7 +48,15 @@ ROOT_EXECUTABLE(region_query_benchmark
         ramtools_views
 )
 
-install(TARGETS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark
+ROOT_EXECUTABLE(chromosome_split_benchmark
+    chromosome_split_benchmark.cxx
+    LIBRARIES
+        benchmark::benchmark
+        ramcore
+        sam_generator
+)
+
+install(TARGETS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark chromosome_split_benchmark
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
@@ -61,7 +69,10 @@ add_custom_target(benchmark
     COMMAND ${CMAKE_COMMAND} -E echo ""
     COMMAND ${CMAKE_COMMAND} -E echo "=== Region Query Benchmark ==="
     COMMAND region_query_benchmark
-    DEPENDS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark
+    COMMAND ${CMAKE_COMMAND} -E echo ""
+    COMMAND ${CMAKE_COMMAND} -E echo "=== Chromosome Split Benchmark ==="
+    COMMAND chromosome_split_benchmark
+    DEPENDS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark chromosome_split_benchmark
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running all RAM tools benchmarks"
 )
