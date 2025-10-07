@@ -48,23 +48,23 @@ static void BM_SamtoolsSplit(benchmark::State &state)
 {
    int num_reads = state.range(0);
    std::string sam_file = "bench_st_" + std::to_string(num_reads) + ".sam";
-   std::string bam_file = "bench_st_" + std::to_string(num_reads) + ".bam";
-   std::string sorted_bam = "bench_st_" + std::to_string(num_reads) + "_sorted.bam";
 
    GenerateSAMFile(sam_file, num_reads);
-
-   // Convert SAM to BAM
-   system(("samtools view -bS " + sam_file + " -o " + bam_file + " 2>/dev/null").c_str());
-
-   // Sort BAM
-   system(("samtools sort " + bam_file + " -o " + sorted_bam + " 2>/dev/null").c_str());
-
-   // Index BAM
-   system(("samtools index " + sorted_bam + " 2>/dev/null").c_str());
-
    auto chromosomes = GetChromosomes(sam_file);
 
    for (auto _ : state) {
+      std::string bam_file = "bench_st_tmp.bam";
+      std::string sorted_bam = "bench_st_sorted.bam";
+
+      // Convert SAM to BAM
+      system(("samtools view -bS " + sam_file + " -o " + bam_file + " 2>/dev/null").c_str());
+
+      // Sort BAM
+      system(("samtools sort " + bam_file + " -o " + sorted_bam + " 2>/dev/null").c_str());
+
+      // Index BAM
+      system(("samtools index " + sorted_bam + " 2>/dev/null").c_str());
+
       // Extract each chromosome
       for (const auto &chr : chromosomes) {
          std::string cmd = "samtools view -b " + sorted_bam + " " + chr + " > bench_st_" + chr + ".bam 2>/dev/null";
@@ -72,13 +72,14 @@ static void BM_SamtoolsSplit(benchmark::State &state)
       }
 
       state.counters["size_MB"] = GetTotalFileSize("bench_st_chr") / (1024.0 * 1024.0);
+      
       CleanupFiles("bench_st_chr");
+      std::remove(bam_file.c_str());
+      std::remove(sorted_bam.c_str());
+      std::remove((sorted_bam + ".bai").c_str());
    }
 
    std::remove(sam_file.c_str());
-   std::remove(bam_file.c_str());
-   std::remove(sorted_bam.c_str());
-   std::remove((sorted_bam + ".bai").c_str());
    state.counters["reads/s"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
@@ -115,3 +116,4 @@ BENCHMARK(BM_SamtoolsSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchm
 BENCHMARK(BM_ChromosomeSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
+
