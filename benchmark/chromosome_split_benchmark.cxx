@@ -72,7 +72,7 @@ static void BM_SamtoolsSplit(benchmark::State &state)
       }
 
       state.counters["size_MB"] = GetTotalFileSize("bench_st_chr") / (1024.0 * 1024.0);
-      
+
       CleanupFiles("bench_st_chr");
       std::remove(bam_file.c_str());
       std::remove(sorted_bam.c_str());
@@ -116,4 +116,3 @@ BENCHMARK(BM_SamtoolsSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchm
 BENCHMARK(BM_ChromosomeSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
-
