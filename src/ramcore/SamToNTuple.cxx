@@ -9,12 +9,16 @@
 #include <TList.h>
 #include <TNamed.h>
 #include <TFile.h>
+#include <TROOT.h>
 
 #include <map>
 #include <memory>
 #include <iostream>
 #include <fstream>
 #include <cstdio>
+#include <thread>
+#include <vector>
+#include <mutex>
 
 void samtoramntuple(const char *datafile,
                     const char *treefile,
@@ -126,66 +130,218 @@ void samtoramntuple(const char *datafile,
     stopwatch.Print();
 }
 
-void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
+void samtoramntuple_split_by_chromosome(const char *datafile, 
+                                        const char *output_prefix,
+                                        int compression_algorithm,
                                         uint32_t quality_policy)
 {
-   std::ifstream input(datafile);
-   if (!input) {
-      std::cerr << "Error: Cannot open " << datafile << std::endl;
-      return;
-   }
-
-   std::vector<std::string> headers;
-   std::map<std::string, std::unique_ptr<std::ofstream>> chr_files;
-   std::map<std::string, std::string> chr_temp_filenames;
-   std::string line;
-
-   while (std::getline(input, line)) {
-      if (line.empty())
-         continue;
-
-      if (line[0] == '@') {
-         headers.push_back(line);
-         continue;
-      }
-
-      size_t pos = line.find('\t');
-      if (pos == std::string::npos)
-         continue;
-      pos = line.find('\t', pos + 1);
-      if (pos == std::string::npos)
-         continue;
-
-      size_t end_pos = line.find('\t', pos + 1);
-      if (end_pos == std::string::npos)
-         continue;
-
-      std::string rname = line.substr(pos + 1, end_pos - pos - 1);
-      if (rname == "*")
-         continue;
-
-      if (chr_files.find(rname) == chr_files.end()) {
-         std::string temp_filename = std::string(output_prefix) + "_" + rname + ".tmp.sam";
-         chr_temp_filenames[rname] = temp_filename;
-         chr_files[rname] = std::make_unique<std::ofstream>(temp_filename);
-
-         for (const auto &header : headers) {
-            *(chr_files[rname]) << header << "\n";
-         }
-      }
-
-      *(chr_files[rname]) << line << "\n";
-   }
-
-   input.close();
-   for (auto &[chr, file] : chr_files) {
-      file->close();
-   }
-
-   for (const auto &[chr, temp_filename] : chr_temp_filenames) {
-      std::string output_filename = std::string(output_prefix) + "_" + chr + ".root";
-      samtoramntuple(temp_filename.c_str(), output_filename.c_str(), false, false, false, compression_algorithm,
-                     quality_policy);
-      std::remove(temp_filename.c_str());
-   }
+    RAMNTupleRecord::InitializeRefs();
+    
+    std::map<std::string, std::vector<ramcore::SamRecord>> chromosome_records;
+    std::vector<std::pair<std::string, std::string>> headers;
+    
+    ramcore::SamParser parser;
+    
+    auto header_callback = [&](const std::string& tag, const std::string& content) {
+        headers.push_back({tag, content});
+        
+        if (tag == "@SQ") {
+            size_t sn_pos = content.find("SN:");
+            if (sn_pos != std::string::npos) {
+                sn_pos += 3;
+                size_t tab_pos = content.find('\t', sn_pos);
+                std::string ref_name = content.substr(sn_pos, 
+                    tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
+                RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
+            }
+        }
+    };
+    
+    auto record_callback = [&](const ramcore::SamRecord& sam_record, size_t record_num) {
+        if (sam_record.rname != "*") {
+            chromosome_records[sam_record.rname].push_back(sam_record);
+        }
+    };
+    
+    parser.ParseFile(datafile, header_callback, record_callback);
+    
+    for (auto& [chr, records] : chromosome_records) {
+        std::sort(records.begin(), records.end(), 
+                  [](const ramcore::SamRecord& a, const ramcore::SamRecord& b) {
+                      return a.pos < b.pos;
+                  });
+    }
+    
+    for (const auto& [chr, records] : chromosome_records) {
+        std::string filename = std::string(output_prefix) + "_" + chr + ".root";
+        auto file = TFile::Open(filename.c_str(), "RECREATE");
+        
+        auto model = RAMNTupleRecord::MakeModel();
+        ROOT::Experimental::RNTupleWriteOptions writeOptions;
+        writeOptions.SetCompression(compression_algorithm);
+        writeOptions.SetMaxUnzippedPageSize(128000);
+        
+        auto writer = ROOT::Experimental::RNTupleWriter::Append(
+            std::move(model), "RAM", *file, writeOptions);
+        auto entry = writer->CreateEntry();
+        auto recordPtr = entry->GetPtr<RAMNTupleRecord>("record").get();
+        
+        for (const auto& sam_record : records) {
+            recordPtr->SetBit(quality_policy);
+            recordPtr->SetQNAME(sam_record.qname.c_str());
+            recordPtr->SetFLAG(sam_record.flag);
+            recordPtr->SetREFID(sam_record.rname.c_str());
+            recordPtr->SetPOS(sam_record.pos);
+            recordPtr->SetMAPQ(sam_record.mapq);
+            recordPtr->SetCIGAR(sam_record.cigar.c_str());
+            recordPtr->SetREFNEXT(sam_record.rnext.c_str());
+            recordPtr->SetPNEXT(sam_record.pnext);
+            recordPtr->SetTLEN(sam_record.tlen);
+            recordPtr->SetSEQ(sam_record.seq.c_str());
+            recordPtr->SetQUAL(sam_record.qual.c_str());
+            
+            recordPtr->ResetNOPT();
+            for (const auto& opt : sam_record.optional_fields) {
+                recordPtr->SetOPT(opt.c_str());
+            }
+            
+            writer->Fill(*entry);
+        }
+        
+        writer.reset();
+        
+        TList h;
+        h.SetName("headers");
+        for (const auto& [tag, content] : headers) {
+            h.Add(new TNamed(tag.c_str(), content.c_str()));
+        }
+        
+        RAMNTupleRecord::WriteAllRefs(*file);
+        h.Write();
+        file->Close();
+        delete file;
+    }
 }
+
+void samtoramntuple_split_by_chromosome_parallel(const char *datafile, 
+                                                  const char *output_prefix,
+                                                  int compression_algorithm,
+                                                  uint32_t quality_policy,
+                                                  int num_threads)
+{
+    ROOT::EnableThreadSafety();
+    RAMNTupleRecord::InitializeRefs();
+    
+    std::map<std::string, std::vector<ramcore::SamRecord>> chromosome_records;
+    std::vector<std::pair<std::string, std::string>> headers;
+    
+    ramcore::SamParser parser;
+    
+    auto header_callback = [&](const std::string& tag, const std::string& content) {
+        headers.push_back({tag, content});
+        
+        if (tag == "@SQ") {
+            size_t sn_pos = content.find("SN:");
+            if (sn_pos != std::string::npos) {
+                sn_pos += 3;
+                size_t tab_pos = content.find('\t', sn_pos);
+                std::string ref_name = content.substr(sn_pos, 
+                    tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
+                RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
+            }
+        }
+    };
+    
+    auto record_callback = [&](const ramcore::SamRecord& sam_record, size_t record_num) {
+        if (sam_record.rname != "*") {
+            chromosome_records[sam_record.rname].push_back(sam_record);
+        }
+    };
+    
+    parser.ParseFile(datafile, header_callback, record_callback);
+    
+    for (auto& [chr, records] : chromosome_records) {
+        std::sort(records.begin(), records.end(), 
+                  [](const ramcore::SamRecord& a, const ramcore::SamRecord& b) {
+                      return a.pos < b.pos;
+                  });
+    }
+    
+    std::vector<std::string> chr_names;
+    for (const auto& [chr, records] : chromosome_records) {
+        chr_names.push_back(chr);
+    }
+    
+    static std::mutex file_destruction_mutex;
+    
+    auto write_chromosome = [&](const std::string& chr) {
+        const auto& records = chromosome_records[chr];
+        
+        std::string filename = std::string(output_prefix) + "_" + chr + ".root";
+        
+        std::unique_ptr<TFile> file(TFile::Open(filename.c_str(), "RECREATE"));
+        
+        auto model = RAMNTupleRecord::MakeModel();
+        ROOT::Experimental::RNTupleWriteOptions writeOptions;
+        writeOptions.SetCompression(compression_algorithm);
+        writeOptions.SetMaxUnzippedPageSize(128000);
+        
+        auto writer = ROOT::Experimental::RNTupleWriter::Append(
+            std::move(model), "RAM", *file, writeOptions);
+        auto entry = writer->CreateEntry();
+        auto recordPtr = entry->GetPtr<RAMNTupleRecord>("record").get();
+        
+        for (const auto& sam_record : records) {
+            recordPtr->SetBit(quality_policy);
+            recordPtr->SetQNAME(sam_record.qname.c_str());
+            recordPtr->SetFLAG(sam_record.flag);
+            recordPtr->SetREFID(sam_record.rname.c_str());
+            recordPtr->SetPOS(sam_record.pos);
+            recordPtr->SetMAPQ(sam_record.mapq);
+            recordPtr->SetCIGAR(sam_record.cigar.c_str());
+            recordPtr->SetREFNEXT(sam_record.rnext.c_str());
+            recordPtr->SetPNEXT(sam_record.pnext);
+            recordPtr->SetTLEN(sam_record.tlen);
+            recordPtr->SetSEQ(sam_record.seq.c_str());
+            recordPtr->SetQUAL(sam_record.qual.c_str());
+            
+            recordPtr->ResetNOPT();
+            for (const auto& opt : sam_record.optional_fields) {
+                recordPtr->SetOPT(opt.c_str());
+            }
+            
+            writer->Fill(*entry);
+        }
+        
+        writer.reset();
+        
+        TList h;
+        h.SetName("headers");
+        for (const auto& [tag, content] : headers) {
+            h.Add(new TNamed(tag.c_str(), content.c_str()));
+        }
+        
+        RAMNTupleRecord::WriteAllRefs(*file);
+        h.Write();
+        
+        {
+            std::lock_guard<std::mutex> lock(file_destruction_mutex);
+            file->Close();
+            file.reset();  
+        }
+    };
+    
+    size_t chr_idx = 0;
+    while (chr_idx < chr_names.size()) {
+        std::vector<std::thread> threads;
+        
+        for (int i = 0; i < num_threads && chr_idx < chr_names.size(); ++i, ++chr_idx) {
+            threads.emplace_back(write_chromosome, chr_names[chr_idx]);
+        }
+        
+        for (auto& t : threads) {
+            t.join();
+        }
+    }
+}
+

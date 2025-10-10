@@ -13,4 +13,11 @@ void samtoramntuple(const char *datafile,
 void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
                                         uint32_t quality_policy);
 
+void samtoramntuple_split_by_chromosome_parallel(const char *datafile, 
+                                                  const char *output_prefix,
+                                                  int compression_algorithm,
+                                                  uint32_t quality_policy,
+                                                  int num_threads = 4);
+
 #endif
+
