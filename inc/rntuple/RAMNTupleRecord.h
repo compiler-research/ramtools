@@ -18,11 +18,11 @@
 #include <memory>
 #include <cstdint>
 
-namespace ROOT::Experimental {
+namespace ROOT {
 class RNTupleModel;
 class RNTupleWriter;
 class RNTupleReader;
-} // namespace ROOT::Experimental
+} // namespace ROOT
 
 class RAMNTupleRefs;
 class RAMNTupleIndex;
@@ -222,7 +222,7 @@ public:
    static RAMNTupleIndex *GetIndex() { return fgIndex.get(); }
 
    // File I/O
-   static std::unique_ptr<ROOT::Experimental::RNTupleReader>
+   static std::unique_ptr<ROOT::RNTupleReader>
    OpenRAMFile(const std::string &filename, const std::string &ntupleName = "RAM");
    static void WriteAllRefs(TFile &file);
    static void ReadAllRefs(const std::string &filename = "");
@@ -230,7 +230,7 @@ public:
    static void ReadIndex(const std::string &filename = "");
 
    // RNTuple model creation
-   static std::unique_ptr<ROOT::Experimental::RNTupleModel> MakeModel();
+   static std::unique_ptr<ROOT::RNTupleModel> MakeModel();
 
    void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
 
@@ -280,3 +280,4 @@ public:
 };
 
 #endif
+

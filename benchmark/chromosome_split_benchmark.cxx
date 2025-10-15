@@ -83,36 +83,7 @@ static void BM_SamtoolsSplit(benchmark::State &state)
    state.counters["reads/s"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
-static void BM_ChromosomeSplit(benchmark::State &state)
-{
-   int num_reads = state.range(0);
-   std::string sam_file = "bench_split_" + std::to_string(num_reads) + ".sam";
-
-   GenerateSAMFile(sam_file, num_reads);
-
-   FILE *old_stdout = stdout;
-   FILE *old_stderr = stderr;
-
-   for (auto _ : state) {
-      stdout = fopen("/dev/null", "w");
-      stderr = fopen("/dev/null", "w");
-
-      samtoramntuple_split_by_chromosome(sam_file.c_str(), "bench_split_out", 505, 1);
-
-      fclose(stdout);
-      fclose(stderr);
-      stdout = old_stdout;
-      stderr = old_stderr;
-
-      state.counters["size_MB"] = GetTotalFileSize("bench_split_out_") / (1024.0 * 1024.0);
-      CleanupFiles("bench_split_out_");
-   }
-
-   std::remove(sam_file.c_str());
-   state.counters["reads/s"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
-}
-
-static void BM_ChromosomeSplitParallel(benchmark::State &state)
+static void BM_ChromosomeSplitThreads(benchmark::State &state)
 {
    int num_reads = state.range(0);
    int num_threads = state.range(1);
@@ -127,7 +98,7 @@ static void BM_ChromosomeSplitParallel(benchmark::State &state)
       stdout = fopen("/dev/null", "w");
       stderr = fopen("/dev/null", "w");
 
-      samtoramntuple_split_by_chromosome_parallel(sam_file.c_str(), "bench_split_par_out", 505, 1, num_threads);
+      samtoramntuple_split_by_chromosome(sam_file.c_str(), "bench_split_par_out", 505, 1, num_threads);
 
       fclose(stdout);
       fclose(stderr);
@@ -144,10 +115,8 @@ static void BM_ChromosomeSplitParallel(benchmark::State &state)
 }
 
 BENCHMARK(BM_SamtoolsSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
-BENCHMARK(BM_ChromosomeSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
-
-// Parallel benchmarks with different thread counts
-BENCHMARK(BM_ChromosomeSplitParallel)
+// Benchmarks with different thread counts
+BENCHMARK(BM_ChromosomeSplitThreads)
     ->Args({100000, 2})
     ->Args({100000, 4})
     ->Args({100000, 8})

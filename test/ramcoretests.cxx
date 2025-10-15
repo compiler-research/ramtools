@@ -43,7 +43,7 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
     ASSERT_NE(ttree, nullptr) << "Failed to get TTree";
     Long64_t ttreeEntries = ttree->GetEntries();
 
-    auto reader = ROOT::Experimental::RNTupleReader::Open("RAM", rntupleFile);
+    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
     ASSERT_NE(reader, nullptr) << "Failed to open RNTuple";
     Long64_t rntupleEntries = reader->GetNEntries();
 

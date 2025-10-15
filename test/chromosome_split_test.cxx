@@ -33,16 +33,16 @@ protected:
 TEST_F(ChromosomeSplitTest, NoDataLoss)
 {
    samtoramntuple("test.sam", "test_regular.root", false, true, true, 505, 1);
-   auto regularReader = ROOT::Experimental::RNTupleReader::Open("RAM", "test_regular.root");
+   auto regularReader = ROOT::RNTupleReader::Open("RAM", "test_regular.root");
    Long64_t totalEntries = regularReader->GetNEntries();
 
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
 
    Long64_t splitEntriesSum = 0;
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
       std::string filename = entry.path().filename().string();
       if (filename.find("test_split_") == 0 && filename.find(".root") != std::string::npos) {
-         auto reader = ROOT::Experimental::RNTupleReader::Open("RAM", filename);
+         auto reader = ROOT::RNTupleReader::Open("RAM", filename);
          if (reader) {
             splitEntriesSum += reader->GetNEntries();
          }
@@ -54,7 +54,7 @@ TEST_F(ChromosomeSplitTest, NoDataLoss)
 
 TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
 {
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
 
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
       std::string filename = entry.path().filename().string();
@@ -63,7 +63,7 @@ TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
          size_t end = filename.find(".root");
          std::string expectedChr = filename.substr(pos + 11, end - pos - 11);
 
-         auto reader = ROOT::Experimental::RNTupleReader::Open("RAM", filename);
+         auto reader = ROOT::RNTupleReader::Open("RAM", filename);
          ASSERT_NE(reader, nullptr);
 
          auto viewRecord = reader->GetView<RAMNTupleRecord>("record");
@@ -79,13 +79,13 @@ TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
 
 TEST_F(ChromosomeSplitTest, MetadataPresent)
 {
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
 
    int filesChecked = 0;
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
       std::string filename = entry.path().filename().string();
       if (filename.find("test_split_") == 0 && filename.find(".root") != std::string::npos) {
-         auto metaReader = ROOT::Experimental::RNTupleReader::Open("METADATA", filename);
+         auto metaReader = ROOT::RNTupleReader::Open("METADATA", filename);
          EXPECT_NE(metaReader, nullptr) << "Missing METADATA in " << filename;
 
          if (metaReader) {
@@ -98,3 +98,4 @@ TEST_F(ChromosomeSplitTest, MetadataPresent)
 
    EXPECT_GT(filesChecked, 0);
 }
+

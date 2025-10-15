@@ -13,7 +13,7 @@
 #include <cstring>
 #include <cctype>
 
-using namespace ROOT::Experimental;
+using namespace ROOT;
 
 std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnameRefs = nullptr;
 std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
@@ -203,7 +203,7 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    writeOptions.SetCompression(505);
 
    auto metaWriter = RNTupleWriter::Append(std::move(metaModel), "METADATA", file, writeOptions);
-   auto metaEntry = metaWriter->CreateEntry();
+   auto metaEntry = metaWriter->GetModel().CreateEntry();
    auto rnamePtr = metaEntry->GetPtr<std::vector<std::string>>("rname_refs");
    auto rnextPtr = metaEntry->GetPtr<std::vector<std::string>>("rnext_refs");
 
@@ -260,7 +260,7 @@ void RAMNTupleRecord::WriteIndex(TFile &file)
    writeOptions.SetCompression(505);
 
    auto indexWriter = RNTupleWriter::Append(std::move(indexModel), "INDEX", file, writeOptions);
-   auto indexEntry = indexWriter->CreateEntry();
+   auto indexEntry = indexWriter->GetModel().CreateEntry();
    auto indexPtr = indexEntry->GetPtr<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries");
 
    *indexPtr = fgIndex->GetEntries();
@@ -534,7 +534,7 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
    writeOptions.SetCompression(505); // ZSTD level 5
 
    auto writer = RNTupleWriter::Append(std::move(model), "RAM", *file, writeOptions);
-   auto defaultEntry = writer->CreateEntry();
+   auto defaultEntry = writer->GetModel().CreateEntry();
    auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
 
    std::ifstream sam(sam_file);
