@@ -117,16 +117,16 @@ static void BM_ChromosomeSplitThreads(benchmark::State &state)
 BENCHMARK(BM_SamtoolsSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
 // Benchmarks with different thread counts
 BENCHMARK(BM_ChromosomeSplitThreads)
-    ->Args({100000, 2})
-    ->Args({100000, 4})
-    ->Args({100000, 8})
-    ->Args({500000, 2})
-    ->Args({500000, 4})
-    ->Args({500000, 8})
-    ->Args({1000000, 2})
-    ->Args({1000000, 4})
-    ->Args({1000000, 8})
-    ->Unit(benchmark::kMillisecond);
+   ->Args({100000, 2})
+   ->Args({100000, 4})
+   ->Args({100000, 8})
+   ->Args({500000, 2})
+   ->Args({500000, 4})
+   ->Args({500000, 8})
+   ->Args({1000000, 2})
+   ->Args({1000000, 4})
+   ->Args({1000000, 8})
+   ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
 

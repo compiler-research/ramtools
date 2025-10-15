@@ -37,13 +37,12 @@ void samtoramntuple(const char *datafile,
     RAMNTupleRecord::InitializeRefs();
     
     auto model = RAMNTupleRecord::MakeModel();
-    
+
     ROOT::RNTupleWriteOptions writeOptions;
     writeOptions.SetCompression(compression_algorithm);
     writeOptions.SetMaxUnzippedPageSize(64000);
-    
-    auto writer = ROOT::RNTupleWriter::Append(
-        std::move(model), "RAM", *rootFile, writeOptions);
+
+    auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
     auto defaultEntry = writer->GetModel().CreateEntry();
     auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
     
@@ -66,35 +65,34 @@ void samtoramntuple(const char *datafile,
             }
         }
     };
-    
-    auto record_callback = [&](const ramcore::SamRecord& sam_record, size_t record_num) {
-        recordPtr->SetBit(quality_policy);
-        
-        recordPtr->SetQNAME(sam_record.qname.c_str());
-        recordPtr->SetFLAG(sam_record.flag);
-        recordPtr->SetREFID(sam_record.rname.c_str());
-        recordPtr->SetPOS(sam_record.pos);
-        recordPtr->SetMAPQ(sam_record.mapq);
-        recordPtr->SetCIGAR(sam_record.cigar.c_str());
-        recordPtr->SetREFNEXT(sam_record.rnext.c_str());
-        recordPtr->SetPNEXT(sam_record.pnext);
-        recordPtr->SetTLEN(sam_record.tlen);
-        recordPtr->SetSEQ(sam_record.seq.c_str());
-        recordPtr->SetQUAL(sam_record.qual.c_str());
-        
-        recordPtr->ResetNOPT();
-        for (const auto& opt : sam_record.optional_fields) {
-            recordPtr->SetOPT(opt.c_str());
-        }
-        
-        writer->Fill(*defaultEntry);
-        
-        if (index && record_num % 1000 == 0) {
-            RAMNTupleRecord::GetIndex()->AddItem(recordPtr->GetREFID(), 
-                                                 recordPtr->GetPOS() - 1, record_num);
-        }
+
+    auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
+       recordPtr->SetBit(quality_policy);
+
+       recordPtr->SetQNAME(sam_record.qname.c_str());
+       recordPtr->SetFLAG(sam_record.flag);
+       recordPtr->SetREFID(sam_record.rname.c_str());
+       recordPtr->SetPOS(sam_record.pos);
+       recordPtr->SetMAPQ(sam_record.mapq);
+       recordPtr->SetCIGAR(sam_record.cigar.c_str());
+       recordPtr->SetREFNEXT(sam_record.rnext.c_str());
+       recordPtr->SetPNEXT(sam_record.pnext);
+       recordPtr->SetTLEN(sam_record.tlen);
+       recordPtr->SetSEQ(sam_record.seq.c_str());
+       recordPtr->SetQUAL(sam_record.qual.c_str());
+
+       recordPtr->ResetNOPT();
+       for (const auto &opt : sam_record.optional_fields) {
+          recordPtr->SetOPT(opt.c_str());
+       }
+
+       writer->Fill(*defaultEntry);
+
+       if (index && record_num % 1000 == 0) {
+          RAMNTupleRecord::GetIndex()->AddItem(recordPtr->GetREFID(), recordPtr->GetPOS() - 1, record_num);
+       }
     };
-    
+
     if (!parser.ParseFile(datafile, header_callback, record_callback)) {
         printf("Failed to parse SAM file %s\n", datafile);
         return;
@@ -127,11 +125,8 @@ void samtoramntuple(const char *datafile,
     stopwatch.Print();
 }
 
-void samtoramntuple_split_by_chromosome(const char *datafile, 
-                                        const char *output_prefix,
-                                        int compression_algorithm,
-                                        uint32_t quality_policy,
-                                        int num_threads)
+void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
+                                        uint32_t quality_policy, int num_threads)
 {
     ROOT::EnableThreadSafety();
     RAMNTupleRecord::InitializeRefs();
@@ -175,7 +170,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile,
     for (const auto& [chr, records] : chromosome_records) {
         chr_names.push_back(chr);
     }
-    
+
     auto write_chromosome = [&](const std::string& chr) {
         const auto& records = chromosome_records[chr];
         
@@ -187,9 +182,8 @@ void samtoramntuple_split_by_chromosome(const char *datafile,
         ROOT::RNTupleWriteOptions writeOptions;
         writeOptions.SetCompression(compression_algorithm);
         writeOptions.SetMaxUnzippedPageSize(128000);
-        
-        auto writer = ROOT::RNTupleWriter::Append(
-            std::move(model), "RAM", *file, writeOptions);
+
+        auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *file, writeOptions);
         auto entry = writer->GetModel().CreateEntry();
         auto recordPtr = entry->GetPtr<RAMNTupleRecord>("record").get();
         
@@ -225,7 +219,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile,
         
         RAMNTupleRecord::WriteAllRefs(*file);
         h.Write();
-        
+
         file->Close();
         file.reset();
     };

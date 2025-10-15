@@ -98,4 +98,3 @@ TEST_F(ChromosomeSplitTest, MetadataPresent)
 
    EXPECT_GT(filesChecked, 0);
 }
-
