@@ -24,8 +24,9 @@ function(add_ramcore_test test_name)
 endfunction()
 
 add_ramcore_test(ramcoretests ramcoretests.cxx)
+add_ramcore_test(chromosome_split_test chromosome_split_test.cxx)
 
-install(TARGETS ramcoretests
+install(TARGETS ramcoretests chromosome_split_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
