@@ -93,27 +93,25 @@ static void BM_SamtoolsSplitThreaded(benchmark::State &state)
       std::string bam_file = "bench_st_mt_tmp.bam";
       std::string sorted_bam = "bench_st_mt_sorted.bam";
 
-      std::string cmd = "samtools view -@ " + std::to_string(num_threads) +
-                       " -bS " + sam_file + " -o " + bam_file + " 2>/dev/null";
+      std::string cmd =
+         "samtools view -@ " + std::to_string(num_threads) + " -bS " + sam_file + " -o " + bam_file + " 2>/dev/null";
       system(cmd.c_str());
 
-      cmd = "samtools sort -@ " + std::to_string(num_threads) +
-            " -m 1G " + bam_file + " -o " + sorted_bam + " 2>/dev/null";
+      cmd = "samtools sort -@ " + std::to_string(num_threads) + " -m 1G " + bam_file + " -o " + sorted_bam +
+            " 2>/dev/null";
       system(cmd.c_str());
 
-      cmd = "samtools index -@ " + std::to_string(num_threads) +
-            " " + sorted_bam + " 2>/dev/null";
+      cmd = "samtools index -@ " + std::to_string(num_threads) + " " + sorted_bam + " 2>/dev/null";
       system(cmd.c_str());
 
       std::vector<std::thread> threads;
       for (const auto &chr : chromosomes) {
          threads.emplace_back([&sorted_bam, &chr]() {
-            
-            std::string cmd = "samtools view -@ 2 -b " + sorted_bam + " " + chr +
-                            " > bench_st_mt_" + chr + ".bam 2>/dev/null";
+            std::string cmd =
+               "samtools view -@ 2 -b " + sorted_bam + " " + chr + " > bench_st_mt_" + chr + ".bam 2>/dev/null";
             system(cmd.c_str());
          });
-         
+
          if (threads.size() >= num_threads) {
             for (auto &t : threads) {
                t.join();
@@ -121,7 +119,7 @@ static void BM_SamtoolsSplitThreaded(benchmark::State &state)
             threads.clear();
          }
       }
-      
+
       for (auto &t : threads) {
          t.join();
       }
@@ -170,11 +168,7 @@ static void BM_ChromosomeSplitThreads(benchmark::State &state)
    state.counters["reads/s"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
-BENCHMARK(BM_SamtoolsSplit)
-   ->Arg(100000)
-   ->Arg(500000)
-   ->Arg(1000000)
-   ->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_SamtoolsSplit)->Arg(100000)->Arg(500000)->Arg(1000000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK(BM_SamtoolsSplitThreaded)
    ->Args({100000, 2})
@@ -195,4 +189,3 @@ BENCHMARK(BM_ChromosomeSplitThreads)
    ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
-
