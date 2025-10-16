@@ -129,4 +129,3 @@ BENCHMARK(BM_ChromosomeSplitThreads)
    ->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
-

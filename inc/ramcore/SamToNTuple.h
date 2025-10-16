@@ -14,4 +14,3 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
                                         uint32_t quality_policy, int num_threads = 4);
 
 #endif
-
