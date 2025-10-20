@@ -23,4 +23,3 @@ ROOT scripts to convert a SAM file to a RAM (ROOT Alignment/Map) file and to wor
     root [0] .x ramview.C("ramexample.root","chr1:10150-10300")
     root [1] .q
 ```
-
