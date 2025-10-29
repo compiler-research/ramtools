@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
+#include "ramcore/RAMNTupleView.h"
 #include "generate_sam_benchmark.h"
 #include <TFile.h>
 #include <TTree.h>
@@ -33,7 +34,6 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
     const char* rntupleFile = "test_rntuple.root";
 
     samtoram(samFile, ttreeFile, true, true, true, 1, 0);
-
     samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
 
     auto ft = std::unique_ptr<TFile>(TFile::Open(ttreeFile));
@@ -51,5 +51,33 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
         << "Entry count mismatch - TTree: " << ttreeEntries
         << ", RNTuple: " << rntupleEntries;
     EXPECT_GT(ttreeEntries, 0) << "No entries found";
+}
+
+TEST_F(ramcoreTest, RNTupleView) {
+    const char* samFile = "samexample.sam";
+    const char* rntupleFile = "test_rntuple.root";
+    
+    samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
+    
+    const char* regions[] = {
+        "chr1:100-200",
+        "chr2:500-1000", 
+        "chr5:1000-5000",
+        "chr10:50000-100000",
+        "chrX:1-1000"
+    };
+    
+    for (const char* region : regions) {
+        testing::internal::CaptureStdout();
+        ramntupleview(rntupleFile, region, true, false, nullptr);
+        std::string output = testing::internal::GetCapturedStdout();
+        
+        EXPECT_TRUE(output.find("Found") != std::string::npos && 
+                    output.find("records in region") != std::string::npos)
+            << "ramntupleview failed for region: " << region;
+    }
+    
+    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
+    ASSERT_NE(reader, nullptr) << "RNTuple file corrupted after viewing";
 }
 
