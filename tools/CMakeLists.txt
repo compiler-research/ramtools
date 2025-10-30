@@ -14,7 +14,15 @@ ROOT_EXECUTABLE(samtoramntuple
         ROOT::ROOTNTuple
 )
 
-install(TARGETS samtoram samtoramntuple
+ROOT_EXECUTABLE(ramntupleview
+    ramntupleview.cxx
+    LIBRARIES
+        ramcore
+        ROOT::Core
+        ROOT::ROOTNTuple
+)
+
+install(TARGETS samtoram samtoramntuple ramntupleview
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
@@ -25,7 +33,6 @@ set(ROOT_MACROS
     ramrandom.cxx
     ramview.cxx
     ramview_no_index.cxx
-    ramntupleview.cxx
     parsetreestats.cxx
 )
 

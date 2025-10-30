@@ -3,10 +3,11 @@ ramexample.root
 *.log
 *.perf
 *.bam
+*.sam
+*.png
 *.bam.bai
 *.root
 *.root.idx
-*.png
 .ipynb_checkpoints/
 tmp/
 *.so

@@ -29,12 +29,14 @@ set(CMAKE_INSTALL_INCLUDEDIR include)
         inc/ramcore/SamParser.h
         inc/ramcore/SamToTTree.h
         inc/ramcore/SamToNTuple.h
+        inc/ramcore/RAMNTupleView.h
     SOURCES
         src/ttree/RAMRecord.cxx
         src/rntuple/RAMNTupleRecord.cxx
         src/ramcore/SamParser.cxx
         src/ramcore/SamToTTree.cxx
         src/ramcore/SamToNTuple.cxx
+        src/ramcore/RAMNTupleView.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
@@ -67,3 +69,4 @@ if(RAMTOOLS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
 endif()
+
