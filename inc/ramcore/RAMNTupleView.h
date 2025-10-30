@@ -1,7 +1,9 @@
 #ifndef RAMCORE_RAMNTUPLEVIEW_H
 #define RAMCORE_RAMNTUPLEVIEW_H
+#include <Rtypes.h> 
 
-void ramntupleview(const char *file, const char *query = "", bool cache = true, bool perfstats = false,
-                   const char *perfstatsfilename = "perf.root");
+Long64_t ramntupleview(const char *file, const char *query = "", bool cache = true, bool perfstats = false,
+                       const char *perfstatsfilename = "perf.root");
 
 #endif // RAMCORE_RAMNTUPLEVIEW_H
+

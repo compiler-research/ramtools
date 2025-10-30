@@ -1,5 +1,7 @@
 #include "ramcore/RAMNTupleView.h"
 #include <iostream>
+#include <stdio.h> 
+#include <Rtypes.h>
 
 int main(int argc, char *argv[])
 {
@@ -10,8 +12,12 @@ int main(int argc, char *argv[])
    }
 
    const char *file = argv[1];
-   const char *region = (argc > 2) ? argv[2] : "";
+   const char *region_str = (argc > 2) ? argv[2] : ""; 
 
-   ramntupleview(file, region);
+   Long64_t read_count = ramntupleview(file, region_str);
+
+   printf("Found %lld records in region %s\n", read_count, region_str);
+   
    return 0;
 }
+
