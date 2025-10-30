@@ -9,7 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <Rtypes.h> 
+#include <Rtypes.h>
 
 class ramcoreTest : public ::testing::Test {
 protected:
@@ -64,18 +64,16 @@ TEST_F(ramcoreTest, RNTupleView)
    const char *regions[] = {"chr1:100-200", "chr2:500-1000", "chr5:1000-5000", "chr10:50000-100000", "chrX:1-1000"};
 
    for (const char *region : regions) {
-      
-      testing::internal::CaptureStdout();
-      
-      Long64_t count = ramntupleview(rntupleFile, region, true, false, nullptr);
-      
-      testing::internal::GetCapturedStdout(); 
 
-      EXPECT_GE(count, 0)
-         << "ramntupleview returned negative count for region: " << region;
+      testing::internal::CaptureStdout();
+
+      Long64_t count = ramntupleview(rntupleFile, region, true, false, nullptr);
+
+      testing::internal::GetCapturedStdout();
+
+      EXPECT_GE(count, 0) << "ramntupleview returned negative count for region: " << region;
    }
 
    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
    ASSERT_NE(reader, nullptr) << "RNTuple file corrupted after viewing";
 }
-
