@@ -10,15 +10,14 @@ function(add_ramcore_test test_name)
             ROOT::Tree
             ROOT::ROOTNTuple
             ROOT::RIO
+            sam_generator  
             gtest
             gtest_main
     )
 
     if(RAMTOOLS_BUILD_BENCHMARKS)
-        target_link_libraries(${test_name} 
-            sam_generator
-            benchmark::benchmark
-        )
+    
+        target_link_libraries(${test_name} benchmark::benchmark)
     endif()
 
     target_include_directories(${test_name}
