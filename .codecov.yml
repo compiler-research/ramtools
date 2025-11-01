@@ -42,7 +42,6 @@ ignore:
   
   - "Doxyfile"
 
-# Define coverage flags for different components
 flags:
   ramcore:
     paths:

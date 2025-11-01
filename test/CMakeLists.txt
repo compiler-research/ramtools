@@ -6,8 +6,6 @@ function(add_ramcore_test test_name)
         ${ARGN}
         LIBRARIES
             ramcore
-            sam_generator
-            benchmark::benchmark
             ROOT::Core
             ROOT::Tree
             ROOT::ROOTNTuple
@@ -15,6 +13,14 @@ function(add_ramcore_test test_name)
             gtest
             gtest_main
     )
+
+    if(RAMTOOLS_BUILD_BENCHMARKS)
+        target_link_libraries(${test_name} 
+            sam_generator
+            benchmark::benchmark
+        )
+    endif()
+
     target_include_directories(${test_name}
         PRIVATE
             $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/inc>

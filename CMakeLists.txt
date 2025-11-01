@@ -86,7 +86,7 @@ if(RAMTOOLS_BUILD_TESTS)
         add_custom_target(coverage
             COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
             COMMAND gcovr -r ${CMAKE_SOURCE_DIR} --html --html-details -o ${CMAKE_BINARY_DIR}/coverage.html
-            COMMAND gcovr -r ${CMAKE_SOURCE_DIR} --xml -o ${CMAKE_BINARY_DIR}/coverage.xml
+            COMMAND gcovr -r ${CMAKE_SOURCE_DIR} --xml-pretty --xml coverage.xml
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
             COMMENT "Running tests and generating code coverage report..."
         )
