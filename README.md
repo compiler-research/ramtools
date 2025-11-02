@@ -100,7 +100,7 @@ Tested with HG00154 sample from the 1000 Genomes Project (196M reads, 72GB SAM f
 **Key Findings**: 
 - RNTuple demonstrates **1.4-2.5x faster** query performance for large regions compared to TTree
 - LZ4 compression provides the best query performance among all compression algorithms
-- For a 100Mb region query: RNTuple+LZ4 processes **453,736 reads/sec** vs TTree+ZLIB's **197,815 reads/sec**
+- For a 100Mb region query: RNTuple processes **453,736 reads/sec** vs TTree+ZLIB's **197,815 reads/sec**
 
 ## TTree Implementation (Legacy)
 
