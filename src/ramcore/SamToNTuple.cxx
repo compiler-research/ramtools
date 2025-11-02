@@ -47,7 +47,7 @@ void samtoramntuple(const char *datafile,
     writeOptions.SetMaxUnzippedPageSize(64000);
 
     auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
-    auto defaultEntry = writerGetModel().CreateEntry();
+    auto defaultEntry = writer->GetModel().CreateEntry();
     auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
     
     TList headers;
@@ -219,7 +219,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
                recordPtr->SetBit(quality_policy);
                recordPtr->SetQNAME(sam_record.qname.c_str());
                recordPtr->SetFLAG(sam_record.flag);
-
+               
                {
                   std::lock_guard<std::mutex> lock(record_mutex);
                   recordPtr->SetREFID(sam_record.rname.c_str());
@@ -269,7 +269,6 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       std::vector<std::thread> threads;
 
       for (int i = 0; i < num_threads && chr_idx < chr_names.size(); ++i, ++chr_idx) {
-
          threads.emplace_back(write_chromosome_parallel, chr_names[chr_idx], std::ref(global_record_mutex));
       }
 
@@ -278,3 +277,4 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       }
    }
 }
+
