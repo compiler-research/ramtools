@@ -101,4 +101,3 @@ BENCHMARK_REGISTER_F(RegionQueryFixture, TTree)->Args({0})->Args({3})->Args({6})
 BENCHMARK_REGISTER_F(RegionQueryFixture, RNTuple)->Args({0})->Args({3})->Args({6})->Args({9})->Unit(benchmark::kSecond);
 
 BENCHMARK_MAIN();
-
