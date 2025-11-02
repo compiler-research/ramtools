@@ -9,16 +9,16 @@ on:
 jobs:
   build-and-test:
     name: Build and Test
-    runs-on: ubuntu-24.04  
+    runs-on: ubuntu-24.04
     
     steps:
-    - uses: actions/checkout@v5  
+    - uses: actions/checkout@v5
     
     - name: Install ROOT
       run: |
         ROOT_URL="https://root.cern/download/root_v6.36.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz"
         wget -O root.tar.gz $ROOT_URL
-        tar -xzf root.tar.gz -C /opt/  
+        tar -xzf root.tar.gz -C /opt/
         echo "/opt/root/bin" >> $GITHUB_PATH
         
     - name: Install build dependencies
@@ -29,7 +29,7 @@ jobs:
     - name: Configure CMake
       run: |
         source thisroot.sh
-        mkdir build  
+        mkdir build
         cd build
         cmake .. \
           -DCMAKE_BUILD_TYPE=Release \
@@ -49,3 +49,59 @@ jobs:
         cd build
         ctest --output-on-failure --build-config Release
 
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-24.04
+    needs: build-and-test # Run only if build-and-test succeeds
+    
+    steps:
+    - uses: actions/checkout@v5
+    
+    - name: Install ROOT
+      run: |
+        ROOT_URL="https://root.cern/download/root_v6.36.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz"
+        wget -O root.tar.gz $ROOT_URL
+        tar -xzf root.tar.gz -C /opt/
+        echo "/opt/root/bin" >> $GITHUB_PATH
+        
+    - name: Install build and coverage dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libvdt-dev libtbb-dev gcovr lcov
+        
+    - name: Configure with coverage
+      run: |
+        source thisroot.sh
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DENABLE_COVERAGE=ON \
+          -DRAMTOOLS_BUILD_TESTS=ON \
+          -DRAMTOOLS_BUILD_TOOLS=ON \
+          -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+        
+    - name: Build
+      run: |
+        source thisroot.sh
+        cd build
+        cmake --build . --config Debug -j $(nproc)
+      
+    - name: Run tests
+      run: |
+        source thisroot.sh
+        cd build
+        ctest --output-on-failure --build-config Debug
+        
+    - name: Generate coverage report
+      run: |
+        cd build
+        gcovr -r .. --xml-pretty --xml coverage.xml --print-summary
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./build/coverage.xml
+        flags: unittests
+        name: codecov-ramtools
+        fail_ci_if_error: false

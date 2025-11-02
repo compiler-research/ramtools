@@ -180,7 +180,9 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       t.join();
    }
 
-   auto write_chromosome_parallel = [&](const std::string &chr) {
+   std::mutex global_record_mutex;
+
+   auto write_chromosome_parallel = [&](const std::string &chr, std::mutex &record_mutex) {
       const auto &records = chromosome_records[chr];
 
       std::string filename = std::string(output_prefix) + "_" + chr + ".root";
@@ -217,11 +219,16 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
                recordPtr->SetBit(quality_policy);
                recordPtr->SetQNAME(sam_record.qname.c_str());
                recordPtr->SetFLAG(sam_record.flag);
-               recordPtr->SetREFID(sam_record.rname.c_str());
+
+               {
+                  std::lock_guard<std::mutex> lock(record_mutex);
+                  recordPtr->SetREFID(sam_record.rname.c_str());
+                  recordPtr->SetREFNEXT(sam_record.rnext.c_str());
+               }
+
                recordPtr->SetPOS(sam_record.pos);
                recordPtr->SetMAPQ(sam_record.mapq);
                recordPtr->SetCIGAR(sam_record.cigar.c_str());
-               recordPtr->SetREFNEXT(sam_record.rnext.c_str());
                recordPtr->SetPNEXT(sam_record.pnext);
                recordPtr->SetTLEN(sam_record.tlen);
                recordPtr->SetSEQ(sam_record.seq.c_str());
@@ -262,7 +269,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       std::vector<std::thread> threads;
 
       for (int i = 0; i < num_threads && chr_idx < chr_names.size(); ++i, ++chr_idx) {
-         threads.emplace_back(write_chromosome_parallel, chr_names[chr_idx]);
+         threads.emplace_back(write_chromosome_parallel, chr_names[chr_idx], std::ref(global_record_mutex));
       }
 
       for (auto &t : threads) {
