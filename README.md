@@ -56,7 +56,7 @@ Query a specific genomic region from a RAM file, similar to samtools view.
 
 Tested with HG00154 sample from the 1000 Genomes Project (196M reads, 72GB SAM file):
 
-![File Size Comparison](./img/file-size-comparison.png)
+![File Size Comparison](./img/file-size-comparison.jpg)
 
 ### Region Query Performance(LZMA Compression)
 
