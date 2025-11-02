@@ -219,7 +219,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
                recordPtr->SetBit(quality_policy);
                recordPtr->SetQNAME(sam_record.qname.c_str());
                recordPtr->SetFLAG(sam_record.flag);
-               
+
                {
                   std::lock_guard<std::mutex> lock(record_mutex);
                   recordPtr->SetREFID(sam_record.rname.c_str());
@@ -277,4 +277,3 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       }
    }
 }
-
