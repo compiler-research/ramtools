@@ -9,71 +9,69 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <Rtypes.h>
+#include <string>
+
+#include "../tools/ramview.cxx"
+
+namespace {
 
 class ramcoreTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-        const int num_reads_for_test = 100;
-        if (!std::filesystem::exists("samexample.sam")) {
-            GenerateSAMFile("samexample.sam", num_reads_for_test);
-        }
+   const int m_num_reads_for_test = 100;
+   const std::string m_samFile = "samexample.sam";
+   const std::string m_ttreeFile = "test_ttree.root";
+   const std::string m_rntupleFile = "test_rntuple.root";
 
-        std::remove("test_ttree.root");
-        std::remove("test_rntuple.root");
-    }
+   void SetUp() override
+   {
+      GenerateSAMFile(m_samFile.c_str(), m_num_reads_for_test);
 
-    void TearDown() override {
-        std::remove("test_ttree.root");
-        std::remove("test_rntuple.root");
-    }
-};
-
-TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
-    const char* samFile = "samexample.sam";
-    const char* ttreeFile = "test_ttree.root";
-    const char* rntupleFile = "test_rntuple.root";
-
-    samtoram(samFile, ttreeFile, true, true, true, 1, 0);
-    samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
-
-    auto ft = std::unique_ptr<TFile>(TFile::Open(ttreeFile));
-    ASSERT_TRUE(ft && !ft->IsZombie()) << "Failed to open TTree file";
-
-    auto ttree = dynamic_cast<TTree*>(ft->Get("RAM"));
-    ASSERT_NE(ttree, nullptr) << "Failed to get TTree";
-    Long64_t ttreeEntries = ttree->GetEntries();
-
-    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
-    ASSERT_NE(reader, nullptr) << "Failed to open RNTuple";
-    Long64_t rntupleEntries = reader->GetNEntries();
-
-    EXPECT_EQ(ttreeEntries, rntupleEntries)
-        << "Entry count mismatch - TTree: " << ttreeEntries
-        << ", RNTuple: " << rntupleEntries;
-    EXPECT_GT(ttreeEntries, 0) << "No entries found";
-}
-
-TEST_F(ramcoreTest, RNTupleView)
-{
-   const char *samFile = "samexample.sam";
-   const char *rntupleFile = "test_rntuple.root";
-
-   samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
-
-   const char *regions[] = {"chr1:100-200", "chr2:500-1000", "chr5:1000-5000", "chr10:50000-100000", "chrX:1-1000"};
-
-   for (const char *region : regions) {
-
-      testing::internal::CaptureStdout();
-
-      Long64_t count = ramntupleview(rntupleFile, region, true, false, nullptr);
-
-      testing::internal::GetCapturedStdout();
-
-      EXPECT_GE(count, 0) << "ramntupleview returned negative count for region: " << region;
+      std::remove(m_ttreeFile.c_str());
+      std::remove(m_rntupleFile.c_str());
    }
 
-   auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
-   ASSERT_NE(reader, nullptr) << "RNTuple file corrupted after viewing";
+   void TearDown() override
+   {
+      std::remove(m_ttreeFile.c_str());
+      std::remove(m_rntupleFile.c_str());
+   }
+};
+
+TEST_F(ramcoreTest, ConversionProducesEqualEntries)
+{
+   samtoram(m_samFile.c_str(), m_ttreeFile.c_str(), true, true, true, 1, 0);
+   samtoramntuple(m_samFile.c_str(), m_rntupleFile.c_str(), true, true, true, 505, 0);
+
+   auto ft = std::unique_ptr<TFile>(TFile::Open(m_ttreeFile.c_str()));
+   ASSERT_TRUE(ft && !ft->IsZombie()) << "Failed to open TTree file";
+
+   auto ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
+   ASSERT_NE(ttree, nullptr) << "Failed to get TTree";
+   Long64_t ttreeEntries = ttree->GetEntries();
+
+   auto reader = ROOT::RNTupleReader::Open("RAM", m_rntupleFile.c_str());
+   ASSERT_NE(reader, nullptr) << "Failed to open RNTuple";
+   Long64_t rntupleEntries = reader->GetNEntries();
+
+   EXPECT_EQ(ttreeEntries, rntupleEntries)
+      << "Entry count mismatch - TTree: " << ttreeEntries << ", RNTuple: " << rntupleEntries;
+   EXPECT_GT(ttreeEntries, 0) << "No entries found";
+
+   const char *region = "chrM:1-100000000";
+
+   testing::internal::CaptureStdout();
+   ramview(m_ttreeFile.c_str(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   std::string ramview_output{};
+   ramview_output = testing::internal::GetCapturedStdout();
+
+   testing::internal::CaptureStdout();
+   ramntupleview(m_rntupleFile.c_str(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   std::string ramntupleview_output{};
+   ramntupleview_output = testing::internal::GetCapturedStdout();
+
+   EXPECT_TRUE(ramview_output.find("Found") != std::string::npos);
+   EXPECT_TRUE(ramntupleview_output.find("Found") != std::string::npos);
+   EXPECT_TRUE(ramntupleview_output.find("records in region") != std::string::npos);
 }
+
+} // namespace

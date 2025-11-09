@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 #include "generate_sam_benchmark.h"
-#include <cstdio> // For std::remove
+#include <cstdio>
 
 static void BM_GenerateSAM(benchmark::State &state)
 {

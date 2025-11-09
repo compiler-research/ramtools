@@ -8,6 +8,7 @@ function(add_ramcore_test test_name)
             ramcore
             ROOT::Core
             ROOT::Tree
+            ROOT::TreePlayer
             ROOT::ROOTNTuple
             ROOT::RIO
             sam_generator  

@@ -74,8 +74,6 @@ if(RAMTOOLS_BUILD_TOOLS)
     add_subdirectory(tools)
 endif()
 
-# Include benchmark directory if benchmarks OR tests are enabled
-# (sam_generator is needed by tests)
 if(RAMTOOLS_BUILD_BENCHMARKS OR RAMTOOLS_BUILD_TESTS)
     add_subdirectory(benchmark)
 endif()

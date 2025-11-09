@@ -2,6 +2,17 @@
 #include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
@@ -13,124 +24,130 @@
 #include <TFile.h>
 #include <TROOT.h>
 
-#include <map>
-#include <memory>
-#include <iostream>
-#include <fstream>
-#include <cstdio>
-#include <thread>
-#include <vector>
-#include <mutex>
-#include <algorithm>
-
-void samtoramntuple(const char *datafile,
-                    const char *treefile,
-                    bool index, bool split, bool cache,
+void samtoramntuple(const char *datafile, const char *treefile, bool index, bool split, bool cache,
                     int compression_algorithm,
-                    uint32_t quality_policy)
+                    uint32_t quality_policy) // NOLINT(misc-use-internal-linkage) - public API function
 {
-    TStopwatch stopwatch;
-    stopwatch.Start();
-    
-    auto rootFile = std::unique_ptr<TFile>(TFile::Open(treefile, "RECREATE"));
-    if (!rootFile || !rootFile->IsOpen()) {
-        printf("Failed to create RAM file %s\n", treefile);
-        return;
-    }
-    
-    RAMNTupleRecord::InitializeRefs();
-    
-    auto model = RAMNTupleRecord::MakeModel();
+   (void)split;
+   (void)cache;
+   TStopwatch stopwatch;
+   stopwatch.Start();
 
-    ROOT::RNTupleWriteOptions writeOptions;
-    writeOptions.SetCompression(compression_algorithm);
-    writeOptions.SetMaxUnzippedPageSize(64000);
+   auto rootFile = std::unique_ptr<TFile>(TFile::Open(treefile, "RECREATE"));
+   if (!rootFile || !rootFile->IsOpen()) {
+      std::cerr << "Failed to create RAM file " << treefile << std::endl;
+      return;
+   }
 
-    auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
-    auto defaultEntry = writer->GetModel().CreateEntry();
-    auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
-    
-    TList headers;
-    headers.SetName("headers");
-    
-    ramcore::SamParser parser;
-    
-    auto header_callback = [&headers](const std::string& tag, const std::string& content) {
-        headers.Add(new TNamed(tag.c_str(), content.c_str()));
-        
-        if (tag == "@SQ") {
-            size_t sn_pos = content.find("SN:");
-            if (sn_pos != std::string::npos) {
-                sn_pos += 3;
-                size_t tab_pos = content.find('\t', sn_pos);
-                std::string ref_name = content.substr(sn_pos, 
-                    tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
-                RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
-            }
-        }
-    };
+   RAMNTupleRecord::InitializeRefs();
 
-    auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
-       recordPtr->SetBit(quality_policy);
+   auto model = RAMNTupleRecord::MakeModel();
 
-       recordPtr->SetQNAME(sam_record.qname.c_str());
-       recordPtr->SetFLAG(sam_record.flag);
-       recordPtr->SetREFID(sam_record.rname.c_str());
-       recordPtr->SetPOS(sam_record.pos);
-       recordPtr->SetMAPQ(sam_record.mapq);
-       recordPtr->SetCIGAR(sam_record.cigar.c_str());
-       recordPtr->SetREFNEXT(sam_record.rnext.c_str());
-       recordPtr->SetPNEXT(sam_record.pnext);
-       recordPtr->SetTLEN(sam_record.tlen);
-       recordPtr->SetSEQ(sam_record.seq.c_str());
-       recordPtr->SetQUAL(sam_record.qual.c_str());
+   ROOT::RNTupleWriteOptions writeOptions;
+   writeOptions.SetCompression(compression_algorithm);
+   writeOptions.SetMaxUnzippedPageSize(64000);
 
-       recordPtr->ResetNOPT();
-       for (const auto &opt : sam_record.optional_fields) {
-          recordPtr->SetOPT(opt.c_str());
-       }
+   auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
+   auto defaultEntry = writer->GetModel().CreateEntry();
+   auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
 
-       writer->Fill(*defaultEntry);
+   TList headers;
+   headers.SetName("headers");
 
-       if (index && record_num % 1000 == 0) {
-          RAMNTupleRecord::GetIndex()->AddItem(recordPtr->GetREFID(), recordPtr->GetPOS() - 1, record_num);
-       }
-    };
+   ramcore::SamParser parser;
 
-    if (!parser.ParseFile(datafile, header_callback, record_callback)) {
-        printf("Failed to parse SAM file %s\n", datafile);
-        return;
-    }
-    
-    writer.reset();
-    
-    if (index) {
-        RAMNTupleRecord::WriteIndex(*rootFile);
-    }
-    RAMNTupleRecord::WriteAllRefs(*rootFile);
-    
-    headers.Write();
-    rootFile->Close();
-    
-    printf("\nRAM file created: %s\n", treefile);
-    printf("Number of entries: %zu\n", parser.GetRecordsProcessed());
-    
-    RAMNTupleRecord::GetRnameRefs()->Print();
-    RAMNTupleRecord::GetRnextRefs()->Print();
-    
-    if (index) {
-        printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
-    }
-    
-    printf("\nProcessed %zu SAM headers\n", 
-           parser.GetLinesProcessed() - parser.GetRecordsProcessed());
-    printf("Processed %zu SAM records\n\n", parser.GetRecordsProcessed());
-    
-    stopwatch.Print();
+   int64_t mapped_count = 0;
+   int32_t last_refid = -2;
+   int32_t last_indexed_pos = -1000000;
+   const int32_t POS_INTERVAL = 10000;
+   const int64_t MAPPED_INTERVAL = 100;
+
+   auto header_callback = [&headers](const std::string &tag, const std::string &content) {
+      headers.Add(new TNamed(tag.c_str(), content.c_str()));
+
+      if (tag == "@SQ") {
+         size_t sn_pos = content.find("SN:");
+         if (sn_pos != std::string::npos) {
+            sn_pos += 3;
+            size_t tab_pos = content.find('\t', sn_pos);
+            std::string ref_name =
+               content.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
+            RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
+         }
+      }
+   };
+
+   auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
+      recordPtr->SetBit(quality_policy);
+
+      recordPtr->SetQNAME(sam_record.qname.c_str());
+      recordPtr->SetFLAG(sam_record.flag);
+      recordPtr->SetREFID(sam_record.rname.c_str());
+      recordPtr->SetPOS(sam_record.pos);
+      recordPtr->SetMAPQ(sam_record.mapq);
+      recordPtr->SetCIGAR(sam_record.cigar.c_str());
+      recordPtr->SetREFNEXT(sam_record.rnext.c_str());
+      recordPtr->SetPNEXT(sam_record.pnext);
+      recordPtr->SetTLEN(sam_record.tlen);
+      recordPtr->SetSEQ(sam_record.seq.c_str());
+      recordPtr->SetQUAL(sam_record.qual.c_str());
+
+      recordPtr->ResetNOPT();
+      for (const auto &opt : sam_record.optional_fields) {
+         recordPtr->SetOPT(opt.c_str());
+      }
+
+      writer->Fill(*defaultEntry);
+
+      if (index && !(sam_record.flag & 0x4) && recordPtr->GetREFID() >= 0) {
+         mapped_count++;
+         bool should_index = false;
+
+         int current_refid = recordPtr->GetREFID();
+         int current_pos = recordPtr->GetPOS() - 1;
+
+         if (current_refid != last_refid) {
+            should_index = true;
+            last_refid = current_refid;
+            last_indexed_pos = current_pos;
+         }
+
+         else if (current_pos - last_indexed_pos >= POS_INTERVAL) {
+            should_index = true;
+            last_indexed_pos = current_pos;
+         }
+
+         else if (mapped_count % MAPPED_INTERVAL == 0) {
+            should_index = true;
+         }
+
+         if (should_index) {
+            RAMNTupleRecord::GetIndex()->AddItem(current_refid, current_pos, record_num);
+         }
+      }
+   };
+
+   if (!parser.ParseFile(datafile, header_callback, record_callback)) {
+      std::cerr << "Failed to parse SAM file " << datafile << std::endl;
+      return;
+   }
+
+   writer.reset();
+
+   if (index) {
+      RAMNTupleRecord::WriteIndex(*rootFile);
+   }
+   RAMNTupleRecord::WriteAllRefs(*rootFile);
+
+   headers.Write();
+   rootFile->Close();
+
+   (void)mapped_count;
+   (void)stopwatch;
 }
-
 void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
-                                        uint32_t quality_policy, int num_threads)
+                                        uint32_t quality_policy, int num_threads,
+                                        const std::vector<std::string> &only_chromosomes)
 {
    ROOT::EnableThreadSafety();
    RAMNTupleRecord::InitializeRefs();
@@ -139,6 +156,9 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    std::vector<std::pair<std::string, std::string>> headers;
 
    ramcore::SamParser parser;
+
+   std::unordered_set<std::string> chromosome_filter(only_chromosomes.begin(), only_chromosomes.end());
+   const bool filter_active = !chromosome_filter.empty();
 
    auto header_callback = [&](const std::string &tag, const std::string &content) {
       headers.push_back({tag, content});
@@ -157,6 +177,9 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
    auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
       if (sam_record.rname != "*") {
+         if (filter_active && chromosome_filter.find(sam_record.rname) == chromosome_filter.end()) {
+            return;
+         }
          chromosome_records[sam_record.rname].push_back(sam_record);
       }
    };

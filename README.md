@@ -102,6 +102,24 @@ Tested with HG00154 sample from the 1000 Genomes Project (196M reads, 72GB SAM f
 - LZ4 compression provides the best query performance among all compression algorithms
 - For a 100Mb region query: RNTuple processes **453,736 reads/sec** vs TTree+ZLIB's **197,815 reads/sec**
 
+### RNTuple vs. CRAM (samtools) Region Queries
+
+Measured on `HG00096.cram` (GRCh37 reference, samtools `view -c -F 2308`) versus the converted RAM RNTuple produced by `samtoramntuple`. Benchmarks run on an Intel i5-8250U laptop with SSD storage.
+
+| Query (GRCh37) | Reads | RNTuple `ramntupleview` Wall (s) | samtools (CRAM) Wall (s) | Relative Speed (`CRAM / RNTuple`) |
+|----------------|-------|----------------------------------|---------------------------|-----------------------------------|
+| chr1:1,000,000-1,001,000 | 6 | 12.6 | 0.42 | 0.03× |
+| chr1:1,000,000-2,000,000 | 41,608 | 5.65 | 0.31 | 0.06× |
+| chr1:1-50,000,000 | 2,921,678 | 6.52 | 9.41 | **1.44×** |
+| chr2:1-100,000,000 | 6,879,654 | 7.75 | 20.19 | **2.61×** |
+| chr7:50,000,000-150,000,000 | 6,698,314 | 7.96 | 17.80 | **2.24×** |
+| chr21:1-48,129,895 | 2,510,708 | 6.58 | 8.29 | **1.26×** |
+
+**Interpretation**
+- RNTuple has higher constant overhead for tiny windows (dozens of reads); CRAM via samtools remains faster for ad‑hoc lookups.
+- For broad regions that touch millions of records, the columnar layout and sparse index give RNTuple a **1.3×–2.6× throughput advantage** over samtools.
+- Large windows (≥50 Mb) saturate sequential access on both formats; RNTuple’s page-level prefetch keeps bandwidth high while retaining exact read counts matching samtools.
+
 ## TTree Implementation (Legacy)
 
 ROOT scripts to convert a SAM file to a RAM (ROOT Alignment/Map) file using the older TTree format and to work with those files.

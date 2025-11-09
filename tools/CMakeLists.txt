@@ -22,10 +22,6 @@ ROOT_EXECUTABLE(ramntupleview
         ROOT::ROOTNTuple
 )
 
-install(TARGETS samtoram samtoramntuple ramntupleview
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
 set(ROOT_MACROS
     checkindex.cxx
     rammerge.cxx

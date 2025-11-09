@@ -519,7 +519,6 @@ std::string FormatCIGAR(const std::vector<uint32_t> &cigar_ops)
 void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, const std::string &ram_file,
                                                uint32_t compression_flags)
 {
-
    RAMNTupleRecord::InitializeRefs();
 
    auto file = std::unique_ptr<TFile>(TFile::Open(ram_file.c_str(), "RECREATE"));
@@ -546,9 +545,14 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
    std::string line;
    int64_t entry_number = 0;
 
+   int64_t mapped_count = 0;
+   int32_t last_refid = -2;
+   int32_t last_indexed_pos = -1000000;
+   const int32_t POS_INTERVAL = 10000;
+   const int64_t MAPPED_INTERVAL = 100;
+
    while (std::getline(sam, line)) {
       if (line.empty() || line[0] == '@') {
-
          if (line.substr(0, 3) == "@SQ") {
             size_t sn_pos = line.find("SN:");
             if (sn_pos != std::string::npos) {
@@ -591,8 +595,25 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
          rec.AddTag(tag);
       }
 
-      if (rec.refid >= 0 && rec.pos >= 0) {
-         RAMNTupleRecord::GetIndex()->AddItem(rec.refid, rec.pos, entry_number);
+      if (!(flag_int & 0x4) && rec.refid >= 0) {
+         mapped_count++;
+         bool should_index = false;
+
+         if (rec.refid != last_refid) {
+            should_index = true;
+            last_refid = rec.refid;
+            last_indexed_pos = rec.pos;
+            std::cout << "Indexing chromosome " << rec.refid << " at entry " << entry_number << std::endl;
+         } else if (rec.pos - last_indexed_pos >= POS_INTERVAL) {
+            should_index = true;
+            last_indexed_pos = rec.pos;
+         } else if (mapped_count % MAPPED_INTERVAL == 0) {
+            should_index = true;
+         }
+
+         if (should_index) {
+            RAMNTupleRecord::GetIndex()->AddItem(rec.refid, rec.pos, entry_number);
+         }
       }
 
       *recordPtr = std::move(rec);
@@ -611,6 +632,8 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
    RAMNTupleRecord::WriteIndex(*file);
 
    std::cout << "Conversion complete. Processed " << entry_number << " records." << std::endl;
+   std::cout << "Index entries: " << RAMNTupleRecord::GetIndex()->Size() << std::endl;
+   std::cout << "Mapped reads: " << mapped_count << std::endl;
 }
 
 void RAMNTupleConverter::ConvertRAMNTupleToSAM(const std::string &ram_file, const std::string &sam_file)
