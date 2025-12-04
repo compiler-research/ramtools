@@ -10,47 +10,47 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 #include "../tools/ramview.cxx"
 
 namespace {
 
 constexpr int kNumReadsForTest = 100;
-constexpr const char kSamFile[] = "samexample.sam";
-constexpr const char kTTreeFile[] = "test_ttree.root";
-constexpr const char kRNTupleFile[] = "test_rntuple.root";
+constexpr std::string_view kSamFile{"samexample.sam"};
+constexpr std::string_view kTTreeFile{"test_ttree.root"};
+constexpr std::string_view kRNTupleFile{"test_rntuple.root"};
 
 class ramcoreTest : public ::testing::Test {
 protected:
-
    void SetUp() override
    {
-      GenerateSAMFile(kSamFile, kNumReadsForTest);
+      GenerateSAMFile(kSamFile.data(), kNumReadsForTest);
 
-      std::remove(kTTreeFile);
-      std::remove(kRNTupleFile);
+      std::remove(kTTreeFile.data());
+      std::remove(kRNTupleFile.data());
    }
 
    void TearDown() override
    {
-      std::remove(kTTreeFile);
-      std::remove(kRNTupleFile);
+      std::remove(kTTreeFile.data());
+      std::remove(kRNTupleFile.data());
    }
 };
 
 TEST_F(ramcoreTest, ConversionProducesEqualEntries)
 {
-   samtoram(kSamFile, kTTreeFile, true, true, true, 1, 0);
-   samtoramntuple(kSamFile, kRNTupleFile, true, true, true, 505, 0);
+   samtoram(kSamFile.data(), kTTreeFile.data(), true, true, true, 1, 0);
+   samtoramntuple(kSamFile.data(), kRNTupleFile.data(), true, true, true, 505, 0);
 
-   auto ft = std::unique_ptr<TFile>(TFile::Open(kTTreeFile));
+   auto ft = std::unique_ptr<TFile>(TFile::Open(kTTreeFile.data()));
    ASSERT_TRUE(ft && !ft->IsZombie()) << "Failed to open TTree file";
 
    auto ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
    ASSERT_NE(ttree, nullptr) << "Failed to get TTree";
    Long64_t ttreeEntries = ttree->GetEntries();
 
-   auto reader = ROOT::RNTupleReader::Open("RAM", kRNTupleFile);
+   auto reader = ROOT::RNTupleReader::Open("RAM", kRNTupleFile.data());
    ASSERT_NE(reader, nullptr) << "Failed to open RNTuple";
    Long64_t rntupleEntries = reader->GetNEntries();
 
@@ -61,12 +61,12 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries)
    const char *region = "chrM:1-100000000";
 
    testing::internal::CaptureStdout();
-   ramview(kTTreeFile, region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   ramview(kTTreeFile.data(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    std::string ramview_output{};
    ramview_output = testing::internal::GetCapturedStdout();
 
    testing::internal::CaptureStdout();
-   ramntupleview(kRNTupleFile, region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   ramntupleview(kRNTupleFile.data(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    std::string ramntupleview_output{};
    ramntupleview_output = testing::internal::GetCapturedStdout();
 
