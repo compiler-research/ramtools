@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
-#include <string_view>
 
 #include "../tools/ramview.cxx"
 
