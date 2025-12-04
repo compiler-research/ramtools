@@ -15,41 +15,42 @@
 
 namespace {
 
+constexpr int kNumReadsForTest = 100;
+constexpr const char kSamFile[] = "samexample.sam";
+constexpr const char kTTreeFile[] = "test_ttree.root";
+constexpr const char kRNTupleFile[] = "test_rntuple.root";
+
 class ramcoreTest : public ::testing::Test {
 protected:
-   const int m_num_reads_for_test = 100;
-   const std::string m_samFile = "samexample.sam";
-   const std::string m_ttreeFile = "test_ttree.root";
-   const std::string m_rntupleFile = "test_rntuple.root";
 
    void SetUp() override
    {
-      GenerateSAMFile(m_samFile.c_str(), m_num_reads_for_test);
+      GenerateSAMFile(kSamFile, kNumReadsForTest);
 
-      std::remove(m_ttreeFile.c_str());
-      std::remove(m_rntupleFile.c_str());
+      std::remove(kTTreeFile);
+      std::remove(kRNTupleFile);
    }
 
    void TearDown() override
    {
-      std::remove(m_ttreeFile.c_str());
-      std::remove(m_rntupleFile.c_str());
+      std::remove(kTTreeFile);
+      std::remove(kRNTupleFile);
    }
 };
 
 TEST_F(ramcoreTest, ConversionProducesEqualEntries)
 {
-   samtoram(m_samFile.c_str(), m_ttreeFile.c_str(), true, true, true, 1, 0);
-   samtoramntuple(m_samFile.c_str(), m_rntupleFile.c_str(), true, true, true, 505, 0);
+   samtoram(kSamFile, kTTreeFile, true, true, true, 1, 0);
+   samtoramntuple(kSamFile, kRNTupleFile, true, true, true, 505, 0);
 
-   auto ft = std::unique_ptr<TFile>(TFile::Open(m_ttreeFile.c_str()));
+   auto ft = std::unique_ptr<TFile>(TFile::Open(kTTreeFile));
    ASSERT_TRUE(ft && !ft->IsZombie()) << "Failed to open TTree file";
 
    auto ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
    ASSERT_NE(ttree, nullptr) << "Failed to get TTree";
    Long64_t ttreeEntries = ttree->GetEntries();
 
-   auto reader = ROOT::RNTupleReader::Open("RAM", m_rntupleFile.c_str());
+   auto reader = ROOT::RNTupleReader::Open("RAM", kRNTupleFile);
    ASSERT_NE(reader, nullptr) << "Failed to open RNTuple";
    Long64_t rntupleEntries = reader->GetNEntries();
 
@@ -60,12 +61,12 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries)
    const char *region = "chrM:1-100000000";
 
    testing::internal::CaptureStdout();
-   ramview(m_ttreeFile.c_str(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   ramview(kTTreeFile, region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    std::string ramview_output{};
    ramview_output = testing::internal::GetCapturedStdout();
 
    testing::internal::CaptureStdout();
-   ramntupleview(m_rntupleFile.c_str(), region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
+   ramntupleview(kRNTupleFile, region, /*cache=*/true, /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    std::string ramntupleview_output{};
    ramntupleview_output = testing::internal::GetCapturedStdout();
 
@@ -75,3 +76,4 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries)
 }
 
 } // namespace
+
