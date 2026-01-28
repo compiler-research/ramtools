@@ -18,7 +18,7 @@ static void BM_SamToTTree(benchmark::State &state)
    std::string sam_file = "ttree_test.sam";
    std::string ttree_file = "ttree_output.root";
 
-   GenerateSAMFile(sam_file, num_reads);
+   GenerateSAMFile(sam_file.c_str(), num_reads);
 
    for (auto _ : state) {
 
@@ -48,7 +48,7 @@ static void BM_SamToRNTuple(benchmark::State &state)
    std::string sam_file = "rntuple_test.sam";
    std::string rntuple_file = "rntuple_output.root";
 
-   GenerateSAMFile(sam_file, num_reads);
+   GenerateSAMFile(sam_file.c_str(), num_reads);
 
    for (auto _ : state) {
 

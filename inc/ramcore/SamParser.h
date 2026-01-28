@@ -94,8 +94,6 @@ private:
    static constexpr int kMaxLineLength = 10240;
 };
 
-void StripCRLF(char *str);
-
 } // namespace ramcore
 
 #endif // RAMCORE_SAMPARSER_H

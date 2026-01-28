@@ -36,7 +36,7 @@ protected:
    void suppress_output() { freopen(NULL_DEVICE, "w", stdout); }
    void restore_output() { freopen("/dev/tty", "w", stdout); }
 
-   const char *get_current_region() const { return regions[region_idx_ % regions.size()].c_str(); }
+   [[nodiscard]] const char *get_current_region() const { return regions[region_idx_ % regions.size()].c_str(); }
 };
 
 const std::vector<std::string> RegionQueryFixture::regions = {"1:1000000-1001000",
