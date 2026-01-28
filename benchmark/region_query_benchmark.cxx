@@ -31,15 +31,15 @@ protected:
    std::string ttree_root_file_;
    std::string rntuple_root_file_;
 
-   static const std::vector<std::string> regions_;
+   static const std::vector<std::string> regions;
 
    void suppress_output() { freopen(NULL_DEVICE, "w", stdout); }
    void restore_output() { freopen("/dev/tty", "w", stdout); }
 
-   const char *get_current_region() const { return regions_[region_idx_ % regions_.size()].c_str(); }
+   const char *get_current_region() const { return regions[region_idx_ % regions.size()].c_str(); }
 };
 
-const std::vector<std::string> RegionQueryFixture::regions_ = {"1:1000000-1001000",
+const std::vector<std::string> RegionQueryFixture::regions = {"1:1000000-1001000",
                                                                "2:5000000-5010000",
                                                                "X:100000-150000",
                                                                "1:1000000-2000000",
@@ -100,3 +100,4 @@ BENCHMARK_REGISTER_F(RegionQueryFixture, TTree)->DenseRange(0, 17, 1)->Unit(benc
 BENCHMARK_REGISTER_F(RegionQueryFixture, RNTuple)->DenseRange(0, 17, 1)->Unit(benchmark::kSecond);
 
 BENCHMARK_MAIN();
+

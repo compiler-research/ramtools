@@ -4,7 +4,7 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -70,7 +70,7 @@ void samtoramntuple(const char *datafile, const char *treefile, bool index, bool
          if (sn_pos != std::string::npos) {
             sn_pos += 3;
             size_t tab_pos = content.find('\t', sn_pos);
-            std::string ref_name =
+            const std::string ref_name =
                content.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
             RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
          }
@@ -168,7 +168,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
          if (sn_pos != std::string::npos) {
             sn_pos += 3;
             size_t tab_pos = content.find('\t', sn_pos);
-            std::string ref_name =
+            const std::string ref_name =
                content.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
             RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
          }
@@ -300,3 +300,4 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       }
    }
 }
+
