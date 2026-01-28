@@ -32,4 +32,3 @@ void parsetreestats(const char *file = "treestats.root", bool saveimage = false,
       ioperf->Draw();
    }
 }
-

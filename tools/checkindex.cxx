@@ -49,4 +49,3 @@ void checkindex(const char *file = "ramexample.root")
    delete t;
    delete f;
 }
-

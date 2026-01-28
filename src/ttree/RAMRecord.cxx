@@ -147,4 +147,3 @@ void RAMIndex::Print() const
       ++it;
    }
 }
-

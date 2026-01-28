@@ -3,7 +3,6 @@
 
 #include <string>
 
-void GenerateSAMFile(const std::string& filename, int num_reads);
+void GenerateSAMFile(const std::string &filename, int num_reads);
 
-#endif 
-
+#endif

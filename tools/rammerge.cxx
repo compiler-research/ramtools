@@ -39,4 +39,3 @@ void rammerge(const char *outfile, const char *infile1, const char *infile2)
 
    delete list;
 }
-

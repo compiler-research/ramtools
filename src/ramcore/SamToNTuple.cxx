@@ -300,4 +300,3 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       }
    }
 }
-

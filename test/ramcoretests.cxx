@@ -75,4 +75,3 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries)
 }
 
 } // namespace
-

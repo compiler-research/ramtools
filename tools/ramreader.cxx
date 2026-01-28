@@ -50,7 +50,7 @@ void ramreader(const char *file = "ramexample.root")
    // Randomly access 10 records
    printf("\nRandomly access 10 records from the file:\n");
    for (int i = 0; i < 10; i++) {
-      int n = gRandom->Rndm()*1000.;
+      int n = gRandom->Rndm() * 1000.;
       t->GetEvent(n);
       printf("%2d SEQ:  %s\n", n, r->GetSEQ());
       printf("%2d QUAL: %s\n", n, r->GetQUAL());
@@ -58,7 +58,7 @@ void ramreader(const char *file = "ramexample.root")
 
    // Get full last RAMRecord, turn on all branches
    t->SetBranchStatus("RAMRecord.*", 1);
-   t->GetEvent(t->GetEntries()-1);
+   t->GetEvent(t->GetEntries() - 1);
 
    RAMRecord r2 = *r;
    printf("\nFull print of copied last RAMRecord:\n");
@@ -71,4 +71,3 @@ void ramreader(const char *file = "ramexample.root")
    printf("\nPrint Index:\n");
    RAMRecord::GetIndex()->Print();
 }
-

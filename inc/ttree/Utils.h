@@ -15,4 +15,3 @@ inline void stripcrlf(char *tok)
 }
 
 #endif // UTILS_H
-

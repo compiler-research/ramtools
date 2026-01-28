@@ -128,4 +128,3 @@ void ramview_no_index(const char *file, const char *query, bool cache = false, b
       printf("Reading %lld bytes in %d transactions\n", f->GetBytesRead(), f->GetReadCalls());
    }
 }
-

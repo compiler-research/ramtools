@@ -44,4 +44,3 @@ void ramrandom(const char *file = "/eos/genome/local/14007a/realigned_SAM/6148.r
       r->Print();
    }
 }
-
