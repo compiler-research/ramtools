@@ -24,7 +24,7 @@ class ramcoreTest : public ::testing::Test {
 protected:
    void SetUp() override
    {
-      GenerateSAMFile(kSamFile.c_str(), kNumReadsForTest);
+      GenerateSAMFile(kSamFile, kNumReadsForTest);
 
       std::remove(kTTreeFile.c_str());
       std::remove(kRNTupleFile.c_str());

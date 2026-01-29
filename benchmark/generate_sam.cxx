@@ -9,7 +9,7 @@
 #define BASE_SAM_READS 100
 #endif
 
-void GenerateSAMFile(const char *filename, int num_reads)
+void GenerateSAMFile(const std::string &filename, int num_reads)
 {
    std::mt19937 rng(42);
    std::vector<std::pair<std::string, int>> chromosomes = {

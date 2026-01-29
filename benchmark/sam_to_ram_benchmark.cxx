@@ -16,7 +16,7 @@ static void BM_SamToRamComparison(benchmark::State &state)
    std::string ttree_file = "benchmark_ttree.root";
    std::string rntuple_file = "benchmark_rntuple.root";
 
-   GenerateSAMFile(sam_file.c_str(), num_reads);
+   GenerateSAMFile(sam_file, num_reads);
 
    for (auto _ : state) {
 

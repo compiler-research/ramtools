@@ -50,7 +50,7 @@ static void BM_SamtoolsSplit(benchmark::State &state)
    int num_reads = state.range(0);
    std::string sam_file = "bench_st_" + std::to_string(num_reads) + ".sam";
 
-   GenerateSAMFile(sam_file.c_str(), num_reads);
+   GenerateSAMFile(sam_file, num_reads);
    auto chromosomes = GetChromosomes(sam_file);
 
    for (auto _ : state) {
@@ -86,7 +86,7 @@ static void BM_SamtoolsSplitThreaded(benchmark::State &state)
    int num_threads = state.range(1);
    std::string sam_file = "bench_st_mt_" + std::to_string(num_reads) + ".sam";
 
-   GenerateSAMFile(sam_file.c_str(), num_reads);
+   GenerateSAMFile(sam_file, num_reads);
    auto chromosomes = GetChromosomes(sam_file);
 
    for (auto _ : state) {
@@ -143,7 +143,7 @@ static void BM_ChromosomeSplitThreads(benchmark::State &state)
    int num_threads = state.range(1);
    std::string sam_file = "bench_split_par_" + std::to_string(num_reads) + ".sam";
 
-   GenerateSAMFile(sam_file.c_str(), num_reads);
+   GenerateSAMFile(sam_file, num_reads);
 
    FILE *old_stdout = stdout;
    FILE *old_stderr = stderr;
