@@ -1,4 +1,3 @@
-// clang-format off
 #ifdef __CLING__
 #pragma link off all globals;
 #pragma link off all classes;
@@ -11,4 +10,3 @@
 #pragma link C++ class RAMNTupleIndex+;
 
 #endif
-// clang-format on
