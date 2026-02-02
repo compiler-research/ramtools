@@ -1,5 +1,5 @@
 codecov:
-  require_ci_to_pass: no
+  require_ci_to_pass: yes
 
 coverage:
   precision: 2
@@ -10,12 +10,12 @@ coverage:
     project:
       default:
         target: auto      # Uses coverage from base commit
-        threshold: 2      # Allow 2% drop
+        threshold: 0      # Allow no drop
         
     patch:
       default:
         target: 85        # New code should have 85% coverage
-        threshold: 2      # Allow 2% variance
+        threshold: 0      # Allow no variance
         
     changes: no
 
