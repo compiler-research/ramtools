@@ -49,6 +49,7 @@ jobs:
           apt_packages: cmake,libxml2,libxml2-dev,libtinfo-dev,zlib1g-dev,libzstd-dev,libvdt-dev,libtbb-dev
           split_workflow: true
           config_file: .clang-tidy
+          clang_tidy_args: '--extra-arg=-I${{ github.workspace }}/inc --extra-arg=-I/opt/root/include'
           cmake_command: >
             bash -x -c '
             source /opt/root/bin/thisroot.sh &&
