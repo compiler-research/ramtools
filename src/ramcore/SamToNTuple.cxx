@@ -54,7 +54,12 @@ void samtoramntuple(const char *datafile,
     headers.SetName("headers");
     
     ramcore::SamParser parser;
-    
+
+    // Indexing state
+    int64_t mapped_count = 0;
+    int32_t last_refid = -1;
+    int32_t last_indexed_pos = -10000;
+
     auto header_callback = [&headers](const std::string& tag, const std::string& content) {
         headers.Add(new TNamed(tag.c_str(), content.c_str()));
         
@@ -92,8 +97,20 @@ void samtoramntuple(const char *datafile,
 
        writer->Fill(*defaultEntry);
 
-       if (index && record_num % 1000 == 0) {
-          RAMNTupleRecord::GetIndex()->AddItem(recordPtr->GetREFID(), recordPtr->GetPOS() - 1, record_num);
+       // Only index mapped reads at strategic positions
+       if (index && !(sam_record.flag & 0x4) && recordPtr->GetREFID() >= 0) {
+          int32_t current_refid = recordPtr->GetREFID();
+          int32_t current_pos = recordPtr->GetPOS() - 1;
+
+          bool should_index =
+             (current_refid != last_refid) || (current_pos - last_indexed_pos >= 10000) || (mapped_count % 100 == 0);
+
+          if (should_index) {
+             RAMNTupleRecord::GetIndex()->AddItem(current_refid, current_pos, record_num);
+             last_refid = current_refid;
+             last_indexed_pos = current_pos;
+          }
+          mapped_count++;
        }
     };
 
