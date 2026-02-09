@@ -11,11 +11,13 @@ coverage:
       default:
         target: auto      # Uses coverage from base commit
         threshold: 2      # Allow 2% drop
+        informational: false  
         
     patch:
       default:
         target: 85        # New code should have 85% coverage
         threshold: 2      # Allow 2% variance
+        informational: false  
         
     changes: no
 
@@ -68,4 +70,3 @@ flags:
 
 github_checks:
   annotations: true
-
