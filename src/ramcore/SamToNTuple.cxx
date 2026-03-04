@@ -18,6 +18,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstdio>
+#include <cstdint>
 #include <thread>
 #include <vector>
 #include <mutex>
