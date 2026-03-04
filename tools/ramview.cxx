@@ -76,7 +76,8 @@ Long64_t ramview(const char *file, const char *query, bool cache = true, bool pe
 
    for (; start_entry < t->GetEntries(); start_entry++) {
       t->GetEntry(start_entry);
-      if (r->GetPOS() + r->GetSEQLEN() > range_start) {
+      // GetPOS() returns 1-based SAM coordinate, convert to internal 0-based
+      if (r->GetPOS() - 1 + r->GetSEQLEN() > range_start) {
 
          break;
       }
@@ -90,7 +91,8 @@ Long64_t ramview(const char *file, const char *query, bool cache = true, bool pe
 
    for (j = start_entry; j < t->GetEntries(); j++) {
       t->GetEntry(j);
-      if (r->GetPOS() >= range_end) {
+      // GetPOS() returns 1-based SAM coordinate, convert to internal 0-based
+      if (r->GetPOS() - 1 >= range_end) {
          break;
       }
       count++;

@@ -87,7 +87,8 @@ void ramview_no_index(const char *file, const char *query, bool cache = false, b
          if (!rname.EqualTo(r->GetRNAME())) {
             break;
          } else {
-            if (r->GetPOS() + r->GetSEQLEN() > rangeStart) {
+            // GetPOS() returns 1-based SAM coordinate, convert to internal 0-based
+            if (r->GetPOS() - 1 + r->GetSEQLEN() > rangeStart) {
                // Register first valid position for printing
                posStart = i;
                break;
@@ -110,7 +111,8 @@ void ramview_no_index(const char *file, const char *query, bool cache = false, b
                break;
             } else {
                // Within the region
-               if (r->GetPOS() <= rangeEnd) {
+               // GetPOS() returns 1-based SAM coordinate, convert to internal 0-based
+               if (r->GetPOS() - 1 <= rangeEnd) {
                   r->Print();
                } else {
                   break;

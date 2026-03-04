@@ -73,7 +73,8 @@ void samtoram(const char *datafile,
         tree->Fill();
         
         if (index && record_num % 1000 == 0) {
-            RAMRecord::GetIndex()->AddItem(r->GetREFID(), r->GetPOS(), record_num);
+            // GetPOS() returns 1-based SAM coordinate, convert to internal 0-based
+            RAMRecord::GetIndex()->AddItem(r->GetREFID(), r->GetPOS() - 1, record_num);
         }
     };
     
