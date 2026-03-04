@@ -178,11 +178,11 @@ public:
    void SetQNAME(const char *qname) { v_qname = qname; }
    void SetFLAG(UShort_t f) { v_flag = f; }
    void SetREFID(const char *rname);
-   void SetPOS(Int_t pos) { v_pos = pos - 1; }
+   void SetPOS(Int_t pos) { v_pos = pos - 1; } // SAM is 1-based, we are 0-based
    void SetMAPQ(UChar_t mapq) { v_mapq = mapq; }
    void SetCIGAR(const char *cigar);
    void SetREFNEXT(const char *rnext);
-   void SetPNEXT(Int_t pnext) { v_pnext = pnext - 1; }
+   void SetPNEXT(Int_t pnext) { v_pnext = pnext - 1; } // SAM is 1-based, we are 0-based
    void SetTLEN(Int_t tlen) { v_tlen = tlen; }
    void SetSEQ(const char *seq);
    void SetQUAL(const char *qual);
@@ -193,7 +193,7 @@ public:
    UInt_t GetFLAG() const { return v_flag; }
    const char *GetRNAME() const;
    Int_t GetREFID() const { return v_refid; }
-   Int_t GetPOS() const { return v_pos; }
+   Int_t GetPOS() const { return v_pos + 1; } // Convert back to 1-based for SAM
    UInt_t GetMAPQ() const { return v_mapq; }
    Int_t GetNCIGAROP() { return v_ncigar_op; }
    Int_t GetCIGAROPLEN(Int_t idx);
@@ -201,7 +201,7 @@ public:
    const char *GetCIGAR() const;
    const char *GetRNEXT() const;
    Int_t GetREFNEXT() const { return v_refnext; }
-   Int_t GetPNEXT() const { return v_pnext; }
+   Int_t GetPNEXT() const { return v_pnext + 1; } // Convert back to 1-based for SAM
    Int_t GetTLEN() const { return v_tlen; }
    Int_t GetSEQLEN() const { return v_lseq; }
    const char *GetSEQ() const;
@@ -643,8 +643,8 @@ inline void RAMRecord::Print(Option_t *) const
 {
    // Print a single record, in SAM format.
 
-   std::cout << GetQNAME() << "\t" << GetFLAG() << "\t" << GetRNAME() << "\t" << GetPOS() + 1 << "\t" << GetMAPQ()
-             << "\t" << GetCIGAR() << "\t" << GetRNEXT() << "\t" << GetPNEXT() + 1 << "\t" << GetTLEN() << "\t"
+   std::cout << GetQNAME() << "\t" << GetFLAG() << "\t" << GetRNAME() << "\t" << GetPOS() << "\t" << GetMAPQ()
+             << "\t" << GetCIGAR() << "\t" << GetRNEXT() << "\t" << GetPNEXT() << "\t" << GetTLEN() << "\t"
              << GetSEQ() << "\t" << GetQUAL();
    for (int i = 0; i < GetNOPT(); i++)
       std::cout << "\t" << GetOPT(i);
