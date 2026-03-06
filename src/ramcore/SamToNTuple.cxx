@@ -13,16 +13,22 @@
 #include <TFile.h>
 #include <TROOT.h>
 
-#include <map>
-#include <memory>
-#include <iostream>
-#include <fstream>
-#include <cstdio>
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
-#include <mutex>
-#include <algorithm>
+
+namespace {
+
+constexpr uint16_t kUnmapped = 0x4;
+constexpr int32_t kPositionInterval = 10000;
+constexpr int64_t kMappedInterval = 100;
+
+} // namespace
 
 void samtoramntuple(const char *datafile,
                     const char *treefile,
@@ -32,15 +38,15 @@ void samtoramntuple(const char *datafile,
 {
     TStopwatch stopwatch;
     stopwatch.Start();
-    
+
     auto rootFile = std::unique_ptr<TFile>(TFile::Open(treefile, "RECREATE"));
     if (!rootFile || !rootFile->IsOpen()) {
         printf("Failed to create RAM file %s\n", treefile);
         return;
     }
-    
+
     RAMNTupleRecord::InitializeRefs();
-    
+
     auto model = RAMNTupleRecord::MakeModel();
 
     ROOT::RNTupleWriteOptions writeOptions;
@@ -50,27 +56,26 @@ void samtoramntuple(const char *datafile,
     auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
     auto defaultEntry = writer->GetModel().CreateEntry();
     auto recordPtr = defaultEntry->GetPtr<RAMNTupleRecord>("record");
-    
+
     TList headers;
     headers.SetName("headers");
-    
+
     ramcore::SamParser parser;
 
-    // Indexing state
     int64_t mapped_count = 0;
     int32_t last_refid = -1;
-    int32_t last_indexed_pos = -10000;
+    int32_t last_indexed_pos = -kPositionInterval;
 
     auto header_callback = [&headers](const std::string& tag, const std::string& content) {
         headers.Add(new TNamed(tag.c_str(), content.c_str()));
-        
+
         if (tag == "@SQ") {
             size_t sn_pos = content.find("SN:");
             if (sn_pos != std::string::npos) {
                 sn_pos += 3;
                 size_t tab_pos = content.find('\t', sn_pos);
-                std::string ref_name = content.substr(sn_pos, 
-                    tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
+                std::string ref_name =
+                   content.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
                 RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name.c_str());
             }
         }
@@ -98,15 +103,30 @@ void samtoramntuple(const char *datafile,
 
        writer->Fill(*defaultEntry);
 
-       // Only index mapped reads at strategic positions
-       if (index && !(sam_record.flag & 0x4) && recordPtr->GetREFID() >= 0) {
+       // Index building: create a sparse lookup table so region queries can jump
+       // directly to the relevant records instead of scanning from the beginning.
+       //
+       // Only mapped reads with a valid chromosome get indexed. The index maps
+       // (chromosome, position) → record_number.
+       //
+       // An entry is created when any of these triggers fire:
+       //   1. New chromosome — so queries on that chromosome have a starting point
+       //   2. Position gap >= 10kb — limits how far a query must scan forward
+       //   3. Every 100th mapped read — density guarantee for pileup regions
+       //      where reads are close together and the 10kb gap never triggers
+       //
+       // Duplicate entries at the same (chromosome, position) are skipped to ensure
+       // the index always points to the first record at any given position.
+       if (index && !(sam_record.flag & kUnmapped) && recordPtr->GetREFID() >= 0) {
           int32_t current_refid = recordPtr->GetREFID();
           int32_t current_pos = recordPtr->GetPOS() - 1;
 
-          bool should_index =
-             (current_refid != last_refid) || (current_pos - last_indexed_pos >= 10000) || (mapped_count % 100 == 0);
+          bool new_chrom = (current_refid != last_refid);
+          bool far_enough = (current_pos - last_indexed_pos >= kPositionInterval);
+          bool periodic = (mapped_count % kMappedInterval == 0);
+          bool duplicate = (!new_chrom && current_pos == last_indexed_pos);
 
-          if (should_index) {
+          if ((new_chrom || far_enough || periodic) && !duplicate) {
              RAMNTupleRecord::GetIndex()->AddItem(current_refid, current_pos, record_num);
              last_refid = current_refid;
              last_indexed_pos = current_pos;
@@ -119,31 +139,30 @@ void samtoramntuple(const char *datafile,
         printf("Failed to parse SAM file %s\n", datafile);
         return;
     }
-    
+
     writer.reset();
-    
+
     if (index) {
         RAMNTupleRecord::WriteIndex(*rootFile);
     }
     RAMNTupleRecord::WriteAllRefs(*rootFile);
-    
+
     headers.Write();
     rootFile->Close();
-    
+
     printf("\nRAM file created: %s\n", treefile);
     printf("Number of entries: %zu\n", parser.GetRecordsProcessed());
-    
+
     RAMNTupleRecord::GetRnameRefs()->Print();
     RAMNTupleRecord::GetRnextRefs()->Print();
-    
+
     if (index) {
         printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
     }
-    
-    printf("\nProcessed %zu SAM headers\n", 
-           parser.GetLinesProcessed() - parser.GetRecordsProcessed());
+
+    printf("\nProcessed %zu SAM headers\n", parser.GetLinesProcessed() - parser.GetRecordsProcessed());
     printf("Processed %zu SAM records\n\n", parser.GetRecordsProcessed());
-    
+
     stopwatch.Print();
 }
 

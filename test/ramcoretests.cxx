@@ -176,3 +176,88 @@ TEST_F(ramcoreTest, RNTupleViewFlagFiltering)
 }
 
 } // namespace
+
+TEST_F(ramcoreTest, SmartIndexSkipsUnmappedReads)
+{
+   const char *customSam = "test_unmapped_index.sam";
+   const char *rntupleFile = "test_unmapped_index.root";
+
+   {
+      std::ofstream sam(customSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n";
+      sam << "@SQ\tSN:chr1\tLN:100000\n";
+      sam << "mapped1\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      sam << "unmapped1\t4\t*\t0\t0\t*\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      sam << "unmapped2\t4\t*\t0\t0\t*\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      sam << "mapped2\t0\tchr1\t2000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+   }
+
+   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+
+   Long64_t count = ramntupleview(rntupleFile, "chr1:900-2100", true, false, nullptr);
+   EXPECT_EQ(count, 2) << "Both mapped reads should be queryable";
+
+   Long64_t unmapped = ramntupleview(rntupleFile, "*:0-100", true, false, nullptr);
+   EXPECT_EQ(unmapped, 0) << "Unmapped reads should not appear in index queries";
+
+   std::remove(customSam);
+   std::remove(rntupleFile);
+}
+
+TEST_F(ramcoreTest, SmartIndexCreatesEntryAtChromosomeBoundary)
+{
+   const char *customSam = "test_chrom_boundary.sam";
+   const char *rntupleFile = "test_chrom_boundary.root";
+
+   {
+      std::ofstream sam(customSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n";
+      sam << "@SQ\tSN:chr1\tLN:100000\n";
+      sam << "@SQ\tSN:chr2\tLN:100000\n";
+      for (int i = 0; i < 50; ++i)
+         sam << "chr1_r" << i << "\t0\tchr1\t" << (1000 + i * 100) << "\t60\t50M\t*\t0\t0\t" << std::string(50, 'A')
+             << "\t*\n";
+      for (int i = 0; i < 50; ++i)
+         sam << "chr2_r" << i << "\t0\tchr2\t" << (500 + i * 100) << "\t60\t50M\t*\t0\t0\t" << std::string(50, 'A')
+             << "\t*\n";
+   }
+
+   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+
+   Long64_t chr1_hits = ramntupleview(rntupleFile, "chr1:1000-6000", true, false, nullptr);
+   EXPECT_GT(chr1_hits, 0) << "chr1 reads should be queryable";
+
+   Long64_t chr2_hits = ramntupleview(rntupleFile, "chr2:500-5500", true, false, nullptr);
+   EXPECT_GT(chr2_hits, 0) << "chr2 reads should be immediately queryable at boundary";
+
+   std::remove(customSam);
+   std::remove(rntupleFile);
+}
+
+TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
+{
+   const char *customSam = "test_pos_interval.sam";
+   const char *rntupleFile = "test_pos_interval.root";
+
+   {
+      std::ofstream sam(customSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n";
+      sam << "@SQ\tSN:chr1\tLN:1000000\n";
+      // Cluster of 200 reads at position 1000 (same position, should not generate 200 index entries)
+      for (int i = 0; i < 200; ++i)
+         sam << "cluster_r" << i << "\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      // Read far away at 50000 (>10kb gap, should trigger position interval index)
+      sam << "far_read\t0\tchr1\t50000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+   }
+
+   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+
+   Long64_t cluster = ramntupleview(rntupleFile, "chr1:900-1100", true, false, nullptr);
+   EXPECT_EQ(cluster, 200);
+
+   Long64_t far = ramntupleview(rntupleFile, "chr1:49900-50100", true, false, nullptr);
+   EXPECT_EQ(far, 1) << "Distant read should be indexed via position interval";
+
+   std::remove(customSam);
+   std::remove(rntupleFile);
+}
