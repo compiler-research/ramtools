@@ -3,15 +3,15 @@
 
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
-#include <TFile.h>
 
 #include <cstdint>
 #include <cstring>
-#include <iostream>
+#include <exception>
 #include <iomanip>
-#include <stdexcept>
-#include <string>
+#include <iostream>
 #include <map>
+#include <memory>
+#include <string>
 
 namespace ramcore {
 
@@ -50,13 +50,12 @@ void RAMStats::Print() const
              << std::fixed << std::setprecision(2) << mean_read_length << "\n"
              << std::setw(30) << "Mean mapping quality:"
              << std::fixed << std::setprecision(2) << mean_mapping_quality << "\n";
-
    std::cout << "===========================\n\n";
 }
 
 /// Extract the original sequence length from an encoded seq field.
 /// The field format is: [4-byte uint32_t length][packed 2-bit nucleotides]
-/// We use memcpy to avoid undefined behaviour from unaligned reinterpret_cast.
+/// memcpy is used instead of reinterpret_cast to avoid alignment-dependent UB.
 static uint32_t DecodedSeqLength(const std::string &encoded_seq)
 {
    if (encoded_seq.size() < 4)
@@ -70,7 +69,7 @@ RAMStatsResult ComputeStats(const char *filename)
 {
    RAMStats stats;
 
-   // Load reference name map stored alongside the RNTuple
+   // Initialize and load the reference name map stored alongside the RNTuple
    RAMNTupleRecord::InitializeRefs();
    RAMNTupleRecord::ReadAllRefs(filename);
    RAMNTupleRefs *rnameRefs = RAMNTupleRecord::GetRnameRefs();
@@ -79,7 +78,6 @@ RAMStatsResult ComputeStats(const char *filename)
    try {
       reader = ROOT::RNTupleReader::Open("RAM", filename);
    } catch (const std::exception &e) {
-      // Return error result so caller can distinguish bad file from empty file
       return RAMStatsResult{stats, false, e.what()};
    }
 
@@ -105,7 +103,7 @@ RAMStatsResult ComputeStats(const char *filename)
 
       if (flag & FLAG_UNMAPPED) {
          stats.unmapped_reads++;
-         // Unmapped reads have no strand — do NOT count them in strand stats
+         // Unmapped reads have no strand — excluded from strand stats
       } else {
          stats.mapped_reads++;
          mapq_sum += mapq;
@@ -135,9 +133,11 @@ RAMStatsResult ComputeStats(const char *filename)
    }
 
    if (stats.total_reads > 0)
-      stats.mean_read_length = static_cast<double>(len_sum) / stats.total_reads;
+      stats.mean_read_length =
+         static_cast<double>(len_sum) / static_cast<double>(stats.total_reads);
    if (stats.mapped_reads > 0)
-      stats.mean_mapping_quality = static_cast<double>(mapq_sum) / stats.mapped_reads;
+      stats.mean_mapping_quality =
+         static_cast<double>(mapq_sum) / static_cast<double>(stats.mapped_reads);
 
    return RAMStatsResult{stats, true, ""};
 }
