@@ -34,77 +34,77 @@ protected:
 /// Total reads reported must equal the number of entries in the RNTuple.
 TEST_F(RAMStatsTest, TotalReadsMatchesNTupleEntries)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
+   auto result = ramcore::ComputeStats(kRootFile);
 
    auto reader = ROOT::RNTupleReader::Open("RAM", kRootFile);
    ASSERT_TRUE(reader != nullptr);
 
-   EXPECT_EQ(stats.total_reads, static_cast<uint64_t>(reader->GetNEntries()));
-   EXPECT_EQ(stats.total_reads, static_cast<uint64_t>(kNumReads));
+   EXPECT_EQ(result.stats.total_reads, static_cast<uint64_t>(reader->GetNEntries()));
+   EXPECT_EQ(result.stats.total_reads, static_cast<uint64_t>(kNumReads));
 }
 
 /// Mapped + unmapped must equal total reads (no reads are lost).
 TEST_F(RAMStatsTest, MappedPlusUnmappedEqualsTotal)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   EXPECT_EQ(stats.mapped_reads + stats.unmapped_reads, stats.total_reads);
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_EQ(result.stats.mapped_reads + result.stats.unmapped_reads, result.stats.total_reads);
 }
 
 /// Forward + reverse strand counts must equal total reads.
 TEST_F(RAMStatsTest, StrandCountsEqualTotal)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   EXPECT_EQ(stats.forward_strand + stats.reverse_strand, stats.total_reads);
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_EQ(result.stats.forward_strand + result.stats.reverse_strand, result.stats.total_reads);
 }
 
 /// Mean read length must be positive for a non-empty file.
 TEST_F(RAMStatsTest, MeanReadLengthIsPositive)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   EXPECT_GT(stats.mean_read_length, 0.0);
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_GT(result.stats.mean_read_length, 0.0);
 }
 
 /// Total bases must be consistent with mean read length * total reads.
 TEST_F(RAMStatsTest, TotalBasesConsistentWithMeanLength)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   double expected_bases = stats.mean_read_length * stats.total_reads;
+   auto result = ramcore::ComputeStats(kRootFile);
+   double expected_bases = result.stats.mean_read_length * result.stats.total_reads;
    // Allow small floating-point rounding tolerance
-   EXPECT_NEAR(static_cast<double>(stats.total_bases), expected_bases, 1.0);
+   EXPECT_NEAR(static_cast<double>(result.stats.total_bases), expected_bases, 1.0);
 }
 
 /// Mean mapping quality must be in valid SAM range [0, 255].
 TEST_F(RAMStatsTest, MeanMappingQualityInValidRange)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   EXPECT_GE(stats.mean_mapping_quality, 0.0);
-   EXPECT_LE(stats.mean_mapping_quality, 255.0);
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_GE(result.stats.mean_mapping_quality, 0.0);
+   EXPECT_LE(result.stats.mean_mapping_quality, 255.0);
 }
 
 /// Per-chromosome map must not be empty for a valid SAM file.
 TEST_F(RAMStatsTest, ReadsPerChromosomeNotEmpty)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
-   EXPECT_FALSE(stats.reads_per_chromosome.empty());
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_FALSE(result.stats.reads_per_chromosome.empty());
 }
 
 /// Chromosome read counts must sum to at most total_reads
 /// (unmapped reads with rname="*" are excluded from the map).
 TEST_F(RAMStatsTest, ChromosomeCountsSumToAtMostTotal)
 {
-   auto stats = ramcore::ComputeStats(kRootFile);
+   auto result = ramcore::ComputeStats(kRootFile);
    uint64_t chrom_sum = 0;
-   for (const auto &[chrom, count] : stats.reads_per_chromosome) {
+   for (const auto &[chrom, count] : result.stats.reads_per_chromosome) {
       chrom_sum += count;
    }
-   EXPECT_LE(chrom_sum, stats.total_reads);
+   EXPECT_LE(chrom_sum, result.stats.total_reads);
 }
 
 /// ComputeStats on a non-existent file must return zero total reads.
 TEST(RAMStatsEdgeCases, NonExistentFileReturnsEmpty)
 {
-   auto stats = ramcore::ComputeStats("nonexistent_file.root");
-   EXPECT_EQ(stats.total_reads, 0u);
+   auto result = ramcore::ComputeStats("nonexistent_file.root");
+   EXPECT_EQ(result.stats.total_reads, 0u);
 
 }
 

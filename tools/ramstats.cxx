@@ -1,13 +1,3 @@
-/// \file ramstats.cxx
-/// \brief Command-line tool to print summary statistics for a RAM (RNTuple) file.
-///
-/// Usage:
-///   ./tools/ramstats <input.root> [--verbose]
-///
-/// Prints per-file summary metrics equivalent to `samtools flagstat`:
-///   total reads, mapped/unmapped, duplicates, paired, strand breakdown,
-///   mean mapping quality, mean read length, total bases, reads per chromosome.
-
 #include "ramcore/RAMStats.h"
 #include <iostream>
 #include <cstring>
@@ -24,21 +14,27 @@ int main(int argc, char **argv)
    const char *inputFile = argv[1];
    bool verbose = false;
    for (int i = 2; i < argc; ++i) {
-      if (std::strcmp(argv[i], "--verbose") == 0) {
+      if (std::strcmp(argv[i], "--verbose") == 0)
          verbose = true;
-      }
    }
 
-   auto stats = ramcore::ComputeStats(inputFile, false);
+   auto result = ramcore::ComputeStats(inputFile);
 
-   // Always print summary
-   stats.Print();
+   if (!result.ok) {
+      std::cerr << "Error: " << result.error_message << "\n";
+      return 1;
+   }
 
-   // Per-chromosome breakdown only if --verbose
-   if (verbose && !stats.reads_per_chromosome.empty()) {
-      // Already printed inside Print() when verbose=true, so re-call with verbose
-      // Here we just guard the flag correctly — Print() always shows chromosomes
-      // if they were collected; verbose controls collection in ComputeStats.
+   // Computation and I/O are separate — tool controls printing
+   result.stats.Print();
+
+   if (verbose && !result.stats.reads_per_chromosome.empty()) {
+      std::cout << "\n--- Reads per Chromosome ---\n";
+      for (const auto &[chrom, count] : result.stats.reads_per_chromosome) {
+         double pct = 100.0 * count / result.stats.total_reads;
+         std::cout << "  " << chrom << ": " << count
+                   << "  (" << pct << "%)\n";
+      }
    }
 
    return 0;

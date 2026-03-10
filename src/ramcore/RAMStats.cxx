@@ -6,6 +6,7 @@
 #include <TFile.h>
 
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
@@ -41,9 +42,9 @@ void RAMStats::Print() const
              << std::setw(30) << "Properly paired reads:" << properly_paired_reads
              << "  (" << pct(properly_paired_reads, total_reads) << "%)\n"
              << std::setw(30) << "Forward strand:"        << forward_strand
-             << "  (" << pct(forward_strand, total_reads) << "%)\n"
+             << "  (" << pct(forward_strand, mapped_reads) << "% of mapped)\n"
              << std::setw(30) << "Reverse strand:"        << reverse_strand
-             << "  (" << pct(reverse_strand, total_reads) << "%)\n"
+             << "  (" << pct(reverse_strand, mapped_reads) << "% of mapped)\n"
              << std::setw(30) << "Total bases:"           << total_bases << "\n"
              << std::setw(30) << "Mean read length:"
              << std::fixed << std::setprecision(2) << mean_read_length << "\n"
@@ -61,11 +62,23 @@ void RAMStats::Print() const
    std::cout << "===========================\n\n";
 }
 
-RAMStats ComputeStats(const char *filename, bool verbose)
+/// Extract the original sequence length from an encoded seq field.
+/// The field format is: [4-byte uint32_t length][packed 2-bit nucleotides]
+/// We use memcpy to avoid undefined behaviour from unaligned reinterpret_cast.
+static uint32_t DecodedSeqLength(const std::string &encoded_seq)
+{
+   if (encoded_seq.size() < 4)
+      return 0;
+   uint32_t length = 0;
+   std::memcpy(&length, encoded_seq.data(), sizeof(length));
+   return length;
+}
+
+RAMStatsResult ComputeStats(const char *filename)
 {
    RAMStats stats;
 
-   // Load reference name map from the file
+   // Load reference name map stored alongside the RNTuple
    RAMNTupleRecord::ReadAllRefs(filename);
    RAMNTupleRefs *rnameRefs = RAMNTupleRecord::GetRnameRefs();
 
@@ -73,16 +86,13 @@ RAMStats ComputeStats(const char *filename, bool verbose)
    try {
       reader = ROOT::RNTupleReader::Open("RAM", filename);
    } catch (const std::exception &e) {
-      std::cerr << "Error opening file: " << e.what() << "\n";
-      return stats;
+      // Return error result so caller can distinguish bad file from empty file
+      return RAMStatsResult{stats, false, e.what()};
    }
 
-   if (!reader) {
-      std::cerr << "Error: could not open RNTuple 'RAM' in " << filename << "\n";
-      return stats;
-   }
+   if (!reader)
+      return RAMStatsResult{stats, false, "RNTupleReader::Open returned nullptr"};
 
-   // Correct field names: all nested under "record."
    auto viewFlag  = reader->GetView<uint16_t>("record.flag");
    auto viewMapQ  = reader->GetView<uint8_t>("record.mapq");
    auto viewSeq   = reader->GetView<std::string>("record.seq");
@@ -102,35 +112,32 @@ RAMStats ComputeStats(const char *filename, bool verbose)
 
       if (flag & FLAG_UNMAPPED) {
          stats.unmapped_reads++;
+         // Unmapped reads have no strand — do NOT count them in strand stats
       } else {
          stats.mapped_reads++;
          mapq_sum += mapq;
+         // Strand is only meaningful for mapped reads
+         if (flag & FLAG_REVERSE_STRAND)
+            stats.reverse_strand++;
+         else
+            stats.forward_strand++;
       }
 
       if (flag & FLAG_DUPLICATE)   stats.duplicate_reads++;
       if (flag & FLAG_PAIRED)      stats.paired_reads++;
       if (flag & FLAG_PROPER_PAIR) stats.properly_paired_reads++;
 
-      if (flag & FLAG_REVERSE_STRAND)
-         stats.reverse_strand++;
-      else
-         stats.forward_strand++;
-
-      // seq is encoded — first 4 bytes store sequence length as uint32_t
-      uint64_t rlen = 0;
-      if (seq.size() >= 4) {
-         rlen = *reinterpret_cast<const uint32_t *>(seq.data());
-      }
+      // Extract sequence length from encoded field (4-byte length prefix + packed nibbles)
+      uint32_t rlen = DecodedSeqLength(seq);
       len_sum           += rlen;
       stats.total_bases += rlen;
 
-      // Resolve chromosome name from refid
+      // Resolve chromosome name from integer refid via the ref name table
       if (refid >= 0 && rnameRefs &&
           refid < static_cast<int32_t>(rnameRefs->Size())) {
          const std::string &chrom = rnameRefs->GetRefName(refid);
-         if (!chrom.empty() && chrom != "*") {
+         if (!chrom.empty() && chrom != "*")
             stats.reads_per_chromosome[chrom]++;
-         }
       }
    }
 
@@ -139,10 +146,7 @@ RAMStats ComputeStats(const char *filename, bool verbose)
    if (stats.mapped_reads > 0)
       stats.mean_mapping_quality = static_cast<double>(mapq_sum) / stats.mapped_reads;
 
-   if (verbose)
-      stats.Print();
-
-   return stats;
+   return RAMStatsResult{stats, true, ""};
 }
 
 } // namespace ramcore
