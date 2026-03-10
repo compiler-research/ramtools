@@ -37,3 +37,4 @@ install(TARGETS ramcoretests chromosome_split_test
 )
 
 add_ramcore_test(ramstatstests ramstatstests.cxx)
+add_ramcore_test(samparsertest samparsertest.cxx)
