@@ -51,14 +51,6 @@ void RAMStats::Print() const
              << std::setw(30) << "Mean mapping quality:"
              << std::fixed << std::setprecision(2) << mean_mapping_quality << "\n";
 
-   if (!reads_per_chromosome.empty()) {
-      std::cout << "\n--- Reads per Chromosome ---\n";
-      for (const auto &[chrom, count] : reads_per_chromosome) {
-         std::cout << std::setw(20) << chrom << ": "
-                   << count
-                   << "  (" << pct(count, total_reads) << "%)\n";
-      }
-   }
    std::cout << "===========================\n\n";
 }
 
@@ -79,6 +71,7 @@ RAMStatsResult ComputeStats(const char *filename)
    RAMStats stats;
 
    // Load reference name map stored alongside the RNTuple
+   RAMNTupleRecord::InitializeRefs();
    RAMNTupleRecord::ReadAllRefs(filename);
    RAMNTupleRefs *rnameRefs = RAMNTupleRecord::GetRnameRefs();
 

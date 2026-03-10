@@ -28,6 +28,7 @@ int main(int argc, char **argv)
    // Computation and I/O are separate — tool controls printing
    result.stats.Print();
 
+   // Per-chromosome breakdown only with --verbose
    if (verbose && !result.stats.reads_per_chromosome.empty()) {
       std::cout << "\n--- Reads per Chromosome ---\n";
       for (const auto &[chrom, count] : result.stats.reads_per_chromosome) {
@@ -35,6 +36,7 @@ int main(int argc, char **argv)
          std::cout << "  " << chrom << ": " << count
                    << "  (" << pct << "%)\n";
       }
+      std::cout << "\n";
    }
 
    return 0;
