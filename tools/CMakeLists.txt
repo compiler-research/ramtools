@@ -29,6 +29,13 @@ ROOT_EXECUTABLE(ramstats
         ROOT::Core
         ROOT::ROOTNTuple
 )
+ROOT_EXECUTABLE(ramsort
+    ramsort.cxx
+    LIBRARIES
+        ramcore
+        ROOT::Core
+        ROOT::ROOTNTuple
+)
 install(TARGETS samtoram samtoramntuple ramntupleview ramstats
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
