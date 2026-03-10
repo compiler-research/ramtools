@@ -100,13 +100,33 @@ TEST_F(RAMStatsTest, ChromosomeCountsSumToAtMostTotal)
    EXPECT_LE(chrom_sum, result.stats.total_reads);
 }
 
-/// ComputeStats on a non-existent file must return zero total reads.
-TEST(RAMStatsEdgeCases, NonExistentFileReturnsEmpty)
+/// Print() must produce non-empty output containing expected headers.
+TEST_F(RAMStatsTest, PrintProducesOutput)
 {
-   auto result = ramcore::ComputeStats("nonexistent_file.root");
-   EXPECT_EQ(result.stats.total_reads, 0u);
-
+   auto result = ramcore::ComputeStats(kRootFile);
+   ASSERT_TRUE(result.ok);
+   testing::internal::CaptureStdout();
+   result.stats.Print();
+   std::string output = testing::internal::GetCapturedStdout();
+   EXPECT_FALSE(output.empty());
+   EXPECT_NE(output.find("Total reads:"), std::string::npos);
+   EXPECT_NE(output.find("Mapped reads:"), std::string::npos);
+   EXPECT_NE(output.find("Mean mapping quality:"), std::string::npos);
 }
 
-/// ComputeStats on a non-existent file must return zero total reads.
+/// ComputeStats on a non-existent file must return ok=false with error message.
+TEST(RAMStatsEdgeCases, BadFileReturnsErrorResult)
+{
+   auto result = ramcore::ComputeStats("nonexistent_file.root");
+   EXPECT_FALSE(result.ok);
+   EXPECT_FALSE(result.error_message.empty());
+}
+
+/// ComputeStats result ok must be true for a valid file.
+TEST_F(RAMStatsTest, ValidFileReturnsOk)
+{
+   auto result = ramcore::ComputeStats(kRootFile);
+   EXPECT_TRUE(result.ok);
+   EXPECT_TRUE(result.error_message.empty());
+}
 } // namespace
