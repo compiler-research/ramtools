@@ -40,15 +40,12 @@ TEST_F(SamParserTest, NonExistentFileReturnsFalse)
 /// Header lines starting with '@' must trigger the header callback.
 TEST_F(SamParserTest, HeaderCallbackFired)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\tSO:coordinate\n"
-            "@SQ\tSN:chr1\tLN:248956422\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\tSO:coordinate\n"
+                      "@SQ\tSN:chr1\tLN:248956422\n");
 
    ramcore::SamParser parser;
    std::vector<std::string> tags;
-   parser.ParseFile(kSamFile,
-      [&](const std::string &tag, const std::string &) { tags.push_back(tag); },
-      nullptr);
+   parser.ParseFile(kSamFile, [&](const std::string &tag, const std::string &) { tags.push_back(tag); }, nullptr);
 
    ASSERT_EQ(tags.size(), 2u);
    EXPECT_EQ(tags[0], "@HD");
@@ -58,15 +55,13 @@ TEST_F(SamParserTest, HeaderCallbackFired)
 /// Record callback must fire once per alignment line.
 TEST_F(SamParserTest, RecordCallbackFiredForEachAlignment)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\n"
-            "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n"
-            "read2\t16\tchr1\t200\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\n"
+                      "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n"
+                      "read2\t16\tchr1\t200\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n");
 
    ramcore::SamParser parser;
    size_t count = 0;
-   parser.ParseFile(kSamFile, nullptr,
-      [&](const ramcore::SamRecord &, size_t) { ++count; });
+   parser.ParseFile(kSamFile, nullptr, [&](const ramcore::SamRecord &, size_t) { ++count; });
 
    EXPECT_EQ(count, 2u);
    EXPECT_EQ(parser.GetRecordsProcessed(), 2u);
@@ -75,26 +70,24 @@ TEST_F(SamParserTest, RecordCallbackFiredForEachAlignment)
 /// Parsed record fields must match the SAM columns exactly.
 TEST_F(SamParserTest, RecordFieldsParsedCorrectly)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\n"
-            "myread\t99\tchr2\t500\t30\t5M2I3M\t=\t600\t110\tACGTACGTAC\tIIIIIIIIII\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\n"
+                      "myread\t99\tchr2\t500\t30\t5M2I3M\t=\t600\t110\tACGTACGTAC\tIIIIIIIIII\n");
 
    ramcore::SamParser parser;
    ramcore::SamRecord captured;
-   parser.ParseFile(kSamFile, nullptr,
-      [&](const ramcore::SamRecord &rec, size_t) { captured = rec; });
+   parser.ParseFile(kSamFile, nullptr, [&](const ramcore::SamRecord &rec, size_t) { captured = rec; });
 
-   EXPECT_EQ(captured.qname,  "myread");
-   EXPECT_EQ(captured.flag,   99);
-   EXPECT_EQ(captured.rname,  "chr2");
-   EXPECT_EQ(captured.pos,    500);
-   EXPECT_EQ(captured.mapq,   30);
-   EXPECT_EQ(captured.cigar,  "5M2I3M");
-   EXPECT_EQ(captured.rnext,  "=");
-   EXPECT_EQ(captured.pnext,  600);
-   EXPECT_EQ(captured.tlen,   110);
-   EXPECT_EQ(captured.seq,    "ACGTACGTAC");
-   EXPECT_EQ(captured.qual,   "IIIIIIIIII");
+   EXPECT_EQ(captured.qname, "myread");
+   EXPECT_EQ(captured.flag, 99);
+   EXPECT_EQ(captured.rname, "chr2");
+   EXPECT_EQ(captured.pos, 500);
+   EXPECT_EQ(captured.mapq, 30);
+   EXPECT_EQ(captured.cigar, "5M2I3M");
+   EXPECT_EQ(captured.rnext, "=");
+   EXPECT_EQ(captured.pnext, 600);
+   EXPECT_EQ(captured.tlen, 110);
+   EXPECT_EQ(captured.seq, "ACGTACGTAC");
+   EXPECT_EQ(captured.qual, "IIIIIIIIII");
 }
 
 /// An empty SAM file (no headers, no records) must parse successfully.
@@ -110,14 +103,12 @@ TEST_F(SamParserTest, EmptyFileParseSucceeds)
 /// A SAM file with only headers and no records must produce zero record calls.
 TEST_F(SamParserTest, HeaderOnlyFileProducesNoRecords)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\n"
-            "@SQ\tSN:chr1\tLN:1000\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\n"
+                      "@SQ\tSN:chr1\tLN:1000\n");
 
    ramcore::SamParser parser;
    size_t count = 0;
-   parser.ParseFile(kSamFile, nullptr,
-      [&](const ramcore::SamRecord &, size_t) { ++count; });
+   parser.ParseFile(kSamFile, nullptr, [&](const ramcore::SamRecord &, size_t) { ++count; });
 
    EXPECT_EQ(count, 0u);
 }
@@ -125,14 +116,12 @@ TEST_F(SamParserTest, HeaderOnlyFileProducesNoRecords)
 /// Optional fields must be captured in the record.
 TEST_F(SamParserTest, OptionalFieldsCaptured)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\n"
-            "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\tNM:i:0\tRG:Z:sample1\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\n"
+                      "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\tNM:i:0\tRG:Z:sample1\n");
 
    ramcore::SamParser parser;
    ramcore::SamRecord captured;
-   parser.ParseFile(kSamFile, nullptr,
-      [&](const ramcore::SamRecord &rec, size_t) { captured = rec; });
+   parser.ParseFile(kSamFile, nullptr, [&](const ramcore::SamRecord &rec, size_t) { captured = rec; });
 
    EXPECT_GE(captured.optional_fields.size(), 1u);
 }
@@ -140,10 +129,9 @@ TEST_F(SamParserTest, OptionalFieldsCaptured)
 /// Lines processed counter must include both header and record lines.
 TEST_F(SamParserTest, LinesProcessedCountIsCorrect)
 {
-   WriteSAM(kSamFile,
-            "@HD\tVN:1.6\n"
-            "@SQ\tSN:chr1\tLN:1000\n"
-            "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n");
+   WriteSAM(kSamFile, "@HD\tVN:1.6\n"
+                      "@SQ\tSN:chr1\tLN:1000\n"
+                      "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tACGTACGTAC\t*\n");
 
    ramcore::SamParser parser;
    parser.ParseFile(kSamFile, nullptr, nullptr);
