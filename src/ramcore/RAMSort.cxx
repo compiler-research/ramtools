@@ -3,15 +3,19 @@
 
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleReader.hxx>
-#include <ROOT/RNTupleWriter.hxx>
-#include <ROOT/RNTupleWriteOptions.hxx>
 #include <ROOT/RNTupleView.hxx>
+#include <ROOT/RNTupleWriteOptions.hxx>
+#include <ROOT/RNTupleWriter.hxx>
 #include <TFile.h>
 
 #include <algorithm>
+#include <cstdint>
+#include <exception>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 int ramsortntuple(const char *inputFile, const char *outputFile, bool byName)
@@ -37,7 +41,7 @@ int ramsortntuple(const char *inputFile, const char *outputFile, bool byName)
    auto viewQname = reader->GetView<std::string>("record.qname");
 
    std::vector<uint64_t> order(nEntries);
-   std::iota(order.begin(), order.end(), 0);
+   std::iota(order.begin(), order.end(), 0ULL);
 
    std::cout << "Sorting " << nEntries << " records";
    if (byName)
@@ -52,7 +56,8 @@ int ramsortntuple(const char *inputFile, const char *outputFile, bool byName)
       std::stable_sort(order.begin(), order.end(),
                        [&](uint64_t a, uint64_t b) { return qnames[a] < qnames[b]; });
    } else {
-      std::vector<int32_t> refids(nEntries), positions(nEntries);
+      std::vector<int32_t> refids(nEntries);
+      std::vector<int32_t> positions(nEntries);
       for (uint64_t i = 0; i < nEntries; ++i) {
          refids[i]    = viewRefId(i);
          positions[i] = viewPos(i);
@@ -75,7 +80,7 @@ int ramsortntuple(const char *inputFile, const char *outputFile, bool byName)
    RAMNTupleRecord::InitializeRefs();
    auto model = RAMNTupleRecord::MakeModel();
    ROOT::RNTupleWriteOptions writeOptions;
-   writeOptions.SetCompression(505);
+   writeOptions.SetCompression(/*val=*/505);
    auto writer    = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
    auto entry     = writer->GetModel().CreateEntry();
    auto recordPtr = entry->GetPtr<RAMNTupleRecord>("record");
