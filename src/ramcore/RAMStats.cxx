@@ -28,28 +28,24 @@ void RAMStats::Print() const
    };
 
    std::cout << "\n=== RAMTools Statistics ===\n";
-   std::cout << std::left
-             << std::setw(30) << "Total reads:"           << total_reads << "\n"
-             << std::setw(30) << "Mapped reads:"          << mapped_reads
-             << std::fixed << std::setprecision(2)
-             << "  (" << pct(mapped_reads, total_reads) << "%)\n"
-             << std::setw(30) << "Unmapped reads:"        << unmapped_reads
-             << "  (" << pct(unmapped_reads, total_reads) << "%)\n"
-             << std::setw(30) << "Duplicate reads:"       << duplicate_reads
-             << "  (" << pct(duplicate_reads, total_reads) << "%)\n"
-             << std::setw(30) << "Paired reads:"          << paired_reads
-             << "  (" << pct(paired_reads, total_reads) << "%)\n"
-             << std::setw(30) << "Properly paired reads:" << properly_paired_reads
-             << "  (" << pct(properly_paired_reads, total_reads) << "%)\n"
-             << std::setw(30) << "Forward strand:"        << forward_strand
-             << "  (" << pct(forward_strand, mapped_reads) << "% of mapped)\n"
-             << std::setw(30) << "Reverse strand:"        << reverse_strand
-             << "  (" << pct(reverse_strand, mapped_reads) << "% of mapped)\n"
-             << std::setw(30) << "Total bases:"           << total_bases << "\n"
-             << std::setw(30) << "Mean read length:"
-             << std::fixed << std::setprecision(2) << mean_read_length << "\n"
-             << std::setw(30) << "Mean mapping quality:"
-             << std::fixed << std::setprecision(2) << mean_mapping_quality << "\n";
+   std::cout << std::left << std::setw(30) << "Total reads:" << total_reads << "\n"
+             << std::setw(30) << "Mapped reads:" << mapped_reads << std::fixed << std::setprecision(2) << "  ("
+             << pct(mapped_reads, total_reads) << "%)\n"
+             << std::setw(30) << "Unmapped reads:" << unmapped_reads << "  (" << pct(unmapped_reads, total_reads)
+             << "%)\n"
+             << std::setw(30) << "Duplicate reads:" << duplicate_reads << "  (" << pct(duplicate_reads, total_reads)
+             << "%)\n"
+             << std::setw(30) << "Paired reads:" << paired_reads << "  (" << pct(paired_reads, total_reads) << "%)\n"
+             << std::setw(30) << "Properly paired reads:" << properly_paired_reads << "  ("
+             << pct(properly_paired_reads, total_reads) << "%)\n"
+             << std::setw(30) << "Forward strand:" << forward_strand << "  (" << pct(forward_strand, mapped_reads)
+             << "% of mapped)\n"
+             << std::setw(30) << "Reverse strand:" << reverse_strand << "  (" << pct(reverse_strand, mapped_reads)
+             << "% of mapped)\n"
+             << std::setw(30) << "Total bases:" << total_bases << "\n"
+             << std::setw(30) << "Mean read length:" << std::fixed << std::setprecision(2) << mean_read_length << "\n"
+             << std::setw(30) << "Mean mapping quality:" << std::fixed << std::setprecision(2) << mean_mapping_quality
+             << "\n";
    std::cout << "===========================\n\n";
 }
 
@@ -133,11 +129,9 @@ RAMStatsResult ComputeStats(const char *filename)
    }
 
    if (stats.total_reads > 0)
-      stats.mean_read_length =
-         static_cast<double>(len_sum) / static_cast<double>(stats.total_reads);
+      stats.mean_read_length = static_cast<double>(len_sum) / static_cast<double>(stats.total_reads);
    if (stats.mapped_reads > 0)
-      stats.mean_mapping_quality =
-         static_cast<double>(mapq_sum) / static_cast<double>(stats.mapped_reads);
+      stats.mean_mapping_quality = static_cast<double>(mapq_sum) / static_cast<double>(stats.mapped_reads);
 
    return RAMStatsResult{stats, true, ""};
 }
