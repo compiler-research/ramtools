@@ -25,7 +25,7 @@ if(ENABLE_COVERAGE)
 endif()
 
 set(ROOT_MIN_VERSION 6.26)
-find_package(ROOT ${ROOT_MIN_VERSION} REQUIRED COMPONENTS Core RIO Tree ROOTNTuple ROOTNTupleUtil)
+find_package(ROOT ${ROOT_MIN_VERSION} REQUIRED COMPONENTS Core RIO Tree ROOTNTuple ROOTNTupleUtil ROOTDataFrame)
 
 include(${ROOT_USE_FILE})
 
@@ -65,6 +65,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         ROOT::Tree
         ROOT::ROOTNTuple
         ROOT::ROOTNTupleUtil
+        ROOT::ROOTDataFrame
     INSTALL_OPTIONS
         DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
