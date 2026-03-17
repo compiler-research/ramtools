@@ -69,6 +69,18 @@ int RAMNTupleRefs::GetRefId(const std::string &rname)
    return fLastId;
 }
 
+int RAMNTupleRefs::FindRefId(const std::string &rname) const
+{
+   if (rname == "*")
+      return -1;
+   if (rname == fLastName)
+      return fLastId;
+   auto it = std::find(fRefVec.begin(), fRefVec.end(), rname);
+   if (it != fRefVec.end())
+      return static_cast<int>(std::distance(fRefVec.begin(), it));
+   return -1;
+}
+
 const std::string &RAMNTupleRefs::GetRefName(int rid) const
 {
    static const std::string star = "*";

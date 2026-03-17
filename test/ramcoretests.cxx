@@ -1,7 +1,4 @@
 #include <gtest/gtest.h>
-#include <ROOT/RNTupleReader.hxx>
-#include <ROOT/RNTupleView.hxx>
-#include <Rtypes.h>
 #include <TFile.h>
 #include <TTree.h>
 #include <cstdint>
@@ -311,4 +308,30 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
 
    std::remove(customSam);
    std::remove(rntupleFile);
+}
+
+TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
+{
+   const char *samFile = "samexample.sam";
+   const char *rntupleFile = "test_rntuple.root";
+
+   samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
+
+   // Record ref count before querying invalid chromosome
+   size_t refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   // Query a chromosome that does not exist in the file
+   testing::internal::CaptureStdout();
+   Long64_t count = ramntupleview(rntupleFile, "chrINVALID:100-200", true, false, nullptr);
+   testing::internal::GetCapturedStdout();
+
+   size_t refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   // Bug: before fix, chrINVALID was inserted into fRefVec
+   EXPECT_EQ(refsBefore, refsAfter)
+      << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
+
+   // Query should return 0 records for unknown chromosome
+   EXPECT_EQ(count, 0)
+      << "Expected 0 records for unknown chromosome, got " << count;
 }
