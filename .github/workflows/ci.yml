@@ -24,7 +24,7 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libvdt-dev libtbb-dev
+        sudo apt-get install -y libvdt-dev libtbb-dev libhts-dev
     
     - name: Configure CMake
       run: |
@@ -67,7 +67,7 @@ jobs:
     - name: Install build and coverage dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libvdt-dev libtbb-dev gcovr lcov
+        sudo apt-get install -y libvdt-dev libtbb-dev gcovr lcov libhts-dev
         
     - name: Configure with coverage
       run: |
@@ -96,7 +96,11 @@ jobs:
     - name: Generate coverage report
       run: |
         cd build
-        gcovr -r .. --xml-pretty --xml coverage.xml --print-summary
+        gcovr -r .. \
+          --xml-pretty --xml coverage.xml \
+          --exclude '../test/' \
+          --exclude '../benchmark/' \
+          --print-summary
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5

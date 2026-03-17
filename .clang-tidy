@@ -10,6 +10,8 @@ Checks: >
   performance-*,
   portability-*,
   readability-*,
+  -bugprone-branch-clone,
+  -bugprone-casting-through-void,
   -bugprone-narrowing-conversions,
   -bugprone-easily-swappable-parameters,
   -bugprone-implicit-widening-of-multiplication-result,
@@ -28,7 +30,9 @@ Checks: >
   -readability-function-cognitive-complexity,
   -readability-implicit-bool-conversion,
   -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
   -clang-analyzer-cplusplus.NewDeleteLeaks,
+  -llvm-header-guard,
 
 CheckOptions:
   - key:             readability-identifier-naming.ClassCase
