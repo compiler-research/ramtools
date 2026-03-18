@@ -463,3 +463,39 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
    std::remove(samFile);
    std::remove(ramFile);
 }
+
+TEST_F(ramcoreTest, SamParserRejectsNonNumericFields)
+{
+   const char *badSam = "test_bad_fields.sam";
+   const char *rntupleFile = "test_bad_fields.root";
+
+   {
+      std::ofstream sam(badSam);
+      sam << "@HD\tVN:1.6\tSO:unsorted\n";
+      sam << "@SQ\tSN:chr1\tLN:10000\n";
+      // Non-numeric FLAG
+      sam << "read1\tBROKEN\tchr1\t100\t60\t50M\t*\t0\t0\t"
+          << std::string(50, 'A') << "\t*\n";
+      // Non-numeric POS
+      sam << "read2\t0\tchr1\tBAD\t60\t50M\t*\t0\t0\t"
+          << std::string(50, 'A') << "\t*\n";
+      // Trailing characters in MAPQ
+      sam << "read4\t0\tchr1\t300\t60abc\t50M\t*\t0\t0\t"
+          << std::string(50, 'A') << "\t*\n";
+      // Out-of-range POS
+      sam << "read5\t0\tchr1\t99999999999999\t60\t50M\t*\t0\t0\t"
+          << std::string(50, 'A') << "\t*\n";
+      // Valid record with negative TLEN
+      sam << "read3\t0\tchr1\t200\t60\t50M\t*\t0\t-150\t"
+          << std::string(50, 'A') << "\t*\n";
+   }
+
+   samtoramntuple(badSam, rntupleFile, false, false, false, 505, 0);
+
+   auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
+   EXPECT_EQ(reader->GetNEntries(), 1)
+      << "Only the valid record should be written; corrupted records must be rejected";
+
+   std::remove(badSam);
+   std::remove(rntupleFile);
+}

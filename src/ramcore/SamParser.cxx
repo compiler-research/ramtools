@@ -1,8 +1,35 @@
 #include "ramcore/SamParser.h"
 #include <cstring>
 #include <cstdlib>
+#include <stdexcept>
+#include <string>
+#include <iostream>
 
 namespace ramcore {
+
+static bool StrictAtoi(const char* token, const char* field_name, int& result) {
+    try {
+        size_t pos = 0;
+        result = std::stoi(std::string(token), &pos);
+        if (pos != std::strlen(token)) {
+            std::cerr << "SamParser: invalid value '" << token
+                      << "' for field " << field_name
+                      << " (trailing characters)\n";
+            return false;
+        }
+        return true;
+    } catch (const std::invalid_argument&) {
+        std::cerr << "SamParser: invalid value '" << token
+                  << "' for field " << field_name
+                  << " (not a number)\n";
+        return false;
+    } catch (const std::out_of_range&) {
+        std::cerr << "SamParser: value '" << token
+                  << "' for field " << field_name
+                  << " is out of range\n";
+        return false;
+    }
+}
 
 void StripCRLF(char* str) {
     size_t len = strlen(str);
@@ -65,14 +92,14 @@ bool SamParser::ParseLine(char* line, SamRecord& record) {
     while (token) {
         switch (field_num) {
             case 0: record.qname = token; break;
-            case 1: record.flag = atoi(token); break;
+            case 1: if (!StrictAtoi(token, "FLAG", record.flag)) return false; break;
             case 2: record.rname = token; break;
-            case 3: record.pos = atoi(token); break;
-            case 4: record.mapq = atoi(token); break;
+            case 3: if (!StrictAtoi(token, "POS", record.pos)) return false; break;
+            case 4: if (!StrictAtoi(token, "MAPQ", record.mapq)) return false; break;
             case 5: record.cigar = token; break;
             case 6: record.rnext = token; break;
-            case 7: record.pnext = atoi(token); break;
-            case 8: record.tlen = atoi(token); break;
+            case 7: if (!StrictAtoi(token, "PNEXT", record.pnext)) return false; break;
+            case 8: if (!StrictAtoi(token, "TLEN", record.tlen)) return false; break;
             case 9: record.seq = token; break;
             case 10: 
                 StripCRLF(token);
