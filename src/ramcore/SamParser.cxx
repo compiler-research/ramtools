@@ -1,34 +1,31 @@
 #include "ramcore/SamParser.h"
-#include <cstring>
+#include <cerrno>
+#include <climits>
 #include <cstdlib>
-#include <stdexcept>
-#include <string>
+#include <cstring>
 #include <iostream>
 
 namespace ramcore {
 
 static bool StrictAtoi(const char* token, const char* field_name, int& result) {
-    try {
-        size_t pos = 0;
-        result = std::stoi(std::string(token), &pos);
-        if (pos != std::strlen(token)) {
-            std::cerr << "SamParser: invalid value '" << token
-                      << "' for field " << field_name
-                      << " (trailing characters)\n";
-            return false;
-        }
-        return true;
-    } catch (const std::invalid_argument&) {
+    char* end = nullptr;
+    errno = 0;
+    long val = strtol(token, &end, 10);
+
+    if (end == token || *end != '\0') {
         std::cerr << "SamParser: invalid value '" << token
                   << "' for field " << field_name
                   << " (not a number)\n";
         return false;
-    } catch (const std::out_of_range&) {
+    }
+    if (errno == ERANGE || val < INT_MIN || val > INT_MAX) {
         std::cerr << "SamParser: value '" << token
                   << "' for field " << field_name
                   << " is out of range\n";
         return false;
     }
+    result = static_cast<int>(val);
+    return true;
 }
 
 void StripCRLF(char* str) {
