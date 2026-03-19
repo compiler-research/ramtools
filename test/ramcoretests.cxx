@@ -182,11 +182,12 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
    RAMNTupleRecord::InitializeRefs();
    auto index = RAMNTupleRecord::GetIndex();
 
+   //  test with hard coded entries
    index->AddItem(0, 100, 0);
    index->AddItem(0, 200, 1);
    index->AddItem(0, 300, 2);
    index->AddItem(1, 150, 3);
-
+   
    auto rows = index->GetRowsInRange(0, 150, 250);
    ASSERT_EQ(rows.size(), 1u);
    EXPECT_EQ(rows[0], 1);
@@ -200,6 +201,28 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
    auto otherChrom = index->GetRowsInRange(1, 100, 200);
    ASSERT_EQ(otherChrom.size(), 1u);
    EXPECT_EQ(otherChrom[0], 3);
+
+   // test with generated entries
+   const char *mockFile = "test_mock_index.root";
+   samtoramntuple("samexample.sam", mockFile, true, true, true, 505, 0);
+
+   auto reader = RAMNTupleRecord::OpenRAMFile(mockFile);
+   ASSERT_NE(reader, nullptr);
+   EXPECT_GT(index->Size(), 0u);
+
+   int chr1_refid = RAMNTupleRecord::GetRnameRefs()->GetRefId("chr1");
+   EXPECT_GE(chr1_refid, 0);
+
+   auto wideRows = index->GetRowsInRange(chr1_refid, 0, 1000000000);
+   for (int64_t row : wideRows) {
+      EXPECT_GE(row, 0);
+      EXPECT_LT(row, static_cast<int64_t>(reader->GetNEntries()));
+   }
+   
+   auto invalidRows = index->GetRowsInRange(-1, 0, 1000000000);
+   EXPECT_TRUE(invalidRows.empty());
+
+   std::remove(mockFile);
 }
 
 } // namespace
