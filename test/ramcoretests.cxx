@@ -16,6 +16,7 @@
 #include "../tools/ramview.cxx"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMNTupleRecord.h"
 #include "ramcore/SamToTTree.h"
 namespace {
 
@@ -31,6 +32,7 @@ protected:
         std::remove("test_ttree.root");
         std::remove("test_rntuple.root");
         std::remove("samexample.sam");
+        RAMNTupleRecord::GetIndex()->Clear();
     }
 };
 
@@ -179,27 +181,22 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
 {
    RAMNTupleRecord::InitializeRefs();
    auto index = RAMNTupleRecord::GetIndex();
-   index->Clear();
 
    index->AddItem(0, 100, 0);
    index->AddItem(0, 200, 1);
    index->AddItem(0, 300, 2);
    index->AddItem(1, 150, 3);
 
-   // Normal range
    auto rows = index->GetRowsInRange(0, 150, 250);
    ASSERT_EQ(rows.size(), 1u);
    EXPECT_EQ(rows[0], 1);
 
-   // Full range covers all entries on refid=0
    auto all = index->GetRowsInRange(0, 0, 400);
    EXPECT_EQ(all.size(), 3u);
 
-   // No entries in range
    auto none = index->GetRowsInRange(0, 400, 500);
    EXPECT_TRUE(none.empty());
 
-   // Different refid
    auto otherChrom = index->GetRowsInRange(1, 100, 200);
    ASSERT_EQ(otherChrom.size(), 1u);
    EXPECT_EQ(otherChrom[0], 3);
