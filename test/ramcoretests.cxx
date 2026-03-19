@@ -180,46 +180,47 @@ TEST_F(ramcoreTest, RNTupleViewFlagFiltering)
 TEST_F(ramcoreTest, IndexGetRowsInRange)
 {
    RAMNTupleRecord::InitializeRefs();
-   auto index = RAMNTupleRecord::GetIndex();
+   auto *index = RAMNTupleRecord::GetIndex();
 
    //  test with hard coded entries
-   index->AddItem(0, 100, 0);
-   index->AddItem(0, 200, 1);
-   index->AddItem(0, 300, 2);
-   index->AddItem(1, 150, 3);
-   
-   auto rows = index->GetRowsInRange(0, 150, 250);
-   ASSERT_EQ(rows.size(), 1u);
+   index->AddItem(/*refid=*/0, /*pos=*/100, /*row=*/0);
+   index->AddItem(/*refid=*/0, /*pos=*/200, /*row=*/1);
+   index->AddItem(/*refid=*/0, /*pos=*/300, /*row=*/2);
+   index->AddItem(/*refid=*/1, /*pos=*/150, /*row=*/3);
+
+   auto rows = index->GetRowsInRange(/*refid=*/0, /*start=*/150, /*end=*/250);
+   ASSERT_EQ(rows.size(), 1U);
    EXPECT_EQ(rows[0], 1);
 
-   auto all = index->GetRowsInRange(0, 0, 400);
-   EXPECT_EQ(all.size(), 3u);
+   auto all = index->GetRowsInRange(/*refid=*/0, /*start=*/0, /*end=*/400);
+   EXPECT_EQ(all.size(), 3U);
 
-   auto none = index->GetRowsInRange(0, 400, 500);
+   auto none = index->GetRowsInRange(/*refid=*/0, /*start=*/400, /*end=*/500);
    EXPECT_TRUE(none.empty());
 
-   auto otherChrom = index->GetRowsInRange(1, 100, 200);
-   ASSERT_EQ(otherChrom.size(), 1u);
+   auto otherChrom = index->GetRowsInRange(/*refid=*/1, /*start=*/100, /*end=*/200);
+   ASSERT_EQ(otherChrom.size(), 1U);
    EXPECT_EQ(otherChrom[0], 3);
 
    // test with generated entries
    const char *mockFile = "test_mock_index.root";
-   samtoramntuple("samexample.sam", mockFile, true, true, true, 505, 0);
+   samtoramntuple(/*datafile=*/"samexample.sam", mockFile, /*index=*/true, /*split=*/true, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    auto reader = RAMNTupleRecord::OpenRAMFile(mockFile);
    ASSERT_NE(reader, nullptr);
-   EXPECT_GT(index->Size(), 0u);
+   EXPECT_GT(index->Size(), 0U);
 
    int chr1_refid = RAMNTupleRecord::GetRnameRefs()->GetRefId("chr1");
    EXPECT_GE(chr1_refid, 0);
 
-   auto wideRows = index->GetRowsInRange(chr1_refid, 0, 1000000000);
+   auto wideRows = index->GetRowsInRange(/*refid=*/chr1_refid, /*start=*/0, /*end=*/1000000000);
    for (int64_t row : wideRows) {
       EXPECT_GE(row, 0);
       EXPECT_LT(row, static_cast<int64_t>(reader->GetNEntries()));
    }
-   
-   auto invalidRows = index->GetRowsInRange(-1, 0, 1000000000);
+
+   auto invalidRows = index->GetRowsInRange(/*refid=*/-1, /*start=*/0, /*end=*/1000000000);
    EXPECT_TRUE(invalidRows.empty());
 
    std::remove(mockFile);
