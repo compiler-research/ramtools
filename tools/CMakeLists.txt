@@ -22,7 +22,16 @@ ROOT_EXECUTABLE(ramntupleview
         ROOT::ROOTNTuple
 )
 
-install(TARGETS samtoram samtoramntuple ramntupleview
+ROOT_EXECUTABLE(bamtoramntuple
+    bamtoramntuple.cxx
+    LIBRARIES
+        ramcore
+        hts
+        ROOT::Core
+        ROOT::ROOTNTuple
+)
+
+install(TARGETS samtoram samtoramntuple ramntupleview bamtoramntuple
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
@@ -39,4 +48,3 @@ set(ROOT_MACROS
 install(FILES ${ROOT_MACROS}
     DESTINATION share/ramtools/macros
 )
-

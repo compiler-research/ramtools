@@ -29,6 +29,10 @@ find_package(ROOT ${ROOT_MIN_VERSION} REQUIRED COMPONENTS Core RIO Tree ROOTNTup
 
 include(${ROOT_USE_FILE})
 
+# Find htslib
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(htslib REQUIRED IMPORTED_TARGET htslib)
+
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
@@ -50,6 +54,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         src/ramcore/SamToTTree.cxx
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx
+        src/ramcore/BamtoNTuple.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
@@ -68,14 +73,14 @@ target_include_directories(ramcore
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
+target_link_libraries(ramcore PUBLIC PkgConfig::htslib)
+
 install(DIRECTORY inc/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 if(RAMTOOLS_BUILD_TOOLS)
     add_subdirectory(tools)
 endif()
 
-# Include benchmark directory if benchmarks OR tests are enabled
-# (sam_generator is needed by tests)
 if(RAMTOOLS_BUILD_BENCHMARKS OR RAMTOOLS_BUILD_TESTS)
     add_subdirectory(benchmark)
 endif()
@@ -83,7 +88,7 @@ endif()
 if(RAMTOOLS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
-    
+
     if(ENABLE_COVERAGE)
         add_custom_target(coverage
             COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
@@ -94,4 +99,3 @@ if(RAMTOOLS_BUILD_TESTS)
         )
     endif()
 endif()
-
