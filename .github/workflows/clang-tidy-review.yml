@@ -34,21 +34,18 @@ jobs:
       - name: Install lit
         run: pip install --disable-pip-version-check --no-input lit
 
-      - name: Install ROOT
-        run: |
-          ROOT_URL="https://root.cern/download/root_v6.34.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz"
-          wget -O root.tar.gz "$ROOT_URL"
-          sudo tar -xzf root.tar.gz -C /opt/
-          echo "/opt/root/bin" >> "$GITHUB_PATH"
-
       - name: Run clang-tidy
         uses: ZedThree/clang-tidy-review@v0.21.0
         id: review
         with:
           build_dir: build
-          apt_packages: cmake,libxml2,libxml2-dev,libtinfo-dev,zlib1g-dev,libzstd-dev,libvdt-dev,libtbb-dev
+          apt_packages: cmake,libxml2,libxml2-dev,libtinfo-dev,zlib1g-dev,libzstd-dev,libvdt-dev,libtbb-dev,libhts-dev,wget
           split_workflow: true
           config_file: .clang-tidy
+          install_commands: |
+            wget -q -O root.tar.gz "https://root.cern/download/root_v6.34.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz" &&
+            tar -xzf root.tar.gz -C /opt/ &&
+            rm root.tar.gz
           clang_tidy_args: >
             --extra-arg=-I${{ github.workspace }}/inc
             --extra-arg=-I/opt/root/include
