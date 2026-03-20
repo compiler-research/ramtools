@@ -19,21 +19,24 @@ namespace {
 
 class ramcoreTest : public ::testing::Test {
 protected:
-    void SetUp() override {
-       GenerateSAMFile("samexample.sam", 100);
-       std::remove("test_ttree.root");
-       std::remove("test_rntuple.root");
-    }
+   void SetUp() override
+   {
+      GenerateSAMFile("samexample.sam", 100);
+      std::remove("test_ttree.root");
+      std::remove("test_rntuple.root");
+   }
 
-    void TearDown() override {
-        std::remove("test_ttree.root");
-        std::remove("test_rntuple.root");
-        std::remove("samexample.sam");
-        RAMNTupleRecord::GetIndex()->Clear();
-    }
+   void TearDown() override
+   {
+      std::remove("test_ttree.root");
+      std::remove("test_rntuple.root");
+      std::remove("samexample.sam");
+      RAMNTupleRecord::GetIndex()->Clear();
+   }
 };
 
-TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
+TEST_F(ramcoreTest, ConversionProducesEqualEntries)
+{
    const char *samFile = "samexample.sam";
    const char *ttreeFile = "test_ttree.root";
    const char *rntupleFile = "test_rntuple.root";
@@ -332,6 +335,5 @@ TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
       << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
 
    // Query should return 0 records for unknown chromosome
-   EXPECT_EQ(count, 0)
-      << "Expected 0 records for unknown chromosome, got " << count;
+   EXPECT_EQ(count, 0) << "Expected 0 records for unknown chromosome, got " << count;
 }

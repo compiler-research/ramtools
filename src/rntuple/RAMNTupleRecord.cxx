@@ -758,4 +758,3 @@ void RAMNTupleConverter::ViewRegion(const std::string &ram_file, const std::stri
       std::cout << "Found " << count << " reads in region " << region << std::endl;
    }
 }
-

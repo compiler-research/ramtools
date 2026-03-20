@@ -16,7 +16,7 @@ Long64_t ramntupleview(const char *file, const char *query, bool cache, bool per
 
    auto reader = RAMNTupleRecord::OpenRAMFile(file);
    if (!reader) {
-      printf("ramntupleview: failed to open file %s\n", file);
+      std::cerr << "ramntupleview: failed to open file " << file << std::endl;
       return 0;
    }
 
@@ -37,7 +37,7 @@ Long64_t ramntupleview(const char *file, const char *query, bool cache, bool per
 
    auto refid = RAMNTupleRecord::GetRnameRefs()->FindRefId(rname.Data());
    if (refid < 0) {
-      printf("ramntupleview: unknown reference sequence '%s'\n", rname.Data());
+      std::cerr << "ramntupleview: unknown reference sequence '" << rname.Data() << "'" << std::endl;
       return 0;
    }
    auto index = RAMNTupleRecord::GetIndex();
