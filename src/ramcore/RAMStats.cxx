@@ -136,7 +136,6 @@ RAMStatsResult ComputeStats(const char *filename)
    return RAMStatsResult{stats, true, ""};
 }
 
-
 int RunRamStats(const char *filename, bool verbose)
 {
    auto result = ComputeStats(filename);
@@ -149,8 +148,7 @@ int RunRamStats(const char *filename, bool verbose)
       std::cout << "\n--- Reads per Chromosome ---\n";
       for (const auto &[chrom, count] : result.stats.reads_per_chromosome) {
          double pct = 100.0 * count / result.stats.total_reads;
-         std::cout << "  " << chrom << ": " << count
-                   << "  (" << pct << "%)\n";
+         std::cout << "  " << chrom << ": " << count << "  (" << pct << "%)\n";
       }
       std::cout << "\n";
    }
