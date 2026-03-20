@@ -217,7 +217,7 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
    auto wideRows = index->GetRowsInRange(/*refid=*/chr1_refid, /*start=*/0, /*end=*/1000000000);
    for (int64_t row : wideRows) {
       EXPECT_GE(row, 0);
-      EXPECT_LT(row, static_cast<int64_t>(reader->GetNEntries()));
+      EXPECT_LT(row, 100); // record length of samexample.sam is 100 in SetUp()
    }
 
    auto invalidRows = index->GetRowsInRange(/*refid=*/-1, /*start=*/0, /*end=*/1000000000);
