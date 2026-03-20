@@ -37,6 +37,12 @@ struct RAMStatsResult {
 /// Returns RAMStatsResult — check .ok before using .stats.
 RAMStatsResult ComputeStats(const char *filename);
 
+/// Run the full ramstats pipeline: compute stats and print results.
+/// \param filename  Path to input .root RAM file
+/// \param verbose   If true, print per-chromosome breakdown
+/// \return 0 on success, 1 on error
+int RunRamStats(const char *filename, bool verbose = false);
+
 } // namespace ramcore
 
 #endif // RAMCORE_RAMSTATS_H

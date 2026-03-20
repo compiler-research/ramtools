@@ -129,4 +129,34 @@ TEST_F(RAMStatsTest, ValidFileReturnsOk)
    EXPECT_TRUE(result.ok);
    EXPECT_TRUE(result.error_message.empty());
 }
+
+/// RunRamStats on a valid file must return 0.
+TEST_F(RAMStatsTest, RunRamStatsValidFileReturnsZero)
+{
+   testing::internal::CaptureStdout();
+   int ret = ramcore::RunRamStats(kRootFile);
+   std::string output = testing::internal::GetCapturedStdout();
+   EXPECT_EQ(ret, 0);
+   EXPECT_FALSE(output.empty());
+}
+
+/// RunRamStats with verbose must print chromosome breakdown.
+TEST_F(RAMStatsTest, RunRamStatsVerbosePrintsChromosomes)
+{
+   testing::internal::CaptureStdout();
+   int ret = ramcore::RunRamStats(kRootFile, true);
+   std::string output = testing::internal::GetCapturedStdout();
+   EXPECT_EQ(ret, 0);
+   EXPECT_NE(output.find("Reads per Chromosome"), std::string::npos);
+}
+
+/// RunRamStats on a bad file must return 1.
+TEST(RAMStatsEdgeCases, RunRamStatsBadFileReturnsOne)
+{
+   testing::internal::CaptureStderr();
+   int ret = ramcore::RunRamStats("nonexistent.root");
+   testing::internal::GetCapturedStderr();
+   EXPECT_EQ(ret, 1);
+}
+
 } // namespace
