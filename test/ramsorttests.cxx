@@ -2,6 +2,7 @@
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <cstdio>
+#include <fstream>
 
 #include "../benchmark/generate_sam_benchmark.h"
 #include "ramcore/RAMSort.h"
@@ -105,6 +106,38 @@ TEST(RAMSortEdgeCases, MissingInputFileReturnsError)
 {
    int ret = ramsortntuple("nonexistent.root", "/tmp/out.root");
    EXPECT_NE(ret, 0);
+}
+
+
+/// ramsortntuple on an empty file must return 1.
+TEST(RAMSortEdgeCases, EmptyFileReturnsError)
+{
+   // Create an empty RAM file with zero entries
+   const char *emptySam = "empty_sort.sam";
+   const char *emptyRoot = "empty_sort.root";
+   {
+      std::ofstream f(emptySam);
+      f << "@HD\tVN:1.6\n";
+   }
+   samtoramntuple(emptySam, emptyRoot, false, false, false, 505, 0);
+   int ret = ramsortntuple(emptyRoot, "empty_sort_out.root");
+   EXPECT_NE(ret, 0);
+   std::remove(emptySam);
+   std::remove(emptyRoot);
+   std::remove("empty_sort_out.root");
+}
+
+/// ramsortntuple with invalid output path must return 1.
+TEST(RAMSortEdgeCases, InvalidOutputPathReturnsError)
+{
+   const char *samFile = "sort_edge.sam";
+   const char *rootFile = "sort_edge.root";
+   GenerateSAMFile(samFile, 10);
+   samtoramntuple(samFile, rootFile, false, false, false, 505, 0);
+   int ret = ramsortntuple(rootFile, "/nonexistent/path/out.root");
+   EXPECT_NE(ret, 0);
+   std::remove(samFile);
+   std::remove(rootFile);
 }
 
 } // namespace
