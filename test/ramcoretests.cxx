@@ -16,6 +16,7 @@
 #include "../tools/ramview.cxx"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMNTupleRecord.h"
 #include "ramcore/SamToTTree.h"
 namespace {
 
@@ -31,6 +32,7 @@ protected:
         std::remove("test_ttree.root");
         std::remove("test_rntuple.root");
         std::remove("samexample.sam");
+        RAMNTupleRecord::GetIndex()->Clear();
     }
 };
 
@@ -173,6 +175,55 @@ TEST_F(ramcoreTest, RNTupleViewFlagFiltering)
 
    std::remove(customSam);
    std::remove(rntupleFile);
+}
+
+TEST_F(ramcoreTest, IndexGetRowsInRange)
+{
+   RAMNTupleRecord::InitializeRefs();
+   auto *index = RAMNTupleRecord::GetIndex();
+
+   //  test with hard coded entries
+   index->AddItem(/*refid=*/0, /*pos=*/100, /*row=*/0);
+   index->AddItem(/*refid=*/0, /*pos=*/200, /*row=*/1);
+   index->AddItem(/*refid=*/0, /*pos=*/300, /*row=*/2);
+   index->AddItem(/*refid=*/1, /*pos=*/150, /*row=*/3);
+
+   auto rows = index->GetRowsInRange(/*refid=*/0, /*start=*/150, /*end=*/250);
+   ASSERT_EQ(rows.size(), 1U);
+   EXPECT_EQ(rows[0], 1);
+
+   auto all = index->GetRowsInRange(/*refid=*/0, /*start=*/0, /*end=*/400);
+   EXPECT_EQ(all.size(), 3U);
+
+   auto none = index->GetRowsInRange(/*refid=*/0, /*start=*/400, /*end=*/500);
+   EXPECT_TRUE(none.empty());
+
+   auto otherChrom = index->GetRowsInRange(/*refid=*/1, /*start=*/100, /*end=*/200);
+   ASSERT_EQ(otherChrom.size(), 1U);
+   EXPECT_EQ(otherChrom[0], 3);
+
+   // test with generated entries
+   const char *mockFile = "test_mock_index.root";
+   samtoramntuple(/*datafile=*/"samexample.sam", mockFile, /*index=*/true, /*split=*/true, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
+
+   auto reader = RAMNTupleRecord::OpenRAMFile(mockFile);
+   ASSERT_NE(reader, nullptr);
+   EXPECT_GT(index->Size(), 0U);
+
+   int chr1_refid = RAMNTupleRecord::GetRnameRefs()->GetRefId("chr1");
+   EXPECT_GE(chr1_refid, 0);
+
+   auto wideRows = index->GetRowsInRange(/*refid=*/chr1_refid, /*start=*/0, /*end=*/1000000000);
+   for (int64_t row : wideRows) {
+      EXPECT_GE(row, 0);
+      EXPECT_LT(row, 100); // record length of samexample.sam is 100 in SetUp()
+   }
+
+   auto invalidRows = index->GetRowsInRange(/*refid=*/-1, /*start=*/0, /*end=*/1000000000);
+   EXPECT_TRUE(invalidRows.empty());
+
+   std::remove(mockFile);
 }
 
 } // namespace
