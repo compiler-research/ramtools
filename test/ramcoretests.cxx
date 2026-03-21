@@ -265,8 +265,8 @@ TEST_F(ramcoreTest, RecordGetters)
    EXPECT_EQ(record.GetCIGAROP(/*idx=*/9), 0);
 
    // all 15 IUPAC bases
-   record.SetSEQ("ACMGRSVTWYHKDBNA");
-   EXPECT_EQ(record.GetSEQ(), "ACMGRSVTWYHKDBNA");
+   record.SetSEQ("=ACMGRSVTWYHKDBN");
+   EXPECT_EQ(record.GetSEQ(), "=ACMGRSVTWYHKDBN");
    record.SetSEQ("");
    EXPECT_EQ(record.GetSEQ(), "");
 
