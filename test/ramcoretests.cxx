@@ -285,13 +285,13 @@ TEST_F(ramcoreTest, RecordGetters)
    binRecord.SetBit(RAMNTupleRecord::kIlluminaBinning);
    binRecord.SetQUAL("\""); // ASCII 34 → bin 33 → 'B'
    EXPECT_EQ(binRecord.GetQUAL(), "B");
-   binRecord.SetQUAL("$");  // ASCII 36 → bin 37 → 'F'
+   binRecord.SetQUAL("$"); // ASCII 36 → bin 37 → 'F'
    EXPECT_EQ(binRecord.GetQUAL(), "F");
-   binRecord.SetQUAL("'");  // ASCII 39 → bin 37 → 'F'
+   binRecord.SetQUAL("'"); // ASCII 39 → bin 37 → 'F'
    EXPECT_EQ(binRecord.GetQUAL(), "F");
-   binRecord.SetQUAL("(");  // ASCII 40 → bin 40 → 'I'
+   binRecord.SetQUAL("("); // ASCII 40 → bin 40 → 'I'
    EXPECT_EQ(binRecord.GetQUAL(), "I");
-   binRecord.SetQUAL("2");  // ASCII 50 → bin 40 → 'I'
+   binRecord.SetQUAL("2"); // ASCII 50 → bin 40 → 'I'
    EXPECT_EQ(binRecord.GetQUAL(), "I");
 }
 
