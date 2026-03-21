@@ -226,6 +226,75 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
    std::remove(mockFile);
 }
 
+TEST_F(ramcoreTest, RecordGetters)
+{
+   RAMNTupleRecord record;
+
+   record.SetRNEXT("chr1");
+   EXPECT_EQ(record.GetRNEXT(), "chr1");
+   record.SetRNEXT("=");
+   EXPECT_EQ(record.GetRNEXT(), "=");
+   record.SetRNEXT("*");
+   EXPECT_EQ(record.GetRNEXT(), "*");
+
+   // all 9 CIGAR operations (M=0, I=1, D=2, N=3, S=4, H=5, P=6, ==7, X=8)
+   record.SetCIGAR("1M1I1D1N1S1H1P1=1X");
+   EXPECT_EQ(record.GetCIGAR(), "1M1I1D1N1S1H1P1=1X");
+   EXPECT_EQ(record.GetNCIGAROP(), 9U);
+
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/0), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/1), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/2), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/3), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/4), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/5), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/6), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/7), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/8), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/9), 0);
+
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/0), 0);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/1), 1);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/2), 2);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/3), 3);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/4), 4);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/5), 5);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/6), 6);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/7), 7);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/8), 8);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/9), 0);
+
+   // all 15 IUPAC bases
+   record.SetSEQ("ACMGRSVTWYHKDBNA");
+   EXPECT_EQ(record.GetSEQ(), "ACMGRSVTWYHKDBNA");
+   record.SetSEQ("");
+   EXPECT_EQ(record.GetSEQ(), "");
+
+   // kPhred33 (default), returns as-is
+   record.SetQUAL("IIIII");
+   EXPECT_EQ(record.GetQUAL(), "IIIII");
+
+   // kDrop, always returns *
+   RAMNTupleRecord dropRecord;
+   dropRecord.SetBit(RAMNTupleRecord::kDrop);
+   dropRecord.SetQUAL("IIIII");
+   EXPECT_EQ(dropRecord.GetQUAL(), "*");
+
+   // kIlluminaBinning, ASCII bins 0, 1, 6, 15, 22, 27, 33, 37, 40
+   RAMNTupleRecord binRecord;
+   binRecord.SetBit(RAMNTupleRecord::kIlluminaBinning);
+   binRecord.SetQUAL("\""); // ASCII 34 → bin 33 → 'B'
+   EXPECT_EQ(binRecord.GetQUAL(), "B");
+   binRecord.SetQUAL("$");  // ASCII 36 → bin 37 → 'F'
+   EXPECT_EQ(binRecord.GetQUAL(), "F");
+   binRecord.SetQUAL("'");  // ASCII 39 → bin 37 → 'F'
+   EXPECT_EQ(binRecord.GetQUAL(), "F");
+   binRecord.SetQUAL("(");  // ASCII 40 → bin 40 → 'I'
+   EXPECT_EQ(binRecord.GetQUAL(), "I");
+   binRecord.SetQUAL("2");  // ASCII 50 → bin 40 → 'I'
+   EXPECT_EQ(binRecord.GetQUAL(), "I");
+}
+
 } // namespace
 
 TEST_F(ramcoreTest, SmartIndexSkipsUnmappedReads)
