@@ -8,9 +8,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include "../benchmark/generate_sam_benchmark.h"
 #include "../tools/ramview.cxx"
@@ -161,13 +161,17 @@ TEST_F(ramcoreTest, RNTupleViewCigarOverlap)
                   /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:140-160", /*cache=*/true,
-                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr), 1);
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             1);
    EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:201-210", /*cache=*/true,
-                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr), 0);
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             0);
    EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:50-110", /*cache=*/true,
-                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr), 1);
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             1);
    EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:1-50", /*cache=*/true,
-                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr), 0);
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             0);
 
    std::remove(customSam);
    std::remove(rntupleFile);
