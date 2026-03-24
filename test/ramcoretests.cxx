@@ -381,3 +381,83 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
    std::remove(customSam);
    std::remove(rntupleFile);
 }
+
+TEST_F(ramcoreTest, QUALEncodingDecodingModes)
+{
+   const char *samFile = "test_qual.sam";
+   const char *ramFile = "test_qual.root";
+
+   std::string seq = "AAAAAAAAAA";
+   std::string qual = "@@@FBIEDH!";
+
+   {
+      std::ofstream sam(samFile);
+      sam << "@HD\tVN:1.6\tSO:unsorted\n";
+      sam << "@SQ\tSN:chr1\tLN:1000\n";
+      sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
+   }
+
+   // No compression of QUAL field, stored as it is
+   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
+                  /*quality_policy=*/0);
+
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+
+      std::string decoded = rec.GetQUAL();
+
+      // MUST be identical
+      EXPECT_EQ(decoded, qual) << "QUAL should remain unchanged without compression";
+   }
+
+   std::remove(ramFile);
+
+   // Drop the quailty field , should stored as "*"
+   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
+                  /*quality_policy=*/RAMNTupleRecord::kDrop);
+
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+
+      EXPECT_EQ(rec.GetQUAL(), "*") << "QUAL should be dropped";
+   }
+
+   std::remove(ramFile);
+
+   // Illumina binning
+   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
+                  /*quality_policy=*/RAMNTupleRecord::kIlluminaBinning);
+
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+
+      std::string decoded = rec.GetQUAL();
+
+      // Must NOT be same (lossy compression done during encoding)
+      EXPECT_NE(decoded, qual) << "Binning must change quality values";
+
+      // Length must stay same
+      EXPECT_EQ(decoded.size(), qual.size());
+
+      // Must still be valid printable ASCII
+      for (char c : decoded) {
+         EXPECT_GE(c, 33);
+         EXPECT_LE(c, 126);
+      }
+   }
+
+   std::remove(samFile);
+   std::remove(ramFile);
+}
