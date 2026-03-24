@@ -1,7 +1,13 @@
+#include "../benchmark/generate_sam_benchmark.h"
+#include "../tools/ramview.cxx"
+#include "ramcore/RAMNTupleView.h"
+#include "ramcore/SamToNTuple.h"
+#include "ramcore/SamToTTree.h"
+#include "rntuple/RAMNTupleRecord.h"
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
-#include <Rtypes.h>
+#include <RtypesCore.h>
 #include <TFile.h>
 #include <TTree.h>
 #include <cstdint>
@@ -12,12 +18,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#include "../benchmark/generate_sam_benchmark.h"
-#include "../tools/ramview.cxx"
-#include "ramcore/RAMNTupleView.h"
-#include "ramcore/SamToNTuple.h"
-#include "rntuple/RAMNTupleRecord.h"
-#include "ramcore/SamToTTree.h"
 namespace {
 
 class ramcoreTest : public ::testing::Test {
