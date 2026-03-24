@@ -49,11 +49,11 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
    auto ft = std::unique_ptr<TFile>(TFile::Open(ttreeFile));
    ASSERT_TRUE(ft && !ft->IsZombie());
 
-   auto ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
+   auto *ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
    Long64_t ttreeEntries = ttree->GetEntries();
 
    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
-   Long64_t rntupleEntries = reader->GetNEntries();
+   auto rntupleEntries = static_cast<Long64_t>(reader->GetNEntries());
 
    EXPECT_EQ(ttreeEntries, rntupleEntries);
    EXPECT_EQ(ttreeEntries, 100);
@@ -141,7 +141,7 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
    EXPECT_EQ(storedLen, 36);
 
    std::cout << "[   INFO   ] Data Integrity - Pos: " << firstPos << ", Encoded Seq Size: " << firstSeq.size()
-             << " (Header: " << storedLen << ")" << std::endl;
+             << " (Header: " << storedLen << ")" << '\n';
 }
 
 TEST_F(ramcoreTest, RNTupleViewCigarOverlap)
