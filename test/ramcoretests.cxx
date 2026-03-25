@@ -19,7 +19,7 @@ namespace {
 
 class ramcoreTest : public ::testing::Test {
 protected:
-   void SetUp() override
+   static void SetUp() override
    {
       GenerateSAMFile("samexample.sam", 100);
       std::remove("test_ttree.root");
