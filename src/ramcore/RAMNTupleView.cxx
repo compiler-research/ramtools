@@ -161,7 +161,6 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
    for (Long64_t i = start; i < total; i++) {
       if (flagView(i) & FLAG_FILTER)
          continue;
-
       int curRef = refidView(i);
       if (curRef < refid)
          continue;
