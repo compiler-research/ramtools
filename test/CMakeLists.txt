@@ -36,3 +36,4 @@ install(TARGETS ramcoretests chromosome_split_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+add_ramcore_test(ramstatstests ramstatstests.cxx)
