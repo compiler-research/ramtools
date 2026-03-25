@@ -26,7 +26,7 @@ protected:
       std::remove("test_rntuple.root");
    }
 
-   void TearDown() override
+   static void TearDown() override
    {
       std::remove("test_ttree.root");
       std::remove("test_rntuple.root");
