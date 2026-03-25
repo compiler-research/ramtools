@@ -43,7 +43,7 @@ jobs:
           split_workflow: true
           config_file: .clang-tidy
           install_commands: |
-            wget -q -O root.tar.gz "https://root.cern/download/root_v6.34.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz" &&
+            wget -q -O root.tar.gz "https://root.cern/download/root_v6.36.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz" &&
             tar -xzf root.tar.gz -C /opt/ &&
             rm root.tar.gz
           clang_tidy_args: >

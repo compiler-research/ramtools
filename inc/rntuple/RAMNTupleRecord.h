@@ -18,12 +18,6 @@
 #include <memory>
 #include <cstdint>
 
-namespace ROOT {
-class RNTupleModel;
-class RNTupleWriter;
-class RNTupleReader;
-} // namespace ROOT
-
 class RAMNTupleRefs;
 class RAMNTupleIndex;
 
