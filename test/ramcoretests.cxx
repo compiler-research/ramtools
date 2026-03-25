@@ -385,7 +385,7 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
 }
 
 
-TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
+TEST_Fstatic (ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
 {
    const char *samFile = "samexample.sam";
    const char *rntupleFile = "test_rntuple.root";
