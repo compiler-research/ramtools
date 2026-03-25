@@ -9,7 +9,7 @@
 #include "rntuple/RAMNTupleRecord.h"
 #include <Rtypes.h>
 
-Long64_t ramntupleview(const char *file, const char *query, bool cache, bool perfstats, const char *perfstatsfilename)
+Long64_t ramntupleviewstatic (const char *file, const char *query, bool cache, bool perfstats, const char *perfstatsfilename)
 {
    TStopwatch stopwatch;
    stopwatch.Start();
