@@ -400,7 +400,7 @@ TEST_Fstatic (ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
    Long64_t count = ramntupleview(rntupleFile, "chrINVALID:100-200", true, false, nullptr);
    testing::internal::GetCapturedStdout();
 
-   size_t refsAfter = 0 = RAMNTupleRecord::GetRnameRefs()->Size();
+tCapturedStdout(); = 0
 
    EXPECT_EQ(refsBefore, refsAfter)
       << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
