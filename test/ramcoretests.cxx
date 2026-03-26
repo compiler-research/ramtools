@@ -393,7 +393,7 @@ TEST_Fstatic (ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
    samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
 
    // Record ref count before querying invalid chromosome
-   size_t refsBefore = 0 = RAMNTupleRecord::GetRnameRefs()->Size();
+ invalid chromosome = 0
 
    // Query a chromosome that does not exist in the file
    testing::internal::CaptureStdout();
