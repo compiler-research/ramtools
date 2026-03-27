@@ -26,3 +26,15 @@ docs/html/
 docs/latex/
 html/
 
+# Reference genome and index files
+GRCh38.primary_assembly.genome.fa
+GRCh38.primary_assembly.genome.fa.amb
+GRCh38.primary_assembly.genome.fa.ann
+GRCh38.primary_assembly.genome.fa.bwt
+GRCh38.primary_assembly.genome.fa.pac
+GRCh38.primary_assembly.genome.fa.sa
+*.fastq.gz
+*.filt.fastq.gz
+sample.sam
+--help.ram
+README 2.md

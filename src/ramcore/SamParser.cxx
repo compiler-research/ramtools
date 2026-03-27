@@ -1,6 +1,7 @@
 #include "ramcore/SamParser.h"
 #include <cstring>
 #include <cstdlib>
+#include <iostream>
 
 namespace ramcore {
 
@@ -11,23 +12,41 @@ void StripCRLF(char* str) {
     }
 }
 
-bool SamParser::ParseFile(const char* filename, 
-                         HeaderCallback header_cb, 
+static bool ParseInt(const char* str, int& out, const char* fieldName, int lineNum) {
+    if (!str || *str == '\0') {
+        std::cerr << "[SamParser] Warning: empty value for field '"
+                  << fieldName << "' at line " << lineNum
+                  << " — record skipped.\n";
+        return false;
+    }
+    char* end;
+    long val = std::strtol(str, &end, 10);
+    if (*end != '\0' && *end != '\t' && *end != '\n' && *end != '\r') {
+        std::cerr << "[SamParser] Warning: non-numeric value '" << str
+                  << "' for field '" << fieldName << "' at line " << lineNum
+                  << " — record skipped.\n";
+        return false;
+    }
+    out = static_cast<int>(val);
+    return true;
+}
+
+bool SamParser::ParseFile(const char* filename,
+                         HeaderCallback header_cb,
                          RecordCallback record_cb) {
     FILE* fp = fopen(filename, "r");
     if (!fp) {
         return false;
     }
-    
     lines_processed_ = 0;
     records_processed_ = 0;
-    
+
     char line[kMaxLineLength];
     SamRecord record;
-    
+
     while (fgets(line, kMaxLineLength, fp)) {
         lines_processed_++;
-        
+
         if (line[0] == '@') {
             char* tab = strchr(line, '\t');
             if (tab) {
@@ -44,7 +63,7 @@ bool SamParser::ParseFile(const char* filename,
             }
             continue;
         }
-        
+
         record.Clear();
         if (ParseLine(line, record)) {
             if (record_cb) {
@@ -53,7 +72,7 @@ bool SamParser::ParseFile(const char* filename,
             records_processed_++;
         }
     }
-    
+
     fclose(fp);
     return true;
 }
@@ -61,35 +80,47 @@ bool SamParser::ParseFile(const char* filename,
 bool SamParser::ParseLine(char* line, SamRecord& record) {
     int field_num = 0;
     char* token = strtok(line, "\t");
-    
+
     while (token) {
         switch (field_num) {
             case 0: record.qname = token; break;
-            case 1: record.flag = atoi(token); break;
+            case 1:
+                if (!ParseInt(token, record.flag, "flag", lines_processed_))
+                    return false;
+                break;
             case 2: record.rname = token; break;
-            case 3: record.pos = atoi(token); break;
-            case 4: record.mapq = atoi(token); break;
+            case 3:
+                if (!ParseInt(token, record.pos, "pos", lines_processed_))
+                    return false;
+                break;
+            case 4:
+                if (!ParseInt(token, record.mapq, "mapq", lines_processed_))
+                    return false;
+                break;
             case 5: record.cigar = token; break;
             case 6: record.rnext = token; break;
-            case 7: record.pnext = atoi(token); break;
-            case 8: record.tlen = atoi(token); break;
+            case 7:
+                if (!ParseInt(token, record.pnext, "pnext", lines_processed_))
+                    return false;
+                break;
+            case 8:
+                if (!ParseInt(token, record.tlen, "tlen", lines_processed_))
+                    return false;
+                break;
             case 9: record.seq = token; break;
-            case 10: 
+            case 10:
                 StripCRLF(token);
-                record.qual = token; 
+                record.qual = token;
                 break;
             default:
                 StripCRLF(token);
                 record.optional_fields.push_back(token);
                 break;
         }
-        
         field_num++;
         token = strtok(nullptr, "\t");
     }
-    
-    return field_num >= 11; 
+    return field_num >= 11;
 }
 
-} 
-
+} // namespace ramcore
