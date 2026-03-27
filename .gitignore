@@ -1,4 +1,29 @@
-ramexample.root
+
+
+# Genomics data
+*.fastq
+*.fastq.gz
+*.fa
+*.fa.gz
+
+# BWA index files
+*.amb
+*.ann
+*.bwt
+*.pac
+*.sa
+
+# Output files
+*.sam
+*.ram
+*.root
+
+# Mac / temp
+.DS_Store
+
+# Accidental files
+* 2.*
+--help.ramramexample.root
 *.csv
 *.log
 *.perf
