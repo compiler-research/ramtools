@@ -18,6 +18,7 @@
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include "ramcore/SamToTTree.h"
+#include "ramcore/SamParser.h"
 namespace {
 
 class ramcoreTest : public ::testing::Test {
@@ -383,83 +384,145 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
    std::remove(customSam);
    std::remove(rntupleFile);
 }
-
+TEST_F(ramcoreTest, MalformedFlagSkipsRecord) {
+    const char* path = "/tmp/ram_test_flag.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "bad\tabc\tchr1\t100\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fclose(f);
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord&, int) { count++; });
+    std::remove(path);
+    EXPECT_EQ(count, 1);
+}
+TEST_F(ramcoreTest, MalformedPosSkipsRecord) {
+    const char* path = "/tmp/ram_test_pos.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "bad\t0\tchr1\tXYZ\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fclose(f);
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord&, int) { count++; });
+    std::remove(path);
+    EXPECT_EQ(count, 1);
+}
+TEST_F(ramcoreTest, MalformedMapqSkipsRecord) {
+    const char* path = "/tmp/ram_test_mapq.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "bad\t0\tchr1\t100\tBAD\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fclose(f);
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord&, int) { count++; });
+    std::remove(path);
+    EXPECT_EQ(count, 1);
+}
+TEST_F(ramcoreTest, MalformedPnextSkipsRecord) {
+    const char* path = "/tmp/ram_test_pnext.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "bad\t0\tchr1\t100\t60\t10M\t*\tNOP\t0\tACGT\tIIII\n");
+    fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fclose(f);
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord&, int) { count++; });
+    std::remove(path);
+    EXPECT_EQ(count, 1);
+}
+TEST_F(ramcoreTest, MalformedTlenSkipsRecord) {
+    const char* path = "/tmp/ram_test_tlen.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "bad\t0\tchr1\t100\t60\t10M\t*\t0\tBAD\tACGT\tIIII\n");
+    fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
+    fclose(f);
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord&, int) { count++; });
+    std::remove(path);
+    EXPECT_EQ(count, 1);
+}
+TEST_F(ramcoreTest, ValidRecordParsesCorrectly) {
+    const char* path = "/tmp/ram_test_valid.sam";
+    FILE* f = fopen(path, "w");
+    fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
+    fprintf(f, "r1\t16\tchr1\t500\t30\t5M\t*\t200\t10\tACGTA\tIIIII\n");
+    fclose(f);
+    ramcore::SamRecord captured;
+    int count = 0;
+    ramcore::SamParser parser;
+    parser.ParseFile(path,
+        [](const std::string&, const std::string&) {},
+        [&](const ramcore::SamRecord& rec, int) { captured = rec; count++; });
+    std::remove(path);
+    ASSERT_EQ(count, 1);
+    EXPECT_EQ(captured.flag,  16);
+    EXPECT_EQ(captured.pos,   500);
+    EXPECT_EQ(captured.mapq,  30);
+    EXPECT_EQ(captured.pnext, 200);
+    EXPECT_EQ(captured.tlen,  10);
+}
 TEST_F(ramcoreTest, QUALEncodingDecodingModes)
 {
    const char *samFile = "test_qual.sam";
    const char *ramFile = "test_qual.root";
-
    std::string seq = "AAAAAAAAAA";
    std::string qual = "@@@FBIEDH!";
-
    {
       std::ofstream sam(samFile);
       sam << "@HD\tVN:1.6\tSO:unsorted\n";
       sam << "@SQ\tSN:chr1\tLN:1000\n";
       sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
    }
-
-   // No compression of QUAL field, stored as it is
-   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
-                  /*quality_policy=*/0);
-
+   samtoramntuple(samFile, ramFile, true, false, false, 505, 0);
    {
       auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
       ASSERT_NE(reader, nullptr);
-
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const auto &rec = view(0);
-
-      std::string decoded = rec.GetQUAL();
-
-      // MUST be identical
-      EXPECT_EQ(decoded, qual) << "QUAL should remain unchanged without compression";
+      EXPECT_EQ(rec.GetQUAL(), qual) << "QUAL should remain unchanged without compression";
    }
-
    std::remove(ramFile);
-
-   // Drop the quailty field , should stored as "*"
-   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
-                  /*quality_policy=*/RAMNTupleRecord::kDrop);
-
+   samtoramntuple(samFile, ramFile, true, false, false, 505, RAMNTupleRecord::kDrop);
    {
       auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
       ASSERT_NE(reader, nullptr);
-
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const auto &rec = view(0);
-
       EXPECT_EQ(rec.GetQUAL(), "*") << "QUAL should be dropped";
    }
-
    std::remove(ramFile);
-
-   // Illumina binning
-   samtoramntuple(samFile, ramFile, /*index=*/true, /*split=*/false, /*cache=*/false, /*compression_algorithm=*/505,
-                  /*quality_policy=*/RAMNTupleRecord::kIlluminaBinning);
-
+   samtoramntuple(samFile, ramFile, true, false, false, 505, RAMNTupleRecord::kIlluminaBinning);
    {
       auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
       ASSERT_NE(reader, nullptr);
-
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const auto &rec = view(0);
-
       std::string decoded = rec.GetQUAL();
-
-      // Must NOT be same (lossy compression done during encoding)
       EXPECT_NE(decoded, qual) << "Binning must change quality values";
-
-      // Length must stay same
       EXPECT_EQ(decoded.size(), qual.size());
-
-      // Must still be valid printable ASCII
       for (char c : decoded) {
          EXPECT_GE(c, 33);
          EXPECT_LE(c, 126);
       }
    }
-
    std::remove(samFile);
    std::remove(ramFile);
 }

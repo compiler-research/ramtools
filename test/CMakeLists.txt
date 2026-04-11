@@ -18,7 +18,7 @@ function(add_ramcore_test test_name)
 
     if(RAMTOOLS_BUILD_BENCHMARKS)
     
-        target_link_libraries(${test_name} benchmark::benchmark)
+        target_link_libraries(${test_name} PRIVATE benchmark::benchmark)
     endif()
 
     target_include_directories(${test_name}
