@@ -227,6 +227,77 @@ TEST_F(ramcoreTest, IndexGetRowsInRange)
    std::remove(mockFile);
 }
 
+TEST_F(ramcoreTest, RecordGetters)
+{
+   RAMNTupleRecord record;
+
+   record.SetRNEXT("chr1");
+   EXPECT_EQ(record.GetRNEXT(), "chr1");
+   record.SetRNEXT("=");
+   EXPECT_EQ(record.GetRNEXT(), "=");
+   record.SetRNEXT("*");
+   EXPECT_EQ(record.GetRNEXT(), "*");
+
+   // all 9 CIGAR operations (M=0, I=1, D=2, N=3, S=4, H=5, P=6, ==7, X=8)
+   record.SetCIGAR("1M1I1D1N1S1H1P1=1X");
+   EXPECT_EQ(record.GetCIGAR(), "1M1I1D1N1S1H1P1=1X");
+   EXPECT_EQ(record.GetNCIGAROP(), 9U);
+
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/0), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/1), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/2), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/3), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/4), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/5), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/6), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/7), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/8), 1);
+   EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/9), 0);
+
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/0), 0);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/1), 1);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/2), 2);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/3), 3);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/4), 4);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/5), 5);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/6), 6);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/7), 7);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/8), 8);
+   EXPECT_EQ(record.GetCIGAROP(/*idx=*/9), 0);
+
+   // all 15 IUPAC bases
+   record.SetSEQ("ATT");
+   EXPECT_EQ(record.GetSEQ(), "ATT");
+   record.SetSEQ("=ACMGRSVTWYHKDBN");
+   EXPECT_EQ(record.GetSEQ(), "=ACMGRSVTWYHKDBN");
+   record.SetSEQ("");
+   EXPECT_EQ(record.GetSEQ(), "");
+
+   // kPhred33 (default), returns as-is
+   record.SetQUAL("IIIII");
+   EXPECT_EQ(record.GetQUAL(), "IIIII");
+
+   // kDrop, always returns *
+   RAMNTupleRecord dropRecord;
+   dropRecord.SetBit(RAMNTupleRecord::kDrop);
+   dropRecord.SetQUAL("IIIII");
+   EXPECT_EQ(dropRecord.GetQUAL(), "*");
+
+   // kIlluminaBinning, ASCII bins 0, 1, 6, 15, 22, 27, 33, 37, 40
+   RAMNTupleRecord binRecord;
+   binRecord.SetBit(RAMNTupleRecord::kIlluminaBinning);
+   binRecord.SetQUAL("\""); // ASCII 34 → bin 33 → 'B'
+   EXPECT_EQ(binRecord.GetQUAL(), "B");
+   binRecord.SetQUAL("$"); // ASCII 36 → bin 37 → 'F'
+   EXPECT_EQ(binRecord.GetQUAL(), "F");
+   binRecord.SetQUAL("'"); // ASCII 39 → bin 37 → 'F'
+   EXPECT_EQ(binRecord.GetQUAL(), "F");
+   binRecord.SetQUAL("("); // ASCII 40 → bin 40 → 'I'
+   EXPECT_EQ(binRecord.GetQUAL(), "I");
+   binRecord.SetQUAL("2"); // ASCII 50 → bin 40 → 'I'
+   EXPECT_EQ(binRecord.GetQUAL(), "I");
+}
+
 } // namespace
 
 TEST_F(ramcoreTest, SmartIndexSkipsUnmappedReads)
@@ -320,17 +391,14 @@ TEST_F(ramcoreTest, MalformedFlagSkipsRecord) {
     fprintf(f, "bad\tabc\tchr1\t100\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fclose(f);
-
     int count = 0;
     ramcore::SamParser parser;
     parser.ParseFile(path,
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord&, int) { count++; });
     std::remove(path);
-
     EXPECT_EQ(count, 1);
 }
-
 TEST_F(ramcoreTest, MalformedPosSkipsRecord) {
     const char* path = "/tmp/ram_test_pos.sam";
     FILE* f = fopen(path, "w");
@@ -338,17 +406,14 @@ TEST_F(ramcoreTest, MalformedPosSkipsRecord) {
     fprintf(f, "bad\t0\tchr1\tXYZ\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fclose(f);
-
     int count = 0;
     ramcore::SamParser parser;
     parser.ParseFile(path,
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord&, int) { count++; });
     std::remove(path);
-
     EXPECT_EQ(count, 1);
 }
-
 TEST_F(ramcoreTest, MalformedMapqSkipsRecord) {
     const char* path = "/tmp/ram_test_mapq.sam";
     FILE* f = fopen(path, "w");
@@ -356,17 +421,14 @@ TEST_F(ramcoreTest, MalformedMapqSkipsRecord) {
     fprintf(f, "bad\t0\tchr1\t100\tBAD\t10M\t*\t0\t0\tACGT\tIIII\n");
     fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fclose(f);
-
     int count = 0;
     ramcore::SamParser parser;
     parser.ParseFile(path,
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord&, int) { count++; });
     std::remove(path);
-
     EXPECT_EQ(count, 1);
 }
-
 TEST_F(ramcoreTest, MalformedPnextSkipsRecord) {
     const char* path = "/tmp/ram_test_pnext.sam";
     FILE* f = fopen(path, "w");
@@ -374,17 +436,14 @@ TEST_F(ramcoreTest, MalformedPnextSkipsRecord) {
     fprintf(f, "bad\t0\tchr1\t100\t60\t10M\t*\tNOP\t0\tACGT\tIIII\n");
     fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fclose(f);
-
     int count = 0;
     ramcore::SamParser parser;
     parser.ParseFile(path,
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord&, int) { count++; });
     std::remove(path);
-
     EXPECT_EQ(count, 1);
 }
-
 TEST_F(ramcoreTest, MalformedTlenSkipsRecord) {
     const char* path = "/tmp/ram_test_tlen.sam";
     FILE* f = fopen(path, "w");
@@ -392,24 +451,20 @@ TEST_F(ramcoreTest, MalformedTlenSkipsRecord) {
     fprintf(f, "bad\t0\tchr1\t100\t60\t10M\t*\t0\tBAD\tACGT\tIIII\n");
     fprintf(f, "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII\n");
     fclose(f);
-
     int count = 0;
     ramcore::SamParser parser;
     parser.ParseFile(path,
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord&, int) { count++; });
     std::remove(path);
-
     EXPECT_EQ(count, 1);
 }
-
 TEST_F(ramcoreTest, ValidRecordParsesCorrectly) {
     const char* path = "/tmp/ram_test_valid.sam";
     FILE* f = fopen(path, "w");
     fprintf(f, "@HD\tVN:1.6\n@SQ\tSN:chr1\tLN:248956422\n");
     fprintf(f, "r1\t16\tchr1\t500\t30\t5M\t*\t200\t10\tACGTA\tIIIII\n");
     fclose(f);
-
     ramcore::SamRecord captured;
     int count = 0;
     ramcore::SamParser parser;
@@ -417,11 +472,57 @@ TEST_F(ramcoreTest, ValidRecordParsesCorrectly) {
         [](const std::string&, const std::string&) {},
         [&](const ramcore::SamRecord& rec, int) { captured = rec; count++; });
     std::remove(path);
-
     ASSERT_EQ(count, 1);
     EXPECT_EQ(captured.flag,  16);
     EXPECT_EQ(captured.pos,   500);
     EXPECT_EQ(captured.mapq,  30);
     EXPECT_EQ(captured.pnext, 200);
     EXPECT_EQ(captured.tlen,  10);
+}
+TEST_F(ramcoreTest, QUALEncodingDecodingModes)
+{
+   const char *samFile = "test_qual.sam";
+   const char *ramFile = "test_qual.root";
+   std::string seq = "AAAAAAAAAA";
+   std::string qual = "@@@FBIEDH!";
+   {
+      std::ofstream sam(samFile);
+      sam << "@HD\tVN:1.6\tSO:unsorted\n";
+      sam << "@SQ\tSN:chr1\tLN:1000\n";
+      sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
+   }
+   samtoramntuple(samFile, ramFile, true, false, false, 505, 0);
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+      EXPECT_EQ(rec.GetQUAL(), qual) << "QUAL should remain unchanged without compression";
+   }
+   std::remove(ramFile);
+   samtoramntuple(samFile, ramFile, true, false, false, 505, RAMNTupleRecord::kDrop);
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+      EXPECT_EQ(rec.GetQUAL(), "*") << "QUAL should be dropped";
+   }
+   std::remove(ramFile);
+   samtoramntuple(samFile, ramFile, true, false, false, 505, RAMNTupleRecord::kIlluminaBinning);
+   {
+      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      ASSERT_NE(reader, nullptr);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const auto &rec = view(0);
+      std::string decoded = rec.GetQUAL();
+      EXPECT_NE(decoded, qual) << "Binning must change quality values";
+      EXPECT_EQ(decoded.size(), qual.size());
+      for (char c : decoded) {
+         EXPECT_GE(c, 33);
+         EXPECT_LE(c, 126);
+      }
+   }
+   std::remove(samFile);
+   std::remove(ramFile);
 }

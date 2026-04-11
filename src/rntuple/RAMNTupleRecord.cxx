@@ -439,7 +439,8 @@ std::string DecodeSequence(const std::string &encoded_seq, size_t length)
       seq[i * 2 + 1] = kCodeToSeq[byte & 0xf];
    }
    if (length % 2) {
-      seq[length - 1] = kCodeToSeq[encoded_seq[length / 2] >> 4];
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+      seq[length - 1] = kCodeToSeq[static_cast<uint8_t>(encoded_seq[length / 2]) >> 4];
    }
 
    return seq;
