@@ -463,3 +463,23 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
    std::remove(samFile);
    std::remove(ramFile);
 }
+TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
+{
+   const char *samFile = "samexample.sam";
+   const char *rntupleFile = "test_rntuple.root";
+
+   samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
+
+   size_t refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   testing::internal::CaptureStdout();
+   Long64_t count = ramntupleview(rntupleFile, "chrINVALID:100-200", true, false, nullptr);
+   testing::internal::GetCapturedStdout();
+
+   size_t refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   EXPECT_EQ(refsBefore, refsAfter)
+      << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
+   EXPECT_EQ(count, 0)
+      << "Expected 0 records for unknown chromosome, got " << count;
+}
