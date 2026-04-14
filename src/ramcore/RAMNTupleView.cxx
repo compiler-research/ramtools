@@ -1,4 +1,6 @@
 #include "ramcore/RAMNTupleView.h"
+#include <ROOT/RDataFrame.hxx>
+#include <ROOT/RNTupleDS.hxx>
 #include <algorithm>
 
 #include <cctype>
@@ -12,6 +14,7 @@
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
+#include <TROOT.h>
 #include <TStopwatch.h>
 #include <TString.h>
 
@@ -52,6 +55,17 @@ int computeRefSpan(const std::vector<uint32_t> &cigarOps)
       }
    }
    return span;
+}
+int GetRefId(ROOT::RDataFrame &df, const std::string &rname)
+{
+   if (rname == "*")
+      return -1;
+
+   auto refs = df.Take<std::vector<std::string>>("rname_refs");
+   const auto &refids = refs.GetValue()[0];
+
+   auto it = std::find(refids.begin(), refids.end(), rname);
+   return (it == refids.end()) ? -1 : std::distance(refids.begin(), it);
 }
 
 int resolveRefId(const char *name)
@@ -184,4 +198,35 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
    stopwatch.Print();
    std::cout << "Found " << count << " records in region " << region << std::endl;
    return count;
+}
+// NOLINTNEXTLINE(misc-use-internal-linkage)
+ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *query, bool /*cache*/,
+                           bool /*perfstats*/, const char * /*perfstatsfilename*/)
+{
+   TStopwatch st;
+   st.Start();
+   TString rname;
+   std::string region = query;
+   Int_t start = 0;
+   Int_t end = 0;
+   if (!parseRegion(region, rname, start, end)) {
+      std::cerr << "Invalid region format. Use rname[:start[-end]]\n";
+      return 0;
+   }
+   auto metadata = ROOT::RDF::FromRNTuple("METADATA", file);
+   const int refid = GetRefId(metadata, rname.Data());
+   if (refid < 0) {
+      std::cerr << "Reference" << rname.Data() << " not found\n";
+   }
+   ROOT::EnableImplicitMT(numthreads);
+   auto ram = ROOT::RDF::FromRNTuple("RAM", file);
+   auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos) {
+      return (refid == refidentry) && (pos >= start) && (pos <= end);
+   };
+
+   auto filtered = ram.Filter(filterfunc, {"record.refid", "record.pos"});
+   auto count = filtered.Count();
+   *count;
+   st.Print();
+   return *count;
 }

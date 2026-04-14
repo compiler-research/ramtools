@@ -1,5 +1,4 @@
 #include "ramcore/RAMNTupleView.h"
-#include "ramcore/RDF_RAMNTupleView.h"
 #include <iostream>
 #include <stdio.h>
 #include <Rtypes.h>
@@ -22,9 +21,9 @@ int main(int argc, char *argv[])
 
    const char *file = argv[1];
    const char *region_str = (argc > 2) ? argv[2] : "";
-   Long64_t read_count;
+   ULong64_t read_count;
    if (mt_set) {
-      read_count = rdf_ramntupleview(num_threads, file, region_str);
+      read_count = mt_ramntupleview(num_threads, file, region_str);
    } else {
       read_count = ramntupleview(file, region_str);
    }

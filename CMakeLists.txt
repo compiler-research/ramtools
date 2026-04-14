@@ -47,7 +47,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         inc/ramcore/SamToTTree.h
         inc/ramcore/SamToNTuple.h
         inc/ramcore/RAMNTupleView.h
-        inc/ramcore/RDF_RAMNTupleView.h
     SOURCES
         src/ttree/RAMRecord.cxx
         src/rntuple/RAMNTupleRecord.cxx
@@ -56,7 +55,6 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx
         src/ramcore/BamtoNTuple.cxx
-        src/ramcore/RDF_RAMNTupleView.cxx
     LINKDEF
         inc/ttree/LinkDef.h
     DEPENDENCIES
