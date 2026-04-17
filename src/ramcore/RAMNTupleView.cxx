@@ -1,4 +1,6 @@
 #include "ramcore/RAMNTupleView.h"
+#include <ROOT/RDF/RDatasetSpec.hxx>
+#include <ROOT/RDF/RSample.hxx>
 #include <ROOT/RDataFrame.hxx>
 #include <ROOT/RNTupleDS.hxx>
 #include <algorithm>
@@ -7,7 +9,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <ROOT/RNTuple.hxx>
@@ -56,6 +60,34 @@ int computeRefSpan(const std::vector<uint32_t> &cigarOps)
    }
    return span;
 }
+std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int start, int end)
+{
+   ULong64_t first = 0;
+   ULong64_t last = std::numeric_limits<Long64_t>::max();
+   auto entries = (*df.Take<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries"))[0];
+   std::size_t i = 0;
+   // loop to find the nearest inclusive starting index
+   for (; i < entries.size(); ++i) {
+      if (entries[i].refid == refid) {
+         if (entries[i].pos == start) {
+            first = entries[i].entry;
+            break;
+         }
+         if (entries[i].pos > start) {
+            first = entries[i - 1].entry;
+            break;
+         }
+      }
+   }
+   for (; i < entries.size(); ++i) {
+      if (entries[i].refid == refid && entries[i].pos >= end) {
+         last = entries[i].entry;
+         break;
+      }
+   }
+   return std::make_pair(first, last);
+}
+
 int GetRefId(ROOT::RDataFrame &df, const std::string &rname)
 {
    if (rname == "*")
@@ -158,12 +190,10 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
       std::cerr << "Reference '" << rname.Data() << "' not found\n";
       return 0;
    }
-
    auto flagView = reader->GetView<uint16_t>("record.flag");
    auto refidView = reader->GetView<int32_t>("record.refid");
    auto posView = reader->GetView<int32_t>("record.pos");
    auto cigarView = reader->GetView<std::vector<uint32_t>>("record.cigar");
-
    auto index = RAMNTupleRecord::GetIndex();
    Long64_t start = (index && index->Size() > 0) ? index->GetRow(refid, rs) : 0;
    if (start < 0)
@@ -205,21 +235,36 @@ ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *q
 {
    TStopwatch st;
    st.Start();
+
    TString rname;
    std::string region = query;
    Int_t start = 0;
    Int_t end = 0;
+
    if (!parseRegion(region, rname, start, end)) {
       std::cerr << "Invalid region format. Use rname[:start[-end]]\n";
       return 0;
    }
    auto metadata = ROOT::RDF::FromRNTuple("METADATA", file);
    const int refid = GetRefId(metadata, rname.Data());
+
    if (refid < 0) {
       std::cerr << "Reference" << rname.Data() << " not found\n";
    }
+
+   auto index = ROOT::RDF::FromRNTuple("INDEX", file);
+
+   auto range = FindIndex(index, refid, start, end);
    ROOT::EnableImplicitMT(numthreads);
-   auto ram = ROOT::RDF::FromRNTuple("RAM", file);
+
+   ROOT::RDF::Experimental::RDatasetSpec spec;
+   ROOT::RDF::Experimental::RSample sample("reads", "RAM", file);
+   spec.AddSample(sample);
+   ROOT::RDF::Experimental::RDatasetSpec::REntryRange entry_range(range.first, range.second);
+   spec.WithGlobalRange(entry_range);
+
+   auto ram = ROOT::RDataFrame(spec);
+
    auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos) {
       return (refid == refidentry) && (pos >= start) && (pos <= end);
    };
@@ -228,5 +273,6 @@ ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *q
    auto count = filtered.Count();
    *count;
    st.Print();
+
    return *count;
 }
