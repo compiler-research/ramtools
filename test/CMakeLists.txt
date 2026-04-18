@@ -11,13 +11,14 @@ function(add_ramcore_test test_name)
             ROOT::ROOTNTuple
             ROOT::TreePlayer
             ROOT::RIO
-            sam_generator  
+            sam_generator
             gtest
             gtest_main
     )
 
     if(RAMTOOLS_BUILD_BENCHMARKS)
-        target_link_libraries(${test_name} benchmark::benchmark)
+
+        target_link_libraries(${test_name} PUBLIC benchmark::benchmark)
     endif()
 
     target_include_directories(${test_name}

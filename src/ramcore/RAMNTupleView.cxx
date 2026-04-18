@@ -74,12 +74,21 @@ std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int sta
             break;
          }
          if (entries[i].pos > start) {
+            if (i == 0){
+               first = entries[i].entry;
+               break;
+            }
             first = entries[i - 1].entry;
             break;
          }
       }
    }
    for (; i < entries.size(); ++i) {
+      if (entries[i].refid > refid)
+      {
+         last = entries[i].entry;
+         break;
+      }
       if (entries[i].refid == refid && entries[i].pos >= end) {
          last = entries[i].entry;
          break;
@@ -253,17 +262,21 @@ ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *q
    }
 
    auto index = ROOT::RDF::FromRNTuple("INDEX", file);
-
+   st.Print();
+   st.Start();
    auto range = FindIndex(index, refid, start, end);
+   std::cout << range.first << ' ' << range.second << '\n';
    ROOT::EnableImplicitMT(numthreads);
-
+   st.Print();
+   st.Start();
    ROOT::RDF::Experimental::RDatasetSpec spec;
    ROOT::RDF::Experimental::RSample sample("reads", "RAM", file);
    spec.AddSample(sample);
    ROOT::RDF::Experimental::RDatasetSpec::REntryRange entry_range(range.first, range.second);
    spec.WithGlobalRange(entry_range);
-
-   auto ram = ROOT::RDataFrame(spec);
+   std::vector<std::string> files = {file};
+   auto ram = ROOT::RDF::RDFInternal::FromRNTuple("RAM", files, range);
+   //auto ram = ROOT::RDataFrame(spec);
 
    auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos) {
       return (refid == refidentry) && (pos >= start) && (pos <= end);
