@@ -81,36 +81,34 @@ void GenerateRichBAMFile(const char *bam_path)
       bam_set1(rec, strlen(qname), qname, 0, 0, 1000, 60, 1, cigar.data(), -1, -1, 0, len, seq, qual.c_str(), 128);
 
       int8_t val_c = -5;
-      bam_aux_append(rec, "Xc", 'c', sizeof(val_c), static_cast<const uint8_t *>(static_cast<const void *>(&val_c)));
+      bam_aux_append(rec, "Xc", 'c', sizeof(val_c), reinterpret_cast<const uint8_t *>(&val_c));
 
       uint8_t val_C = 200;
       bam_aux_append(rec, "XC", 'C', sizeof(val_C), &val_C);
 
       int16_t val_s = -1000;
-      bam_aux_append(rec, "Xs", 's', sizeof(val_s), static_cast<const uint8_t *>(static_cast<const void *>(&val_s)));
+      bam_aux_append(rec, "Xs", 's', sizeof(val_s), reinterpret_cast<const uint8_t *>(&val_s));
 
       uint16_t val_S = 50000;
-      bam_aux_append(rec, "XS", 'S', sizeof(val_S), static_cast<const uint8_t *>(static_cast<const void *>(&val_S)));
+      bam_aux_append(rec, "XS", 'S', sizeof(val_S), reinterpret_cast<const uint8_t *>(&val_S));
 
       int32_t val_i = -100000;
-      bam_aux_append(rec, "Xi", 'i', sizeof(val_i), static_cast<const uint8_t *>(static_cast<const void *>(&val_i)));
+      bam_aux_append(rec, "Xi", 'i', sizeof(val_i), reinterpret_cast<const uint8_t *>(&val_i));
 
       uint32_t val_I = 3000000;
-      bam_aux_append(rec, "XI", 'I', sizeof(val_I), static_cast<const uint8_t *>(static_cast<const void *>(&val_I)));
+      bam_aux_append(rec, "XI", 'I', sizeof(val_I), reinterpret_cast<const uint8_t *>(&val_I));
 
       float val_f = 3.14F;
-      bam_aux_append(rec, "Xf", 'f', sizeof(val_f), static_cast<const uint8_t *>(static_cast<const void *>(&val_f)));
+      bam_aux_append(rec, "Xf", 'f', sizeof(val_f), reinterpret_cast<const uint8_t *>(&val_f));
 
       uint8_t val_A = 'Q';
       bam_aux_append(rec, "XA", 'A', 1, &val_A);
 
       const char *val_Z = "hello";
-      bam_aux_append(rec, "XZ", 'Z', static_cast<int>(strlen(val_Z) + 1),
-                     static_cast<const uint8_t *>(static_cast<const void *>(val_Z)));
+      bam_aux_append(rec, "XZ", 'Z', static_cast<int>(strlen(val_Z) + 1), reinterpret_cast<const uint8_t *>(val_Z));
 
       const char *val_H = "1AE301";
-      bam_aux_append(rec, "XH", 'H', static_cast<int>(strlen(val_H) + 1),
-                     static_cast<const uint8_t *>(static_cast<const void *>(val_H)));
+      bam_aux_append(rec, "XH", 'H', static_cast<int>(strlen(val_H) + 1), reinterpret_cast<const uint8_t *>(val_H));
 
       if (sam_write1(out, hdr, rec) < 0)
          throw std::runtime_error("Failed to write record 1");

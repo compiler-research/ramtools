@@ -27,10 +27,8 @@ int main(int argc, char *argv[])
       const std::string arg = argv[i];
       if (arg == "-noindex")
          do_index = false;
-      else if (arg == "-illumina")
-         quality_mode = RAMNTupleRecord::kIlluminaBinning;
-      else if (arg == "-dropqual")
-         quality_mode = RAMNTupleRecord::kDrop;
+      else if (arg == "-illumina" || arg == "-dropqual")
+         quality_mode = (arg == "-illumina") ? RAMNTupleRecord::kIlluminaBinning : RAMNTupleRecord::kDrop;
       else if (arg[0] != '-')
          output = argv[i];
    }
