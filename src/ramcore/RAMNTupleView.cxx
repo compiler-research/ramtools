@@ -3,6 +3,7 @@
 #include <ROOT/RDF/RSample.hxx>
 #include <ROOT/RDataFrame.hxx>
 #include <ROOT/RNTupleDS.hxx>
+#include <ROOT/RSnapshotOptions.hxx>
 #include <algorithm>
 
 #include <cctype>
@@ -64,33 +65,37 @@ std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int sta
 {
    ULong64_t first = 0;
    ULong64_t last = std::numeric_limits<Long64_t>::max();
-   auto entries = (*df.Take<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries"))[0];
+   auto entries_refid = df.Take<std::vector<uint64_t>>("index_entries_refid");
+
+   auto entries_pos = df.Take<std::vector<uint64_t>>("index_entries_pos");
+
+   auto entries_entry = df.Take<std::vector<uint64_t>>("index_entries_entry");
+
    std::size_t i = 0;
    // loop to find the nearest inclusive starting index
-   for (; i < entries.size(); ++i) {
-      if (entries[i].refid == refid) {
-         if (entries[i].pos == start) {
-            first = entries[i].entry;
+   for (; i < (*entries_entry)[0].size(); ++i) {
+      if ((*entries_refid)[0][i] == refid) {
+         if ((*entries_pos)[0][i] == start) {
+            first = (*entries_refid)[0][i];
             break;
          }
-         if (entries[i].pos > start) {
+         if ((*entries_pos)[0][i] > start) {
             if (i == 0){
-               first = entries[i].entry;
+               first = (*entries_entry)[0][i];
                break;
             }
-            first = entries[i - 1].entry;
+            first = (*entries_entry)[0][i - 1];
             break;
          }
       }
    }
-   for (; i < entries.size(); ++i) {
-      if (entries[i].refid > refid)
-      {
-         last = entries[i].entry;
+   for (; i < (*entries_refid)[0].size(); ++i) {
+      if ((*entries_refid)[0][i] > refid) {
+         last = (*entries_entry)[0][i];
          break;
       }
-      if (entries[i].refid == refid && entries[i].pos >= end) {
-         last = entries[i].entry;
+      if ((*entries_refid)[0][i] == refid && (*entries_pos)[0][i] >= end) {
+         last = (*entries_entry)[0][i];
          break;
       }
    }
@@ -261,31 +266,38 @@ ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *q
       std::cerr << "Reference" << rname.Data() << " not found\n";
    }
 
-   auto index = ROOT::RDF::FromRNTuple("INDEX", file);
+   std::pair<Long64_t, Long64_t> range;
+   try {
+
+      auto index = ROOT::RDF::FromRNTuple("INDEX_FAST", file);
+      range = FindIndex(index, refid, start, end);
+   } catch (...) {
+
+      std::cerr << "[-]Fast index wasn't found\n[*]Creating fast index ...\n";
+      auto index_old = ROOT::RDF::FromRNTuple("INDEX", file);
+      ROOT::RDF::RSnapshotOptions opts;
+      opts.fOutputFormat = ROOT::RDF::ESnapshotOutputFormat::kRNTuple;
+      opts.fMode = "UPDATE";
+      index_old.Snapshot("INDEX_FAST", file, {"index_entries.pos", "index_entries.refid", "index_entries.entry"}, opts);
+      auto index = ROOT::RDF::FromRNTuple("INDEX_FAST", file);
+      range = FindIndex(index, refid, start, end);
+      std::cerr << "[+]Index created!\n";
+   }
+
    st.Print();
    st.Start();
-   auto range = FindIndex(index, refid, start, end);
    std::cout << range.first << ' ' << range.second << '\n';
    ROOT::EnableImplicitMT(numthreads);
+   std::vector<std::string> files = {file};
+   auto ram = ROOT::Internal::RDF::FromRNTuple("RAM", files, range);
    st.Print();
    st.Start();
-   ROOT::RDF::Experimental::RDatasetSpec spec;
-   ROOT::RDF::Experimental::RSample sample("reads", "RAM", file);
-   spec.AddSample(sample);
-   ROOT::RDF::Experimental::RDatasetSpec::REntryRange entry_range(range.first, range.second);
-   spec.WithGlobalRange(entry_range);
-   std::vector<std::string> files = {file};
-   auto ram = ROOT::RDF::RDFInternal::FromRNTuple("RAM", files, range);
-   //auto ram = ROOT::RDataFrame(spec);
-
-   auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos) {
-      return (refid == refidentry) && (pos >= start) && (pos <= end);
+   auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos, uint16_t flag) {
+      return !(flag & FLAG_FILTER) && (refid == refidentry) && (pos >= start) && (pos <= end);
    };
-
-   auto filtered = ram.Filter(filterfunc, {"record.refid", "record.pos"});
+   auto filtered = ram.Filter(filterfunc, {"record.refid", "record.pos", "record.flag"});
    auto count = filtered.Count();
-   *count;
+   auto res = *count;
    st.Print();
-
-   return *count;
+   return res;
 }
