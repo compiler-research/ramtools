@@ -92,7 +92,42 @@ TEST_F(ramcoreTest, RNTupleViewRegionQueries)
    Long64_t zeroStart = ramntupleview(rntupleFile, "chr1:0-100", true, false, nullptr);
    EXPECT_GE(zeroStart, 0);
 }
+TEST_F(ramcoreTest, MT_RNTupleViewRegionQueries)
+{
+   const int numthreads = 16;
+   const char *rntupleFile = "test_rntuple.root";
+   samtoramntuple("samexample.sam", rntupleFile, true, true, true, 505, 0);
 
+   Long64_t hit = mt_ramntupleview(numthreads, rntupleFile, "chr1:1-1000000", true, false, nullptr);
+   EXPECT_GE(hit, 0);
+
+   Long64_t miss = mt_ramntupleview(numthreads, rntupleFile, "chrNonExistent:1-100", true, false, nullptr);
+   EXPECT_EQ(miss, 0);
+
+   Long64_t wildcard = mt_ramntupleview(numthreads, rntupleFile, "*", true, false, nullptr);
+   EXPECT_EQ(wildcard, 100);
+
+   Long64_t empty = mt_ramntupleview(numthreads, rntupleFile, "", true, false, nullptr);
+   EXPECT_EQ(empty, 100);
+
+   Long64_t null = mt_ramntupleview(numthreads, rntupleFile, nullptr, true, false, nullptr);
+   EXPECT_EQ(null, 100);
+
+   Long64_t whole = mt_ramntupleview(numthreads, rntupleFile, "chr1", true, false, nullptr);
+   EXPECT_GE(whole, 0);
+
+   Long64_t single = mt_ramntupleview(numthreads, rntupleFile, "chr1:500", true, false, nullptr);
+   EXPECT_GE(single, 0);
+
+   Long64_t invalid = mt_ramntupleview(numthreads, rntupleFile, "chr1:abc-def", true, false, nullptr);
+   EXPECT_EQ(invalid, 0);
+
+   Long64_t lateChr = mt_ramntupleview(numthreads, rntupleFile, "chrX:1-100", true, false, nullptr);
+   EXPECT_GE(lateChr, 0);
+
+   Long64_t zeroStart = mt_ramntupleview(numthreads, rntupleFile, "chr1:0-100", true, false, nullptr);
+   EXPECT_GE(zeroStart, 0);
+}
 TEST_F(ramcoreTest, RNTupleViewOpenFailure)
 {
    Long64_t count = ramntupleview("nonexistent_file.root", "chr1:1-100", true, false, nullptr);
