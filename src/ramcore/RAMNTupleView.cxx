@@ -251,7 +251,17 @@ ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *q
    st.Start();
 
    TString rname;
-   std::string region = query;
+   std::string region = query ? query : "";
+   if (region.empty() || region == "*") {
+auto reader = RAMNTupleRecord::OpenRAMFile(file);
+   if (!reader) {
+      std::cerr << "ramntupleview: failed to open file " << file << std::endl;
+      return 0;
+   }
+st.Print();
+      return reader->GetNEntries();
+
+   }
    Int_t start = 0;
    Int_t end = 0;
 
