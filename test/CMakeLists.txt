@@ -17,7 +17,6 @@ function(add_ramcore_test test_name)
     )
 
     if(RAMTOOLS_BUILD_BENCHMARKS)
-    
         target_link_libraries(${test_name} benchmark::benchmark)
     endif()
 
@@ -31,8 +30,8 @@ endfunction()
 
 add_ramcore_test(ramcoretests ramcoretests.cxx)
 add_ramcore_test(chromosome_split_test chromosome_split_test.cxx)
+add_ramcore_test(bam_conversion bam_conversion.cxx)
 
-install(TARGETS ramcoretests chromosome_split_test
+install(TARGETS ramcoretests chromosome_split_test bam_conversion
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-
