@@ -89,6 +89,9 @@ std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int sta
          }
       }
    }
+   if (first == 0) {
+      i = 0;
+   }
    for (; i < (*entries_refid)[0].size(); ++i) {
       if ((*entries_refid)[0][i] > refid) {
          last = (*entries_entry)[0][i];
@@ -269,11 +272,15 @@ st.Print();
       std::cerr << "Invalid region format. Use rname[:start[-end]]\n";
       return 0;
    }
+   if (start == end) {
+      return 0;
+   }
    auto metadata = ROOT::RDF::FromRNTuple("METADATA", file);
    const int refid = GetRefId(metadata, rname.Data());
 
    if (refid < 0) {
-      std::cerr << "Reference" << rname.Data() << " not found\n";
+      std::cerr << "Reference " << rname.Data() << " not found\n";
+      return 0;
    }
 
    std::pair<Long64_t, Long64_t> range;
