@@ -1,0 +1,116 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      alignment_url:
+        description: SAM/SAM.gz/BAM URL
+        default: "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/HG00097/alignment/HG00097.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam"
+      reference_url:
+        description: Reference FASTA/FASTA.gz URL
+        default: "http://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna.chromosome.11.fa.gz"
+      regions:
+        description: Space-separated regions
+        default: "11:5000000-6000000 11:65000000-66000000 11:120000000-121000000"
+  pull_request:
+    types: [labeled, synchronize]
+
+jobs:
+  benchmark:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'run-benchmarks')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      ALIGNMENT_URL: ${{ inputs.alignment_url || 'http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/data/HG00097/alignment/HG00097.chrom11.ILLUMINA.bwa.GBR.low_coverage.20130415.bam' }}
+      REFERENCE_URL: ${{ inputs.reference_url || 'http://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna.chromosome.11.fa.gz' }}
+      REGIONS: ${{ inputs.regions || '11:5000000-6000000 11:65000000-66000000 11:120000000-121000000' }}
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Install dependencies
+      run: |
+        wget -O root.tar.gz https://root.cern/download/root_v6.36.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz
+        sudo tar -xzf root.tar.gz -C /opt/
+        echo "/opt/root/bin" >> "$GITHUB_PATH"
+        sudo apt-get update
+        sudo apt-get install -y libvdt-dev libtbb-dev libhts-dev samtools
+
+    - name: Build
+      run: |
+        source /opt/root/bin/thisroot.sh
+        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+        cmake --build build --target samtoramntuple ramntupleview -j "$(nproc)"
+
+    - name: Prepare data
+      run: |
+        mkdir -p data results
+        curl -fL "$ALIGNMENT_URL" -o data/alignment
+        if samtools quickcheck data/alignment 2>/dev/null; then
+          samtools view -h -o data/input.sam data/alignment
+        elif file data/alignment | grep -qi gzip; then
+          gunzip -c data/alignment > data/input.sam
+        else
+          mv data/alignment data/input.sam
+        fi
+        rm -f data/alignment
+        curl -fL "$REFERENCE_URL" -o data/ref.gz
+        if file data/ref.gz | grep -qi gzip; then
+          gunzip -c data/ref.gz > data/reference.fa
+        else
+          mv data/ref.gz data/reference.fa
+        fi
+        rm -f data/ref.gz
+        samtools faidx data/reference.fa
+        df -h /
+
+    - name: Benchmark PR
+      run: |
+        source /opt/root/bin/thisroot.sh
+        python3 scripts/run_benchmark.py --ram results/pr.ram --output results/pr.json
+
+    - name: Benchmark base branch
+      if: github.event_name == 'pull_request'
+      continue-on-error: true
+      run: |
+        source /opt/root/bin/thisroot.sh
+        BASE_REF="${{ github.event.pull_request.base.ref }}"
+        git worktree add ../ramtools-base "origin/${BASE_REF}"
+        cmake -S ../ramtools-base -B ../ramtools-base/build -DCMAKE_BUILD_TYPE=Release -DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF
+        cmake --build ../ramtools-base/build --target samtoramntuple ramntupleview -j "$(nproc)"
+        python3 scripts/run_benchmark.py --build-dir ../ramtools-base/build --ram results/base.ram --no-cram --output results/base.json
+
+    - name: Render report
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      run: |
+        ARGS="results/pr.json --pr-sha $PR_SHA --output results/benchmark-summary.md"
+        if [ -f results/base.json ]; then
+          ARGS="$ARGS --base results/base.json --base-sha $BASE_SHA"
+        fi
+        python3 scripts/render_benchmark.py $ARGS
+
+    - name: Step summary
+      if: hashFiles('results/benchmark-summary.md') != ''
+      run: cat results/benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+    - name: PR comment
+      if: github.event_name == 'pull_request' && hashFiles('results/benchmark-summary.md') != ''
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ramtools-benchmark
+        path: results/benchmark-summary.md
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results
+        path: |
+          results/pr.json
+          results/base.json
+          results/benchmark-summary.md
