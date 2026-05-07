@@ -5,12 +5,17 @@
 #include <filesystem>
 #include <iostream>
 #include <cstdio>
+#include <vector>
+#include <string>
 
 #ifdef _WIN32
 #define NULL_DEVICE "NUL"
 #else
 #define NULL_DEVICE "/dev/null"
 #endif
+
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+static std::vector<std::string> input_files;
 
 static void BM_SamToTTree(benchmark::State &state)
 {
@@ -72,8 +77,63 @@ static void BM_SamToRNTuple(benchmark::State &state)
    state.counters["reads_per_second"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
+static void BM_SamToRNTupleRealData(benchmark::State &state)
+{
+   auto file_index = static_cast<std::size_t>(state.range(0));
+   std::string sam_file = input_files[file_index];
+   std::string rntuple_file = sam_file + ".rntuple.root";
+
+   // NOLINTNEXTLINE(clang-analyzer-deadcode.DeadStores)
+   for (auto _ : state) {
+
+      FILE *original_stdout = stdout;
+      stdout = fopen(NULL_DEVICE, "w");
+
+      samtoramntuple(sam_file.c_str(), rntuple_file.c_str(),
+                     /*index=*/true,
+                     /*split=*/true,
+                     /*cache=*/true,
+                     /*compression_algorithm=*/505,
+                     /*quality_policy=*/0);
+
+      // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+      fclose(stdout);
+      stdout = original_stdout;
+
+      if (std::filesystem::exists(rntuple_file)) {
+         auto file_size = std::filesystem::file_size(rntuple_file);
+         double file_size_mb = static_cast<double>(file_size) / (1024.0 * 1024.0);
+
+         state.counters["file_size_mb"] = file_size_mb;
+         state.counters["MB_per_sec"] = benchmark::Counter(file_size_mb, benchmark::Counter::kIsRate);
+      }
+
+      std::remove(rntuple_file.c_str());
+   }
+}
+
 int main(int argc, char **argv)
 {
+   if (argc > 1) {
+      std::cout << "Input Files Conversion Benchmark\n";
+
+      for (int i = 1; i < argc; i++) {
+         // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+         input_files.emplace_back(argv[i]);
+      }
+
+      for (int i = 0; i < input_files.size(); i++) {
+         ::benchmark::RegisterBenchmark((input_files[i]), BM_SamToRNTupleRealData)
+            ->Args({i})
+            ->Unit(benchmark::kMillisecond);
+      }
+
+      ::benchmark::Initialize(&argc, argv);
+      ::benchmark::RunSpecifiedBenchmarks();
+
+      return 0;
+   }
+
    std::cout << "Individual Conversion Time Benchmark" << std::endl;
    std::cout << "====================================" << std::endl;
    std::cout << "Measuring TTree and RNTuple conversion times separately" << std::endl;
