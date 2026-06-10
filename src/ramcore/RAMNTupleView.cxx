@@ -90,7 +90,7 @@ std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int sta
       }
    }
    if (first == 0) {
-      i = 0;
+      i = 1;
    }
    for (; i < (*entries_refid)[0].size(); ++i) {
       if ((*entries_refid)[0][i] > refid) {
