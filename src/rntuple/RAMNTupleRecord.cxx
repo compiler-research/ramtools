@@ -59,16 +59,16 @@ int RAMNTupleRefs::GetRefId(const std::string &rname)
       return fLastId;
    }
 
+   return -1;
+}
+void RAMNTupleRefs::SetRefId(const std::string &rname)
+{
    if (static_cast<int>(fRefVec.size()) >= static_cast<int>(fRefVec.capacity())) {
       fRefVec.reserve(fRefVec.capacity() * 2);
    }
 
    fRefVec.push_back(rname);
-   fLastId = static_cast<int>(fRefVec.size() - 1);
-   fLastName = rname;
-   return fLastId;
 }
-
 const std::string &RAMNTupleRefs::GetRefName(int rid) const
 {
    static const std::string star = "*";
@@ -288,11 +288,13 @@ void RAMNTupleRecord::ReadIndex(const std::string &filename)
 
 void RAMNTupleRecord::SetRNAME(const std::string &rname)
 {
+   fgRnameRefs->SetRefId(rname);
    refid = fgRnameRefs->GetRefId(rname);
 }
 
 void RAMNTupleRecord::SetRNEXT(const std::string &rnext)
 {
+   fgRnextRefs->SetRefId(rnext);
    refnext = fgRnextRefs->GetRefId(rnext);
 }
 
@@ -556,7 +558,7 @@ void RAMNTupleConverter::ConvertSAMToRAMNTuple(const std::string &sam_file, cons
                size_t tab_pos = line.find('\t', sn_pos);
                std::string seq_name =
                   line.substr(sn_pos + 3, tab_pos != std::string::npos ? tab_pos - sn_pos - 3 : std::string::npos);
-               RAMNTupleRecord::GetRnameRefs()->GetRefId(seq_name);
+               RAMNTupleRecord::GetRnameRefs()->SetRefId(seq_name);
             }
          }
          continue;
