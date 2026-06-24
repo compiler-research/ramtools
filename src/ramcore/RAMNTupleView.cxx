@@ -1,17 +1,25 @@
 #include "ramcore/RAMNTupleView.h"
+#include <ROOT/RDF/RDatasetSpec.hxx>
+#include <ROOT/RDF/RSample.hxx>
+#include <ROOT/RDataFrame.hxx>
+#include <ROOT/RNTupleDS.hxx>
+#include <ROOT/RSnapshotOptions.hxx>
 #include <algorithm>
 
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
+#include <TROOT.h>
 #include <TStopwatch.h>
 #include <TString.h>
 
@@ -52,6 +60,61 @@ int computeRefSpan(const std::vector<uint32_t> &cigarOps)
       }
    }
    return span;
+}
+std::pair<Long64_t, Long64_t> FindIndex(ROOT::RDataFrame &df, int refid, int start, int end)
+{
+   ULong64_t first = 0;
+   ULong64_t last = std::numeric_limits<Long64_t>::max();
+   auto entries_refid = df.Take<std::vector<uint64_t>>("index_entries_refid");
+
+   auto entries_pos = df.Take<std::vector<uint64_t>>("index_entries_pos");
+
+   auto entries_entry = df.Take<std::vector<uint64_t>>("index_entries_entry");
+
+   std::size_t i = 0;
+   // loop to find the nearest inclusive starting index
+   for (; i < (*entries_entry)[0].size(); ++i) {
+      if ((*entries_refid)[0][i] == refid) {
+         if ((*entries_pos)[0][i] == start) {
+            first = (*entries_refid)[0][i];
+            break;
+         }
+         if ((*entries_pos)[0][i] > start) {
+            if (i == 0){
+               first = (*entries_entry)[0][i];
+               break;
+            }
+            first = (*entries_entry)[0][i - 1];
+            break;
+         }
+      }
+   }
+   if (first == 0) {
+      i = 1;
+   }
+   for (; i < (*entries_refid)[0].size(); ++i) {
+      if ((*entries_refid)[0][i] > refid) {
+         last = (*entries_entry)[0][i];
+         break;
+      }
+      if ((*entries_refid)[0][i] == refid && (*entries_pos)[0][i] >= end) {
+         last = (*entries_entry)[0][i];
+         break;
+      }
+   }
+   return std::make_pair(first, last);
+}
+
+int GetRefId(ROOT::RDataFrame &df, const std::string &rname)
+{
+   if (rname == "*")
+      return -1;
+
+   auto refs = df.Take<std::vector<std::string>>("rname_refs");
+   const auto &refids = refs.GetValue()[0];
+
+   auto it = std::find(refids.begin(), refids.end(), rname);
+   return (it == refids.end()) ? -1 : std::distance(refids.begin(), it);
 }
 
 int resolveRefId(const char *name)
@@ -144,12 +207,10 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
       std::cerr << "Reference '" << rname.Data() << "' not found\n";
       return 0;
    }
-
    auto flagView = reader->GetView<uint16_t>("record.flag");
    auto refidView = reader->GetView<int32_t>("record.refid");
    auto posView = reader->GetView<int32_t>("record.pos");
    auto cigarView = reader->GetView<std::vector<uint32_t>>("record.cigar");
-
    auto index = RAMNTupleRecord::GetIndex();
    Long64_t start = (index && index->Size() > 0) ? index->GetRow(refid, rs) : 0;
    if (start < 0)
@@ -161,7 +222,6 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
    for (Long64_t i = start; i < total; i++) {
       if (flagView(i) & FLAG_FILTER)
          continue;
-
       int curRef = refidView(i);
       if (curRef < refid)
          continue;
@@ -185,4 +245,76 @@ Long64_t ramntupleview(const char *file, const char *query, bool /*cache*/, bool
    stopwatch.Print();
    std::cout << "Found " << count << " records in region " << region << std::endl;
    return count;
+}
+// NOLINTNEXTLINE(misc-use-internal-linkage)
+ULong64_t mt_ramntupleview(const int numthreads, const char *file, const char *query, bool /*cache*/,
+                           bool /*perfstats*/, const char * /*perfstatsfilename*/)
+{
+   TStopwatch st;
+   st.Start();
+
+   TString rname;
+   std::string region = query ? query : "";
+   if (region.empty() || region == "*") {
+auto reader = RAMNTupleRecord::OpenRAMFile(file);
+   if (!reader) {
+      std::cerr << "ramntupleview: failed to open file " << file << std::endl;
+      return 0;
+   }
+st.Print();
+      return reader->GetNEntries();
+
+   }
+   Int_t start = 0;
+   Int_t end = 0;
+
+   if (!parseRegion(region, rname, start, end)) {
+      std::cerr << "Invalid region format. Use rname[:start[-end]]\n";
+      return 0;
+   }
+   if (start == end) {
+      return 0;
+   }
+   auto metadata = ROOT::RDF::FromRNTuple("METADATA", file);
+   const int refid = GetRefId(metadata, rname.Data());
+
+   if (refid < 0) {
+      std::cerr << "Reference " << rname.Data() << " not found\n";
+      return 0;
+   }
+
+   std::pair<Long64_t, Long64_t> range;
+   try {
+
+      auto index = ROOT::RDF::FromRNTuple("INDEX_FAST", file);
+      range = FindIndex(index, refid, start, end);
+   } catch (...) {
+
+      std::cerr << "[-]Fast index wasn't found\n[*]Creating fast index ...\n";
+      auto index_old = ROOT::RDF::FromRNTuple("INDEX", file);
+      ROOT::RDF::RSnapshotOptions opts;
+      opts.fOutputFormat = ROOT::RDF::ESnapshotOutputFormat::kRNTuple;
+      opts.fMode = "UPDATE";
+      index_old.Snapshot("INDEX_FAST", file, {"index_entries.pos", "index_entries.refid", "index_entries.entry"}, opts);
+      auto index = ROOT::RDF::FromRNTuple("INDEX_FAST", file);
+      range = FindIndex(index, refid, start, end);
+      std::cerr << "[+]Index created!\n";
+   }
+
+   st.Print();
+   st.Start();
+   std::cout << range.first << ' ' << range.second << '\n';
+   ROOT::EnableImplicitMT(numthreads);
+   std::vector<std::string> files = {file};
+   auto ram = ROOT::Internal::RDF::FromRNTuple("RAM", files, range);
+   st.Print();
+   st.Start();
+   auto filterfunc = [refid, start, end](int32_t refidentry, int32_t pos, uint16_t flag) {
+      return !(flag & FLAG_FILTER) && (refid == refidentry) && (pos >= start) && (pos <= end);
+   };
+   auto filtered = ram.Filter(filterfunc, {"record.refid", "record.pos", "record.flag"});
+   auto count = filtered.Count();
+   auto res = *count;
+   st.Print();
+   return res;
 }

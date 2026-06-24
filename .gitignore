@@ -9,6 +9,7 @@ ramexample.root
 *.root.idx
 .ipynb_checkpoints/
 tmp/
+.cache
 *.so
 *.d
 *.pcm

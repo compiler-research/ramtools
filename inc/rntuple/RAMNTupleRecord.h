@@ -39,6 +39,7 @@ public:
    ~RAMNTupleRefs() = default;
 
    int GetRefId(const std::string &rname);
+   void SetRefId(const std::string &rname);
    const std::string &GetRefName(int rid) const;
 
    void Print() const;

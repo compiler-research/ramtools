@@ -31,6 +31,7 @@ ROOT_EXECUTABLE(bamtoramntuple
         ROOT::ROOTNTuple
 )
 
+
 install(TARGETS samtoram samtoramntuple ramntupleview bamtoramntuple
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

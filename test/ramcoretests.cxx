@@ -92,7 +92,42 @@ TEST_F(ramcoreTest, RNTupleViewRegionQueries)
    Long64_t zeroStart = ramntupleview(rntupleFile, "chr1:0-100", true, false, nullptr);
    EXPECT_GE(zeroStart, 0);
 }
+TEST_F(ramcoreTest, MT_RNTupleViewRegionQueries)
+{
+   const int numthreads = 16;
+   const char *rntupleFile = "test_rntuple.root";
+   samtoramntuple("samexample.sam", rntupleFile, true, true, true, 505, 0);
 
+   Long64_t hit = mt_ramntupleview(numthreads, rntupleFile, "chr1:1-1000000", true, false, nullptr);
+   EXPECT_GE(hit, 0);
+
+   Long64_t miss = mt_ramntupleview(numthreads, rntupleFile, "chrNonExistent:1-100", true, false, nullptr);
+   EXPECT_EQ(miss, 0);
+
+   Long64_t wildcard = mt_ramntupleview(numthreads, rntupleFile, "*", true, false, nullptr);
+   EXPECT_EQ(wildcard, 100);
+
+   Long64_t empty = mt_ramntupleview(numthreads, rntupleFile, "", true, false, nullptr);
+   EXPECT_EQ(empty, 100);
+
+   Long64_t null = mt_ramntupleview(numthreads, rntupleFile, nullptr, true, false, nullptr);
+   EXPECT_EQ(null, 100);
+
+   Long64_t whole = mt_ramntupleview(numthreads, rntupleFile, "chr1", true, false, nullptr);
+   EXPECT_GE(whole, 0);
+
+   Long64_t single = mt_ramntupleview(numthreads, rntupleFile, "chr1:500", true, false, nullptr);
+   EXPECT_GE(single, 0);
+
+   Long64_t invalid = mt_ramntupleview(numthreads, rntupleFile, "chr1:abc-def", true, false, nullptr);
+   EXPECT_EQ(invalid, 0);
+
+   Long64_t lateChr = mt_ramntupleview(numthreads, rntupleFile, "chrX:1-100", true, false, nullptr);
+   EXPECT_GE(lateChr, 0);
+
+   Long64_t zeroStart = mt_ramntupleview(numthreads, rntupleFile, "chr1:0-100", true, false, nullptr);
+   EXPECT_GE(zeroStart, 0);
+}
 TEST_F(ramcoreTest, RNTupleViewOpenFailure)
 {
    Long64_t count = ramntupleview("nonexistent_file.root", "chr1:1-100", true, false, nullptr);
@@ -462,4 +497,23 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
 
    std::remove(samFile);
    std::remove(ramFile);
+}
+TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
+{
+   const char *samFile = "samexample.sam";
+   const char *rntupleFile = "test_rntuple.root";
+
+   samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
+
+   size_t refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   testing::internal::CaptureStdout();
+   Long64_t count = ramntupleview(rntupleFile, "chrINVALID:100-200", true, false, nullptr);
+   testing::internal::GetCapturedStdout();
+
+   size_t refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   EXPECT_EQ(refsBefore, refsAfter)
+      << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
+   EXPECT_EQ(count, 0) << "Expected 0 records for unknown chromosome, got " << count;
 }

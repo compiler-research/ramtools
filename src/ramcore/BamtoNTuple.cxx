@@ -214,7 +214,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
 
    const int nRef = sam_hdr_nref(hdr);
    for (int i = 0; i < nRef; ++i)
-      RAMNTupleRecord::GetRnameRefs()->GetRefId(sam_hdr_tid2name(hdr, i));
+      RAMNTupleRecord::GetRnameRefs()->SetRefId(sam_hdr_tid2name(hdr, i));
 
    auto model = RAMNTupleRecord::MakeModel();
    ROOT::RNTupleWriteOptions opts;
