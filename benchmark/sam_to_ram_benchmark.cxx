@@ -10,8 +10,8 @@
 #include <string>
 
 // Convert one on-disk SAM to both TTree and RNTuple, comparing output sizes.
-static void CompareConversion(benchmark::State &state, const std::string &sam_file, int compression,
-                              unsigned int quality)
+static void
+CompareConversion(benchmark::State &state, const std::string &sam_file, int compression, unsigned int quality)
 {
    const std::string ttree_file = "cmp_ttree.root";
    const std::string rntuple_file = "cmp_rntuple.root";
@@ -60,16 +60,13 @@ int main(int argc, char **argv)
 
    if (cfg.HasRealDataset()) {
       const std::string sam = cfg.sam;
-      benchmark::RegisterBenchmark("BM_SamToRamComparison/real",
-                                   [sam, compression, quality](benchmark::State &state) {
-                                      CompareConversion(state, sam, compression, quality);
-                                   })
-         ->Unit(benchmark::kMillisecond);
+      benchmark::RegisterBenchmark("BM_SamToRamComparison/real", [sam, compression, quality](benchmark::State &state) {
+         CompareConversion(state, sam, compression, quality);
+      })->Unit(benchmark::kMillisecond);
    } else {
-      benchmark::RegisterBenchmark("BM_SamToRamComparison",
-                                   [compression, quality](benchmark::State &state) {
-                                      BM_Generated(state, compression, quality);
-                                   })
+      benchmark::RegisterBenchmark(
+         "BM_SamToRamComparison",
+         [compression, quality](benchmark::State &state) { BM_Generated(state, compression, quality); })
          ->Arg(1000)
          ->Arg(10000)
          ->Arg(100000)

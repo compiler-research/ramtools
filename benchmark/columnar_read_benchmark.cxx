@@ -83,21 +83,15 @@ int main(int argc, char **argv)
    benchutil::BenchmarkConfig cfg = benchutil::BenchmarkConfig::FromArgs(&argc, argv);
    const std::string rntuple_root = cfg.EnsureRNTupleRoot();
 
-   benchmark::RegisterBenchmark("Columnar/FlagOnly",
-                                [rntuple_root](benchmark::State &state) {
-                                   BM_ColumnarFlagOnly(state, rntuple_root);
-                                })
-      ->Unit(benchmark::kMillisecond);
-   benchmark::RegisterBenchmark("Columnar/MapqOnly",
-                                [rntuple_root](benchmark::State &state) {
-                                   BM_ColumnarMapqOnly(state, rntuple_root);
-                                })
-      ->Unit(benchmark::kMillisecond);
-   benchmark::RegisterBenchmark("Columnar/FullRecord",
-                                [rntuple_root](benchmark::State &state) {
-                                   BM_FullRecordRead(state, rntuple_root);
-                                })
-      ->Unit(benchmark::kMillisecond);
+   benchmark::RegisterBenchmark("Columnar/FlagOnly", [rntuple_root](benchmark::State &state) {
+      BM_ColumnarFlagOnly(state, rntuple_root);
+   })->Unit(benchmark::kMillisecond);
+   benchmark::RegisterBenchmark("Columnar/MapqOnly", [rntuple_root](benchmark::State &state) {
+      BM_ColumnarMapqOnly(state, rntuple_root);
+   })->Unit(benchmark::kMillisecond);
+   benchmark::RegisterBenchmark("Columnar/FullRecord", [rntuple_root](benchmark::State &state) {
+      BM_FullRecordRead(state, rntuple_root);
+   })->Unit(benchmark::kMillisecond);
 
    benchmark::Initialize(&argc, argv);
    benchmark::RunSpecifiedBenchmarks();

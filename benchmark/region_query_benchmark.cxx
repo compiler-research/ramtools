@@ -32,8 +32,8 @@ static const std::vector<std::string> kRegions = {"chr1:1000000-1001000",
                                                   "chr17:41196312-41277500",
                                                   "chr13:32889611-32973805"};
 
-static void RunQuery(benchmark::State &state, const std::string &file, const std::string &region, int region_idx,
-                     bool rntuple)
+static void
+RunQuery(benchmark::State &state, const std::string &file, const std::string &region, int region_idx, bool rntuple)
 {
    int64_t total_reads_processed = 0;
    Long64_t reads_in_this_run = 0;
@@ -77,17 +77,15 @@ int main(int argc, char **argv)
    for (int idx : SelectedRegions(cfg)) {
       const std::string region = kRegions[idx % kRegions.size()];
 
-      benchmark::RegisterBenchmark("RegionQuery/TTree/r" + std::to_string(idx),
-                                   [ttree_root, region, idx](benchmark::State &state) {
-                                      RunQuery(state, ttree_root, region, idx, false);
-                                   })
-         ->Unit(benchmark::kSecond);
+      benchmark::RegisterBenchmark("RegionQuery/TTree/r" + std::to_string(idx), [ttree_root, region,
+                                                                                 idx](benchmark::State &state) {
+         RunQuery(state, ttree_root, region, idx, false);
+      })->Unit(benchmark::kSecond);
 
-      benchmark::RegisterBenchmark("RegionQuery/RNTuple/r" + std::to_string(idx),
-                                   [rntuple_root, region, idx](benchmark::State &state) {
-                                      RunQuery(state, rntuple_root, region, idx, true);
-                                   })
-         ->Unit(benchmark::kSecond);
+      benchmark::RegisterBenchmark("RegionQuery/RNTuple/r" + std::to_string(idx), [rntuple_root, region,
+                                                                                   idx](benchmark::State &state) {
+         RunQuery(state, rntuple_root, region, idx, true);
+      })->Unit(benchmark::kSecond);
    }
 
    benchmark::Initialize(&argc, argv);

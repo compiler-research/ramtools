@@ -25,8 +25,8 @@ static void TimeTTreeConversion(benchmark::State &state, const std::string &sam_
 }
 
 // Time SAM->RNTuple conversion of an on-disk SAM, recording the output size.
-static void TimeRNTupleConversion(benchmark::State &state, const std::string &sam_file, int compression,
-                                  unsigned int quality)
+static void
+TimeRNTupleConversion(benchmark::State &state, const std::string &sam_file, int compression, unsigned int quality)
 {
    const std::string out = "conv_rntuple_out.root";
    for (auto _ : state) {
@@ -75,24 +75,21 @@ int main(int argc, char **argv)
 
    if (cfg.HasRealDataset()) {
       const std::string sam = cfg.sam;
-      benchmark::RegisterBenchmark("TTree_Conversion/real",
-                                   [sam](benchmark::State &state) { TimeTTreeConversion(state, sam); })
-         ->Unit(benchmark::kMillisecond);
-      benchmark::RegisterBenchmark("RNTuple_Conversion/real",
-                                   [sam, compression, quality](benchmark::State &state) {
-                                      TimeRNTupleConversion(state, sam, compression, quality);
-                                   })
-         ->Unit(benchmark::kMillisecond);
+      benchmark::RegisterBenchmark("TTree_Conversion/real", [sam](benchmark::State &state) {
+         TimeTTreeConversion(state, sam);
+      })->Unit(benchmark::kMillisecond);
+      benchmark::RegisterBenchmark("RNTuple_Conversion/real", [sam, compression, quality](benchmark::State &state) {
+         TimeRNTupleConversion(state, sam, compression, quality);
+      })->Unit(benchmark::kMillisecond);
    } else {
       benchmark::RegisterBenchmark("TTree_Conversion", BM_TTreeGenerated)
          ->Arg(1000)
          ->Arg(10000)
          ->Arg(100000)
          ->Unit(benchmark::kMillisecond);
-      benchmark::RegisterBenchmark("RNTuple_Conversion",
-                                   [compression, quality](benchmark::State &state) {
-                                      BM_RNTupleGenerated(state, compression, quality);
-                                   })
+      benchmark::RegisterBenchmark(
+         "RNTuple_Conversion",
+         [compression, quality](benchmark::State &state) { BM_RNTupleGenerated(state, compression, quality); })
          ->Arg(1000)
          ->Arg(10000)
          ->Arg(100000)
