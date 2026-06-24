@@ -17,7 +17,6 @@ function(add_ramcore_test test_name)
     )
 
     if(RAMTOOLS_BUILD_BENCHMARKS)
-
         target_link_libraries(${test_name} PUBLIC benchmark::benchmark)
     endif()
 

@@ -35,7 +35,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        wget -O root.tar.gz https://root.cern/download/root_v6.36.00.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz
+        wget -O root.tar.gz https://root.cern/download/root_v6.38.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz
         sudo tar -xzf root.tar.gz -C /opt/
         echo "/opt/root/bin" >> "$GITHUB_PATH"
         sudo apt-get update
