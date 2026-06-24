@@ -1,97 +1,106 @@
 #include <benchmark/benchmark.h>
+#include "benchmark_config.h"
+#include "benchmark_utils.h"
 #include "generate_sam_benchmark.h"
-#include "ramcore/SamToTTree.h"
 #include "ramcore/SamToNTuple.h"
+#include "ramcore/SamToTTree.h"
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
-#include <cstdio>
+#include <string>
 
-#ifdef _WIN32
-#define NULL_DEVICE "NUL"
-#else
-#define NULL_DEVICE "/dev/null"
-#endif
-
-static void BM_SamToTTree(benchmark::State &state)
+// Time SAM->TTree conversion of an on-disk SAM, recording the output size.
+static void TimeTTreeConversion(benchmark::State &state, const std::string &sam_file)
 {
-   int num_reads = state.range(0);
-   std::string sam_file = "ttree_test.sam";
-   std::string ttree_file = "ttree_output.root";
-
-   GenerateSAMFile(sam_file, num_reads);
-
+   const std::string out = "conv_ttree_out.root";
    for (auto _ : state) {
-
-      FILE *original_stdout = stdout;
-      stdout = fopen(NULL_DEVICE, "w");
-
-      samtoram(sam_file.c_str(), ttree_file.c_str(), true, true, true, 1, 0);
-
-      fclose(stdout);
-      stdout = original_stdout;
-
-      if (std::filesystem::exists(ttree_file)) {
-         auto file_size = std::filesystem::file_size(ttree_file);
-         state.counters["file_size_mb"] = file_size / (1024.0 * 1024.0);
+      {
+         benchutil::ScopedStdoutSuppressor quiet;
+         samtoram(sam_file.c_str(), out.c_str(), true, true, true, 1, 0);
       }
-
-      std::remove(ttree_file.c_str());
+      if (std::filesystem::exists(out))
+         state.counters["file_size_mb"] = std::filesystem::file_size(out) / (1024.0 * 1024.0);
+      std::remove(out.c_str());
    }
+}
 
-   std::remove(sam_file.c_str());
+// Time SAM->RNTuple conversion of an on-disk SAM, recording the output size.
+static void TimeRNTupleConversion(benchmark::State &state, const std::string &sam_file, int compression,
+                                  unsigned int quality)
+{
+   const std::string out = "conv_rntuple_out.root";
+   for (auto _ : state) {
+      {
+         benchutil::ScopedStdoutSuppressor quiet;
+         samtoramntuple(sam_file.c_str(), out.c_str(), true, true, true, compression, quality);
+      }
+      if (std::filesystem::exists(out))
+         state.counters["file_size_mb"] = std::filesystem::file_size(out) / (1024.0 * 1024.0);
+      std::remove(out.c_str());
+   }
+}
+
+// Generated-data sweep: build a synthetic SAM of state.range(0) reads, then time conversion.
+static void BM_TTreeGenerated(benchmark::State &state)
+{
+   const int num_reads = static_cast<int>(state.range(0));
+   const std::string sam = "conv_gen_ttree_" + std::to_string(num_reads) + ".sam";
+   GenerateSAMFile(sam, num_reads);
+   TimeTTreeConversion(state, sam);
+   std::remove(sam.c_str());
    state.counters["reads_per_second"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
-static void BM_SamToRNTuple(benchmark::State &state)
+static void BM_RNTupleGenerated(benchmark::State &state, int compression, unsigned int quality)
 {
-   int num_reads = state.range(0);
-   std::string sam_file = "rntuple_test.sam";
-   std::string rntuple_file = "rntuple_output.root";
-
-   GenerateSAMFile(sam_file, num_reads);
-
-   for (auto _ : state) {
-
-      FILE *original_stdout = stdout;
-      stdout = fopen(NULL_DEVICE, "w");
-
-      samtoramntuple(sam_file.c_str(), rntuple_file.c_str(), true, true, true, 505, 0);
-
-      fclose(stdout);
-      stdout = original_stdout;
-
-      if (std::filesystem::exists(rntuple_file)) {
-         auto file_size = std::filesystem::file_size(rntuple_file);
-         state.counters["file_size_mb"] = file_size / (1024.0 * 1024.0);
-      }
-
-      std::remove(rntuple_file.c_str());
-   }
-
-   std::remove(sam_file.c_str());
+   const int num_reads = static_cast<int>(state.range(0));
+   const std::string sam = "conv_gen_rntuple_" + std::to_string(num_reads) + ".sam";
+   GenerateSAMFile(sam, num_reads);
+   TimeRNTupleConversion(state, sam, compression, quality);
+   std::remove(sam.c_str());
    state.counters["reads_per_second"] = benchmark::Counter(num_reads, benchmark::Counter::kIsRate);
 }
 
 int main(int argc, char **argv)
 {
+   benchutil::BenchmarkConfig cfg = benchutil::BenchmarkConfig::FromArgs(&argc, argv);
+
    std::cout << "Individual Conversion Time Benchmark" << std::endl;
    std::cout << "====================================" << std::endl;
    std::cout << "Measuring TTree and RNTuple conversion times separately" << std::endl;
    std::cout << std::endl;
 
-   ::benchmark::RegisterBenchmark("TTree_Conversion", BM_SamToTTree)
-      ->Args({1000})
-      ->Args({10000})
-      ->Args({100000})
-      ->Unit(benchmark::kMillisecond);
+   const int compression = cfg.compression;
+   const unsigned int quality = cfg.quality;
 
-   ::benchmark::RegisterBenchmark("RNTuple_Conversion", BM_SamToRNTuple)
-      ->Args({1000})
-      ->Args({10000})
-      ->Args({100000})
-      ->Unit(benchmark::kMillisecond);
+   if (cfg.HasRealDataset()) {
+      const std::string sam = cfg.sam;
+      benchmark::RegisterBenchmark("TTree_Conversion/real",
+                                   [sam](benchmark::State &state) { TimeTTreeConversion(state, sam); })
+         ->Unit(benchmark::kMillisecond);
+      benchmark::RegisterBenchmark("RNTuple_Conversion/real",
+                                   [sam, compression, quality](benchmark::State &state) {
+                                      TimeRNTupleConversion(state, sam, compression, quality);
+                                   })
+         ->Unit(benchmark::kMillisecond);
+   } else {
+      benchmark::RegisterBenchmark("TTree_Conversion", BM_TTreeGenerated)
+         ->Arg(1000)
+         ->Arg(10000)
+         ->Arg(100000)
+         ->Unit(benchmark::kMillisecond);
+      benchmark::RegisterBenchmark("RNTuple_Conversion",
+                                   [compression, quality](benchmark::State &state) {
+                                      BM_RNTupleGenerated(state, compression, quality);
+                                   })
+         ->Arg(1000)
+         ->Arg(10000)
+         ->Arg(100000)
+         ->Unit(benchmark::kMillisecond);
+   }
 
-   ::benchmark::Initialize(&argc, argv);
-   ::benchmark::RunSpecifiedBenchmarks();
+   benchmark::Initialize(&argc, argv);
+   benchmark::RunSpecifiedBenchmarks();
+   benchmark::Shutdown();
    return 0;
 }
