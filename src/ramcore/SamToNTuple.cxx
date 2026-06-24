@@ -233,8 +233,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       writeOptions.SetMaxUnzippedPageSize(1024 * 1024);
       writeOptions.SetUseBufferedWrite(true);
 
-      auto parallel_writer =
-         ROOT::Experimental::RNTupleParallelWriter::Recreate(std::move(model), "RAM", filename, writeOptions);
+      auto parallel_writer = ROOT::RNTupleParallelWriter::Recreate(std::move(model), "RAM", filename, writeOptions);
 
       const int contexts_per_file = std::min(4, num_threads);
       const size_t records_per_context = (records.size() + contexts_per_file - 1) / contexts_per_file;
