@@ -1,29 +1,29 @@
+#include "../benchmark/generate_sam_benchmark.h"
+#include "../tools/ramview.cxx"
+#include "ramcore/RAMNTupleView.h"
+#include "ramcore/SamToNTuple.h"
+#include "ramcore/SamToTTree.h"
+#include "rntuple/RAMNTupleRecord.h"
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
-#include <Rtypes.h>
+#include <RtypesCore.h>
 #include <TFile.h>
 #include <TTree.h>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
-#include "../benchmark/generate_sam_benchmark.h"
-#include "../tools/ramview.cxx"
-#include "ramcore/RAMNTupleView.h"
-#include "ramcore/SamToNTuple.h"
-#include "rntuple/RAMNTupleRecord.h"
-#include "ramcore/SamToTTree.h"
 namespace {
 
 class ramcoreTest : public ::testing::Test {
 protected:
     void SetUp() override {
-       GenerateSAMFile("samexample.sam", 100);
+       GenerateSAMFile("samexample.sam", /*num_reads=*/100);
        std::remove("test_ttree.root");
        std::remove("test_rntuple.root");
     }
@@ -41,17 +41,19 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
    const char *ttreeFile = "test_ttree.root";
    const char *rntupleFile = "test_rntuple.root";
 
-   samtoram(samFile, ttreeFile, true, true, true, 1, 0);
-   samtoramntuple(samFile, rntupleFile, true, true, true, 505, 0);
+   samtoram(samFile, ttreeFile, /*index=*/true, /*split=*/true, /*cache=*/true,
+            /*compression_algorithm=*/1, /*quality_policy=*/0);
+   samtoramntuple(samFile, rntupleFile, /*index=*/true, /*split=*/true, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    auto ft = std::unique_ptr<TFile>(TFile::Open(ttreeFile));
    ASSERT_TRUE(ft && !ft->IsZombie());
 
-   auto ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
+   auto *ttree = dynamic_cast<TTree *>(ft->Get("RAM"));
    Long64_t ttreeEntries = ttree->GetEntries();
 
    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
-   Long64_t rntupleEntries = reader->GetNEntries();
+   auto rntupleEntries = static_cast<Long64_t>(reader->GetNEntries());
 
    EXPECT_EQ(ttreeEntries, rntupleEntries);
    EXPECT_EQ(ttreeEntries, 100);
@@ -60,49 +62,63 @@ TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
 TEST_F(ramcoreTest, RNTupleViewRegionQueries)
 {
    const char *rntupleFile = "test_rntuple.root";
-   samtoramntuple("samexample.sam", rntupleFile, true, true, true, 505, 0);
+   samtoramntuple(/*datafile=*/"samexample.sam", rntupleFile, /*index=*/true, /*split=*/true,
+                  /*cache=*/true, /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   Long64_t hit = ramntupleview(rntupleFile, "chr1:1-1000000", true, false, nullptr);
+   Long64_t hit = ramntupleview(rntupleFile, /*query=*/"chr1:1-1000000", /*cache=*/true,
+                                /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GE(hit, 0);
 
-   Long64_t miss = ramntupleview(rntupleFile, "chrNonExistent:1-100", true, false, nullptr);
+   Long64_t miss = ramntupleview(rntupleFile, /*query=*/"chrNonExistent:1-100", /*cache=*/true,
+                                 /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(miss, 0);
 
-   Long64_t wildcard = ramntupleview(rntupleFile, "*", true, false, nullptr);
+   Long64_t wildcard = ramntupleview(rntupleFile, /*query=*/"*", /*cache=*/true,
+                                     /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(wildcard, 100);
 
-   Long64_t empty = ramntupleview(rntupleFile, "", true, false, nullptr);
+   Long64_t empty = ramntupleview(rntupleFile, /*query=*/"", /*cache=*/true,
+                                  /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(empty, 100);
 
-   Long64_t null = ramntupleview(rntupleFile, nullptr, true, false, nullptr);
+   Long64_t null = ramntupleview(rntupleFile, /*query=*/nullptr, /*cache=*/true,
+                                 /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(null, 100);
 
-   Long64_t whole = ramntupleview(rntupleFile, "chr1", true, false, nullptr);
+   Long64_t whole = ramntupleview(rntupleFile, /*query=*/"chr1", /*cache=*/true,
+                                  /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GE(whole, 0);
 
-   Long64_t single = ramntupleview(rntupleFile, "chr1:500", true, false, nullptr);
+   Long64_t single = ramntupleview(rntupleFile, /*query=*/"chr1:500", /*cache=*/true,
+                                   /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GE(single, 0);
 
-   Long64_t invalid = ramntupleview(rntupleFile, "chr1:abc-def", true, false, nullptr);
+   Long64_t invalid = ramntupleview(rntupleFile, /*query=*/"chr1:abc-def", /*cache=*/true,
+                                    /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(invalid, 0);
 
-   Long64_t lateChr = ramntupleview(rntupleFile, "chrX:1-100", true, false, nullptr);
+   Long64_t lateChr = ramntupleview(rntupleFile, /*query=*/"chrX:1-100", /*cache=*/true,
+                                    /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GE(lateChr, 0);
 
-   Long64_t zeroStart = ramntupleview(rntupleFile, "chr1:0-100", true, false, nullptr);
+   Long64_t zeroStart = ramntupleview(rntupleFile, /*query=*/"chr1:0-100", /*cache=*/true,
+                                      /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GE(zeroStart, 0);
 }
 
 TEST_F(ramcoreTest, RNTupleViewOpenFailure)
 {
-   Long64_t count = ramntupleview("nonexistent_file.root", "chr1:1-100", true, false, nullptr);
+   Long64_t count = ramntupleview(/*file=*/"nonexistent_file.root", /*query=*/"chr1:1-100",
+                                  /*cache=*/true, /*perfstats=*/false,
+                                  /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(count, 0);
 }
 
 TEST_F(ramcoreTest, RNTupleDataIntegrity)
 {
    const char *rntupleFile = "test_rntuple.root";
-   samtoramntuple("samexample.sam", rntupleFile, true, true, true, 505, 0);
+   samtoramntuple(/*datafile=*/"samexample.sam", rntupleFile, /*index=*/true, /*split=*/true,
+                  /*cache=*/true, /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    auto reader = ROOT::RNTupleReader::Open("RAM", rntupleFile);
    ASSERT_NE(reader, nullptr);
@@ -125,7 +141,7 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
    EXPECT_EQ(storedLen, 36);
 
    std::cout << "[   INFO   ] Data Integrity - Pos: " << firstPos << ", Encoded Seq Size: " << firstSeq.size()
-             << " (Header: " << storedLen << ")" << std::endl;
+             << " (Header: " << storedLen << ")" << '\n';
 }
 
 TEST_F(ramcoreTest, RNTupleViewCigarOverlap)
@@ -141,12 +157,21 @@ TEST_F(ramcoreTest, RNTupleViewCigarOverlap)
           << "AAAAAAAAAAAAAAAAAAAA\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, false, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*index=*/false, /*split=*/false, /*cache=*/false,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   EXPECT_EQ(ramntupleview(rntupleFile, "chr1:140-160", true, false, nullptr), 1);
-   EXPECT_EQ(ramntupleview(rntupleFile, "chr1:201-210", true, false, nullptr), 0);
-   EXPECT_EQ(ramntupleview(rntupleFile, "chr1:50-110", true, false, nullptr), 1);
-   EXPECT_EQ(ramntupleview(rntupleFile, "chr1:1-50", true, false, nullptr), 0);
+   EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:140-160", /*cache=*/true,
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             1);
+   EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:201-210", /*cache=*/true,
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             0);
+   EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:50-110", /*cache=*/true,
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             1);
+   EXPECT_EQ(ramntupleview(rntupleFile, /*query=*/"chr1:1-50", /*cache=*/true,
+                           /*perfstats=*/false, /*perfstatsfilename=*/nullptr),
+             0);
 
    std::remove(customSam);
    std::remove(rntupleFile);
@@ -168,9 +193,11 @@ TEST_F(ramcoreTest, RNTupleViewFlagFiltering)
       sam << "unmapped\t4\tchr1\t100\t0\t50M\t*\t0\t0\t" << seq << "\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, false, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*index=*/false, /*split=*/false, /*cache=*/false,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   Long64_t count = ramntupleview(rntupleFile, "chr1:1-500", true, false, nullptr);
+   Long64_t count = ramntupleview(rntupleFile, /*query=*/"chr1:1-500", /*cache=*/true,
+                                  /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(count, 1) << "Only primary read should pass FLAG_FILTER";
 
    std::remove(customSam);
@@ -314,12 +341,15 @@ TEST_F(ramcoreTest, SmartIndexSkipsUnmappedReads)
       sam << "mapped2\t0\tchr1\t2000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*index=*/true, /*split=*/false, /*cache=*/false,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   Long64_t count = ramntupleview(rntupleFile, "chr1:900-2100", true, false, nullptr);
+   Long64_t count = ramntupleview(rntupleFile, /*query=*/"chr1:900-2100", /*cache=*/true,
+                                  /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(count, 2) << "Both mapped reads should be queryable";
 
-   Long64_t unmapped = ramntupleview(rntupleFile, "*:0-100", true, false, nullptr);
+   Long64_t unmapped = ramntupleview(rntupleFile, /*query=*/"*:0-100", /*cache=*/true,
+                                     /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(unmapped, 0) << "Unmapped reads should not appear in index queries";
 
    std::remove(customSam);
@@ -344,12 +374,15 @@ TEST_F(ramcoreTest, SmartIndexCreatesEntryAtChromosomeBoundary)
              << "\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*index=*/true, /*split=*/false, /*cache=*/false,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   Long64_t chr1_hits = ramntupleview(rntupleFile, "chr1:1000-6000", true, false, nullptr);
+   Long64_t chr1_hits = ramntupleview(rntupleFile, /*query=*/"chr1:1000-6000", /*cache=*/true,
+                                      /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GT(chr1_hits, 0) << "chr1 reads should be queryable";
 
-   Long64_t chr2_hits = ramntupleview(rntupleFile, "chr2:500-5500", true, false, nullptr);
+   Long64_t chr2_hits = ramntupleview(rntupleFile, /*query=*/"chr2:500-5500", /*cache=*/true,
+                                      /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_GT(chr2_hits, 0) << "chr2 reads should be immediately queryable at boundary";
 
    std::remove(customSam);
@@ -372,12 +405,15 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
       sam << "far_read\t0\tchr1\t50000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*index=*/true, /*split=*/false, /*cache=*/false,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0);
 
-   Long64_t cluster = ramntupleview(rntupleFile, "chr1:900-1100", true, false, nullptr);
+   Long64_t cluster = ramntupleview(rntupleFile, /*query=*/"chr1:900-1100", /*cache=*/true,
+                                    /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(cluster, 200);
 
-   Long64_t far = ramntupleview(rntupleFile, "chr1:49900-50100", true, false, nullptr);
+   Long64_t far = ramntupleview(rntupleFile, /*query=*/"chr1:49900-50100", /*cache=*/true,
+                                /*perfstats=*/false, /*perfstatsfilename=*/nullptr);
    EXPECT_EQ(far, 1) << "Distant read should be indexed via position interval";
 
    std::remove(customSam);
