@@ -69,6 +69,18 @@ int RAMNTupleRefs::GetRefId(const std::string &rname)
    return fLastId;
 }
 
+int RAMNTupleRefs::FindRefId(const std::string &rname) const
+{
+   if (rname == "*")
+      return -1;
+   if (rname == fLastName)
+      return fLastId;
+   auto it = std::find(fRefVec.begin(), fRefVec.end(), rname);
+   if (it != fRefVec.end())
+      return static_cast<int>(std::distance(fRefVec.begin(), it));
+   return -1;
+}
+
 const std::string &RAMNTupleRefs::GetRefName(int rid) const
 {
    static const std::string star = "*";
@@ -439,8 +451,7 @@ std::string DecodeSequence(const std::string &encoded_seq, size_t length)
       seq[i * 2 + 1] = kCodeToSeq[byte & 0xf];
    }
    if (length % 2) {
-      // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-      seq[length - 1] = kCodeToSeq[static_cast<uint8_t>(encoded_seq[length / 2]) >> 4];
+      seq[length - 1] = kCodeToSeq[encoded_seq[length / 2] >> 4];
    }
 
    return seq;
