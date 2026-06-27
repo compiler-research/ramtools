@@ -27,6 +27,7 @@ class ramcoreTest : public ::testing::Test {
 protected:
    static constexpr const char *kParserTestFile = "test_sam_parser_validation.sam";
 
+   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
    void SetUp() override
    {
       GenerateSAMFile("samexample.sam", 100);
@@ -34,6 +35,7 @@ protected:
       std::remove("test_rntuple.root");
    }
 
+   // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
    void TearDown() override
    {
       std::remove("test_ttree.root");
@@ -460,7 +462,8 @@ TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
 
    RAMNTupleConverter::ConvertSAMToRAMNTuple(samFile, rntupleFile);
 
-   size_t refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
+   size_t refsBefore = 0;
+   refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
 
    testing::internal::CaptureStdout();
    testing::internal::CaptureStderr();
@@ -468,7 +471,8 @@ TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
    testing::internal::GetCapturedStdout();
    testing::internal::GetCapturedStderr();
 
-   size_t refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
+   size_t refsAfter = 0;
+   refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
 
    EXPECT_EQ(refsBefore, refsAfter)
       << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";

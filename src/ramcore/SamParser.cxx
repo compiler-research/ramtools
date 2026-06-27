@@ -2,7 +2,6 @@
 #include <cctype>
 #include <cerrno>
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -47,10 +46,13 @@ bool ParseInt(const char *value, int &out, const char *field_name, size_t line_n
 
 } // namespace
 
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 void StripCRLF(char *str)
 {
    size_t len = strlen(str);
+   // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
    while (len > 0 && (str[len - 1] == '\n' || str[len - 1] == '\r')) {
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
       str[--len] = '\0';
    }
 }
@@ -110,7 +112,7 @@ bool SamParser::ParseLine(char *line, SamRecord &record)
       switch (field_num) {
       case 0: record.qname = token; break;
       case 1:
-         if (!ParseInt(token, record.flag, "flag", lines_processed_, 0, std::numeric_limits<std::uint16_t>::max()))
+         if (!ParseInt(token, record.flag, "flag", lines_processed_, 0, std::numeric_limits<unsigned short>::max()))
             return false;
          break;
       case 2: record.rname = token; break;
@@ -119,7 +121,7 @@ bool SamParser::ParseLine(char *line, SamRecord &record)
             return false;
          break;
       case 4:
-         if (!ParseInt(token, record.mapq, "mapq", lines_processed_, 0, std::numeric_limits<std::uint8_t>::max()))
+         if (!ParseInt(token, record.mapq, "mapq", lines_processed_, 0, std::numeric_limits<unsigned char>::max()))
             return false;
          break;
       case 5: record.cigar = token; break;
