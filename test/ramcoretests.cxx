@@ -11,10 +11,13 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
 #include "../tools/ramview.cxx"
 #include "ramcore/RAMNTupleView.h"
+#include "ramcore/SamParser.h"
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include "ramcore/SamToTTree.h"
@@ -22,6 +25,8 @@ namespace {
 
 class ramcoreTest : public ::testing::Test {
 protected:
+    static constexpr const char *kParserTestFile = "test_sam_parser_validation.sam";
+
     void SetUp() override {
        GenerateSAMFile("samexample.sam", 100);
        std::remove("test_ttree.root");
@@ -32,8 +37,33 @@ protected:
         std::remove("test_ttree.root");
         std::remove("test_rntuple.root");
         std::remove("samexample.sam");
+        std::remove(kParserTestFile);
         RAMNTupleRecord::GetIndex()->Clear();
     }
+
+   size_t ParseSamRecords(const std::vector<std::string> &records, ramcore::SamRecord *last_record = nullptr)
+   {
+      {
+         std::ofstream sam(kParserTestFile);
+         sam << "@HD\tVN:1.6\n";
+         sam << "@SQ\tSN:chr1\tLN:1000\n";
+         for (const auto &record : records) {
+            sam << record << '\n';
+         }
+      }
+
+      size_t count = 0;
+      ramcore::SamParser parser;
+      const bool parsed = parser.ParseFile(kParserTestFile, [](const std::string &, const std::string &) {},
+                                           [&](const ramcore::SamRecord &record, size_t) {
+                                              ++count;
+                                              if (last_record)
+                                                 *last_record = record;
+                                           });
+
+      EXPECT_TRUE(parsed);
+      return count;
+   }
 };
 
 TEST_F(ramcoreTest, ConversionProducesEqualEntries) {
@@ -381,6 +411,58 @@ TEST_F(ramcoreTest, SmartIndexRespectsPositionInterval)
    EXPECT_EQ(far, 1) << "Distant read should be indexed via position interval";
 
    std::remove(customSam);
+   std::remove(rntupleFile);
+}
+
+TEST_F(ramcoreTest, SamParserRejectsMalformedIntegerFields)
+{
+   const std::vector<std::string> records = {
+      "bad_flag\tabc\tchr1\t100\t60\t10M\t*\t0\t0\tACGT\tIIII",
+      "bad_flag_space\t 1\tchr1\t100\t60\t10M\t*\t0\t0\tACGT\tIIII",
+      "bad_pos\t0\tchr1\t12x\t60\t10M\t*\t0\t0\tACGT\tIIII",
+      "bad_mapq\t0\tchr1\t100\t256\t10M\t*\t0\t0\tACGT\tIIII",
+      "bad_pnext\t0\tchr1\t100\t60\t10M\t*\t-1\t0\tACGT\tIIII",
+      "bad_tlen_min\t0\tchr1\t100\t60\t10M\t*\t0\t-2147483648\tACGT\tIIII",
+      "bad_tlen\t0\tchr1\t100\t60\t10M\t*\t0\t999999999999999999999\tACGT\tIIII",
+      "good\t0\tchr1\t200\t60\t10M\t*\t0\t0\tACGT\tIIII"};
+
+   EXPECT_EQ(ParseSamRecords(records), 1U);
+}
+
+TEST_F(ramcoreTest, SamParserParsesValidIntegerBoundaries)
+{
+   ramcore::SamRecord parsed;
+   const std::vector<std::string> records = {
+      "boundary\t65535\tchr1\t0\t255\t10M\t*\t0\t-2147483647\tACGT\tIIII"};
+
+   ASSERT_EQ(ParseSamRecords(records, &parsed), 1U);
+   EXPECT_EQ(parsed.flag, 65535);
+   EXPECT_EQ(parsed.pos, 0);
+   EXPECT_EQ(parsed.mapq, 255);
+   EXPECT_EQ(parsed.pnext, 0);
+   EXPECT_EQ(parsed.tlen, std::numeric_limits<int>::min() + 1);
+}
+
+TEST_F(ramcoreTest, InvalidChromosomeDoesNotPolluteFRefVec)
+{
+   const char *samFile = "samexample.sam";
+   const char *rntupleFile = "test_rntuple.root";
+
+   RAMNTupleConverter::ConvertSAMToRAMNTuple(samFile, rntupleFile);
+
+   size_t refsBefore = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   testing::internal::CaptureStdout();
+   testing::internal::CaptureStderr();
+   RAMNTupleConverter::ViewRegion(rntupleFile, "chrINVALID:100-200");
+   testing::internal::GetCapturedStdout();
+   testing::internal::GetCapturedStderr();
+
+   size_t refsAfter = RAMNTupleRecord::GetRnameRefs()->Size();
+
+   EXPECT_EQ(refsBefore, refsAfter)
+      << "Invalid chromosome 'chrINVALID' was inserted into fRefVec (regression of issue #23)";
+
    std::remove(rntupleFile);
 }
 

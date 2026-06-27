@@ -69,6 +69,18 @@ int RAMNTupleRefs::GetRefId(const std::string &rname)
    return fLastId;
 }
 
+int RAMNTupleRefs::FindRefId(const std::string &rname) const
+{
+   if (rname == "*")
+      return -1;
+   if (rname == fLastName)
+      return fLastId;
+   auto it = std::find(fRefVec.begin(), fRefVec.end(), rname);
+   if (it != fRefVec.end())
+      return static_cast<int>(std::distance(fRefVec.begin(), it));
+   return -1;
+}
+
 const std::string &RAMNTupleRefs::GetRefName(int rid) const
 {
    static const std::string star = "*";
@@ -711,7 +723,7 @@ void RAMNTupleConverter::ViewRegion(const std::string &ram_file, const std::stri
    }
 
    auto refs = RAMNTupleRecord::GetRnameRefs();
-   int32_t ref_id = refs ? refs->GetRefId(ref_name) : -1;
+   int32_t ref_id = refs ? refs->FindRefId(ref_name) : -1;
 
    if (ref_id < 0) {
       ::Error("ViewRegion", "Unknown reference sequence: %s", ref_name.c_str());
