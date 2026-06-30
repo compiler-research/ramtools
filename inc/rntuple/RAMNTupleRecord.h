@@ -39,6 +39,7 @@ public:
    ~RAMNTupleRefs() = default;
 
    int GetRefId(const std::string &rname);
+   int FindRefId(const std::string &rname) const; ///< Lookup-only; returns -1 if not found.
    const std::string &GetRefName(int rid) const;
 
    void Print() const;
