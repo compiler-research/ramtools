@@ -56,25 +56,39 @@ if(RAMTOOLS_BUILD_BENCHMARKS)
             sam_generator
     )
 
-    install(TARGETS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark chromosome_split_benchmark
+    ROOT_EXECUTABLE(columnar_read_benchmark
+        columnar_read_benchmark.cxx
+        LIBRARIES
+            benchmark::benchmark
+            ramcore
+            sam_generator
+            ROOT::ROOTNTuple
+            ROOT::RIO
+    )
+
+    install(TARGETS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark
+            chromosome_split_benchmark columnar_read_benchmark
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 
+    # Single-command runner: executes every benchmark and writes one JSON result file per
+    # binary into the build directory (no source-tree output folder). Pass dataset paths to
+    # individual binaries directly, or use scripts/run_benchmarks.sh, for custom datasets.
     add_custom_target(benchmark
         COMMAND ${CMAKE_COMMAND} -E echo "=== SAM to RAM Benchmark ==="
-        COMMAND sam_to_ram_benchmark
-        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMAND sam_to_ram_benchmark --benchmark_out=${CMAKE_CURRENT_BINARY_DIR}/sam_to_ram_benchmark.json --benchmark_out_format=json
         COMMAND ${CMAKE_COMMAND} -E echo "=== Conversion Time Benchmark ==="
-        COMMAND conversion_time_benchmark
-        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMAND conversion_time_benchmark --benchmark_out=${CMAKE_CURRENT_BINARY_DIR}/conversion_time_benchmark.json --benchmark_out_format=json
         COMMAND ${CMAKE_COMMAND} -E echo "=== Region Query Benchmark ==="
-        COMMAND region_query_benchmark
-        COMMAND ${CMAKE_COMMAND} -E echo ""
+        COMMAND region_query_benchmark --benchmark_out=${CMAKE_CURRENT_BINARY_DIR}/region_query_benchmark.json --benchmark_out_format=json
         COMMAND ${CMAKE_COMMAND} -E echo "=== Chromosome Split Benchmark ==="
-        COMMAND chromosome_split_benchmark
-        DEPENDS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark chromosome_split_benchmark
+        COMMAND chromosome_split_benchmark --benchmark_out=${CMAKE_CURRENT_BINARY_DIR}/chromosome_split_benchmark.json --benchmark_out_format=json
+        COMMAND ${CMAKE_COMMAND} -E echo "=== Columnar Read Benchmark ==="
+        COMMAND columnar_read_benchmark --benchmark_out=${CMAKE_CURRENT_BINARY_DIR}/columnar_read_benchmark.json --benchmark_out_format=json
+        COMMAND ${CMAKE_COMMAND} -E echo "JSON results written to ${CMAKE_CURRENT_BINARY_DIR}"
+        DEPENDS sam_to_ram_benchmark conversion_time_benchmark region_query_benchmark chromosome_split_benchmark columnar_read_benchmark
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT "Running all RAM tools benchmarks"
+        COMMENT "Running all RAM tools benchmarks (JSON output in build dir)"
     )
 endif()
 
