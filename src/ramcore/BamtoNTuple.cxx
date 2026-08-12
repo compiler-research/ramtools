@@ -15,6 +15,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -135,7 +136,15 @@ std::vector<std::string> GetTags(const bam1_t *b)
       case 'f': {
          float v{};
          memcpy(&v, aux, sizeof(v));
-         tags.emplace_back(FormatTag(tag.data(), 'f', std::to_string(v)));
+         // Must match htslib's rendering exactly, or a converted record no
+         // longer compares equal to the BAM it came from. htslib formats
+         // float aux values with "%g" (6 significant digits, trailing zeros
+         // stripped, scientific notation where shorter); std::to_string uses
+         // "%f" and always emits 6 decimal places, turning htslib's
+         // "pa:f:0.862" into "pa:f:0.862000".
+         char buf[32];
+         std::snprintf(buf, sizeof(buf), "%g", static_cast<double>(v));
+         tags.emplace_back(FormatTag(tag.data(), 'f', buf));
          aux += sizeof(v);
          break;
       }
