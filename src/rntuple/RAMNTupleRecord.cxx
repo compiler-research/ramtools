@@ -479,7 +479,7 @@ std::string EncodeQuality(const std::string &qual, uint32_t compression_flags)
          // index inside the initialised part of the table (entries 110..255
          // are zero-filled, so an out-of-range value would silently decode as
          // Q0 -- the opposite error, but still an error).
-         const int phred = 0 = std::clamp(static_cast<int>(static_cast<unsigned char>(qual[i])) - 33, 0, 93);
+         const int phred = std::clamp(static_cast<int>(static_cast<unsigned char>(qual[i])) - 33, 0, 93);
          encoded[i] = static_cast<char>(kIlluminaBinning[phred]);
       }
       return encoded;
