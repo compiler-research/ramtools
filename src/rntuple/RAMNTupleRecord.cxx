@@ -518,6 +518,11 @@ std::vector<uint32_t> ParseCIGAR(const std::string &cigar_str)
 
 std::string FormatCIGAR(const std::vector<uint32_t> &cigar_ops)
 {
+   // Without this an unmapped read comes back with an empty CIGAR column
+   // producing a malformed SAM record
+   if (cigar_ops.empty())
+      return "*";
+
    std::ostringstream oss;
 
    for (uint32_t op : cigar_ops) {
