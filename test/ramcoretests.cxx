@@ -323,19 +323,65 @@ TEST_F(ramcoreTest, RecordGetters)
    dropRecord.SetQUAL("IIIII");
    EXPECT_EQ(dropRecord.GetQUAL(), "*");
 
-   // kIlluminaBinning, ASCII bins 0, 1, 6, 15, 22, 27, 33, 37, 40
+   // kIlluminaBinning maps a Phred VALUE to one of 0,1,6,15,22,27,33,37,40.
+   // SAM writes quality as Phred+33 ASCII, so the encoder must subtract 33
+   // before the lookup. These expectations are stated in Phred space and
+   // converted, so they cannot silently drift back to indexing by ASCII.
    RAMNTupleRecord binRecord;
    binRecord.SetBit(RAMNTupleRecord::kIlluminaBinning);
-   binRecord.SetQUAL("\""); // ASCII 34 → bin 33 → 'B'
-   EXPECT_EQ(binRecord.GetQUAL(), "B");
-   binRecord.SetQUAL("$"); // ASCII 36 → bin 37 → 'F'
-   EXPECT_EQ(binRecord.GetQUAL(), "F");
-   binRecord.SetQUAL("'"); // ASCII 39 → bin 37 → 'F'
-   EXPECT_EQ(binRecord.GetQUAL(), "F");
-   binRecord.SetQUAL("("); // ASCII 40 → bin 40 → 'I'
-   EXPECT_EQ(binRecord.GetQUAL(), "I");
-   binRecord.SetQUAL("2"); // ASCII 50 → bin 40 → 'I'
-   EXPECT_EQ(binRecord.GetQUAL(), "I");
+
+   // Two characters, not one: Phred 9 encodes to ASCII 42, which is '*'. A
+   // one-base read whose quality is "*" is ambiguous in SAM itself (sentinel
+   // vs. Q9), so single-character quality strings are a bad test vector.
+   auto phred = [](int q) { return std::string(2, static_cast<char>(q + 33)); };
+   auto roundTrip = [&](int q) {
+      binRecord.SetQUAL(phred(q));
+      const std::string out = binRecord.GetQUAL();
+      EXPECT_EQ(out.size(), 2u);
+      return static_cast<int>(static_cast<unsigned char>(out[0])) - 33;
+   };
+
+   struct { int in; int want; } kBins[] = {
+      {0, 0},   {1, 1},   {2, 6},   {9, 6},   {10, 15}, {19, 15}, {20, 22}, {24, 22},
+      {25, 27}, {29, 27}, {30, 33}, {34, 33}, {35, 37}, {39, 37}, {40, 40}, {93, 40},
+   };
+   for (const auto &c : kBins)
+      EXPECT_EQ(roundTrip(c.in), c.want) << "Q" << c.in << " should bin to Q" << c.want;
+
+   // NOTE: binning is NOT monotonically downward -- Illumina maps each bin to
+   // a representative value near its middle, so Q2 legitimately becomes Q6.
+   // "never raises a quality" is therefore the wrong invariant. What the
+   // ASCII-indexing bug actually violated is captured below.
+
+   // Q0 means "no usable base". It must survive as Q0; the old code rewrote it
+   // as Q33 (0.05% error), fabricating confidence a variant caller would trust.
+   EXPECT_EQ(roundTrip(0), 0) << "a zero-quality base must not be upgraded";
+
+   int previous = -1;
+   for (int q = 0; q <= 93; ++q) {
+      const int got = roundTrip(q);
+      EXPECT_GE(got, previous) << "binning must be monotonic; broke at Q" << q;
+      previous = got;
+      EXPECT_TRUE(got == 0 || got == 1 || got == 6 || got == 15 || got == 22 || got == 27 ||
+                  got == 33 || got == 37 || got == 40)
+         << "Q" << q << " produced Q" << got << ", not a legal Illumina bin";
+   }
+
+   // "*" means "no quality available"; it is a sentinel, not a Phred string,
+   // and must survive rather than be run through the table. Feeding it through
+   // mapped '*' (ASCII 42) to bin 40, producing a one-character QUAL against a
+   // full-length SEQ -- a malformed record, not merely a wrong one.
+   binRecord.SetQUAL("*");
+   EXPECT_EQ(binRecord.GetQUAL(), "*");
+
+   // The lossless path must pass the sentinel through untouched too.
+   RAMNTupleRecord losslessRecord;
+   losslessRecord.SetQUAL("*");
+   EXPECT_EQ(losslessRecord.GetQUAL(), "*");
+
+   // Length must be preserved for real quality strings.
+   binRecord.SetQUAL("IIIIIIIIII");
+   EXPECT_EQ(binRecord.GetQUAL().size(), 10u);
 }
 
 } // namespace

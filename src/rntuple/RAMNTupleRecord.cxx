@@ -460,20 +460,32 @@ std::string DecodeSequence(const std::string &encoded_seq, size_t length)
 
 std::string EncodeQuality(const std::string &qual, uint32_t compression_flags)
 {
-   std::string encoded;
-
    if (compression_flags & RAMNTupleRecord::kDrop) {
-      encoded = "*";
-   } else if (compression_flags & RAMNTupleRecord::kIlluminaBinning) {
-      encoded.resize(qual.size());
-      for (size_t i = 0; i < qual.size(); i++) {
-         encoded[i] = kIlluminaBinning[static_cast<uint8_t>(qual[i])];
-      }
-   } else {
-      encoded = qual;
+      return "*";
    }
 
-   return encoded;
+   if (compression_flags & RAMNTupleRecord::kIlluminaBinning) {
+      // "*" means "quality not available". It is a sentinel, not a Phred
+      // string, so it must not be fed through the binning table
+      if (qual == "*")
+         return {};
+
+      std::string encoded(qual.size(), '\0');
+      for (size_t i = 0; i < qual.size(); i++) {
+         // SAM stores quality as Phred+33 ASCII, but kIlluminaBinning is
+         // indexed by the Phred VALUE. Without the -33 every lookup lands 33
+         // slots too far right
+         int phred = static_cast<unsigned char>(qual[i]) - 33;
+         if (phred < 0)
+            phred = 0;
+         if (phred > 93)
+            phred = 93; // SAM's maximum; also keeps us inside the initialised table
+         encoded[i] = static_cast<char>(kIlluminaBinning[phred]);
+      }
+      return encoded;
+   }
+
+   return qual;
 }
 
 std::string DecodeQuality(const std::string &encoded_qual, uint32_t compression_flags)
@@ -482,15 +494,20 @@ std::string DecodeQuality(const std::string &encoded_qual, uint32_t compression_
       return "*";
    }
 
-   std::string qual = encoded_qual;
-
    if (compression_flags & RAMNTupleRecord::kIlluminaBinning) {
+      // Empty is the "quality not available" sentinel written by
+      // EncodeQuality; restore the "*" it stood for.
+      if (encoded_qual.empty())
+         return "*";
+
+      std::string qual = encoded_qual;
       for (auto &q : qual) {
-         q += 33;
+         q = static_cast<char>(static_cast<unsigned char>(q) + 33);
       }
+      return qual;
    }
 
-   return qual;
+   return encoded_qual;
 }
 
 std::vector<uint32_t> ParseCIGAR(const std::string &cigar_str)
