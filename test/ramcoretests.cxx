@@ -341,7 +341,10 @@ TEST_F(ramcoreTest, RecordGetters)
       return static_cast<int>(static_cast<unsigned char>(out[0])) - 33;
    };
 
-   struct { int in; int want; } kBins[] = {
+   struct {
+      int in;
+      int want;
+   } kBins[] = {
       {0, 0},   {1, 1},   {2, 6},   {9, 6},   {10, 15}, {19, 15}, {20, 22}, {24, 22},
       {25, 27}, {29, 27}, {30, 33}, {34, 33}, {35, 37}, {39, 37}, {40, 40}, {93, 40},
    };
@@ -362,8 +365,8 @@ TEST_F(ramcoreTest, RecordGetters)
       const int got = roundTrip(q);
       EXPECT_GE(got, previous) << "binning must be monotonic; broke at Q" << q;
       previous = got;
-      EXPECT_TRUE(got == 0 || got == 1 || got == 6 || got == 15 || got == 22 || got == 27 ||
-                  got == 33 || got == 37 || got == 40)
+      EXPECT_TRUE(got == 0 || got == 1 || got == 6 || got == 15 || got == 22 || got == 27 || got == 33 || got == 37 ||
+                  got == 40)
          << "Q" << q << " produced Q" << got << ", not a legal Illumina bin";
    }
 
