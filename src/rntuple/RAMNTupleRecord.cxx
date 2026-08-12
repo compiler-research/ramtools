@@ -475,11 +475,11 @@ std::string EncodeQuality(const std::string &qual, uint32_t compression_flags)
          // SAM stores quality as Phred+33 ASCII, but kIlluminaBinning is
          // indexed by the Phred VALUE. Without the -33 every lookup lands 33
          // slots too far right
-         int phred = static_cast<unsigned char>(qual[i]) - 33;
-         if (phred < 0)
-            phred = 0;
-         if (phred > 93)
-            phred = 93; // SAM's maximum; also keeps us inside the initialised table
+         // Clamp to 0..93: 93 is SAM's maximum Phred, and it also keeps the
+         // index inside the initialised part of the table (entries 110..255
+         // are zero-filled, so an out-of-range value would silently decode as
+         // Q0 -- the opposite error, but still an error).
+         const int phred = std::clamp(static_cast<int>(static_cast<unsigned char>(qual[i])) - 33, 0, 93);
          encoded[i] = static_cast<char>(kIlluminaBinning[phred]);
       }
       return encoded;

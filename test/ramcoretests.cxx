@@ -4,6 +4,7 @@
 #include <Rtypes.h>
 #include <TFile.h>
 #include <TTree.h>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -337,17 +338,18 @@ TEST_F(ramcoreTest, RecordGetters)
    auto roundTrip = [&](int q) {
       binRecord.SetQUAL(phred(q));
       const std::string out = binRecord.GetQUAL();
-      EXPECT_EQ(out.size(), 2u);
+      EXPECT_EQ(out.size(), 2U);
       return static_cast<int>(static_cast<unsigned char>(out[0])) - 33;
    };
 
-   struct {
+   struct Bin {
       int in;
       int want;
-   } kBins[] = {
+   };
+   const std::array<Bin, 16> kBins = {{
       {0, 0},   {1, 1},   {2, 6},   {9, 6},   {10, 15}, {19, 15}, {20, 22}, {24, 22},
       {25, 27}, {29, 27}, {30, 33}, {34, 33}, {35, 37}, {39, 37}, {40, 40}, {93, 40},
-   };
+   }};
    for (const auto &c : kBins)
       EXPECT_EQ(roundTrip(c.in), c.want) << "Q" << c.in << " should bin to Q" << c.want;
 
@@ -384,7 +386,7 @@ TEST_F(ramcoreTest, RecordGetters)
 
    // Length must be preserved for real quality strings.
    binRecord.SetQUAL("IIIIIIIIII");
-   EXPECT_EQ(binRecord.GetQUAL().size(), 10u);
+   EXPECT_EQ(binRecord.GetQUAL().size(), 10U);
 }
 
 } // namespace
