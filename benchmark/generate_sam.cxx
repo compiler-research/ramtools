@@ -1,12 +1,15 @@
 #include "generate_sam_benchmark.h"
-#include <fstream>
-#include <random>
-#include <vector>
-#include <string>
-#include <iostream>
 #include <algorithm>
+#include <array>
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #ifndef BASE_SAM_READS
+// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define BASE_SAM_READS 100
 #endif
 
@@ -16,13 +19,14 @@ void GenerateSAMFile(const std::string &filename, int num_reads)
    std::mt19937 rng(rd());
 
    std::vector<std::pair<std::string, int>> chromosomes = {
-      {"chr1", 249250621},  {"chr2", 243199373},  {"chr3", 198022430},  {"chr4", 191154276},  {"chr5", 180915260},
-      {"chr6", 171115067},  {"chr7", 159138663},  {"chr8", 146364022},  {"chr9", 141213431},  {"chr10", 135534747},
-      {"chr11", 135006516}, {"chr12", 133851895}, {"chr13", 115169878}, {"chr14", 107349540}, {"chr15", 102531392},
-      {"chr16", 90354753},  {"chr17", 81195210},  {"chr18", 78077248},  {"chr19", 59128983},  {"chr20", 63025520},
-      {"chr21", 48129895},  {"chr22", 51304566},  {"chrM", 16571},      {"chrX", 155270560}};
+      {"chr1", 249250621},   {"chr2", 243199373},  {"chr3", 198022430},  {"chr4", 191154276},  {"chr5", 180915260},
+      {"chr6", 171115067},   {"chr7", 159138663},  {"chr8", 146364022},  {"chr9", 141213431},  {"chr10", 135534747},
+      {"chr11", 135006516},  {"chr12", 133851895}, {"chr13", 115169878}, {"chr14", 107349540}, {"chr15", 102531392},
+      {"chr16", 90354753},   {"chr17", 81195210},  {"chr18", 78077248},  {"chr19", 59128983},  {"chr20", 63025520},
+      {"chr21", 48129895},   {"chr22", 51304566},  {"chrM", 16571},      {"chrX", 155270560},  {"chrY", 59373566},
+      {"GL000227.1", 128374}};
 
-   const char bases[4] = {'A', 'C', 'G', 'T'};
+   const std::array<char, 4> bases = {'A', 'C', 'G', 'T'};
    std::ofstream out(filename);
 
    out << "@HD\tVN:1.6\tSO:unsorted\n";
@@ -50,7 +54,6 @@ void GenerateSAMFile(const std::string &filename, int num_reads)
 
       if (i < 10) {
          chrom = "chr1";
-         chrom_length = 249250621;
          position = chr1_pos_dist(rng);
       } else {
          auto &choice = chromosomes[chrom_dist(rng)];
