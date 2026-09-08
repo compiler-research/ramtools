@@ -45,7 +45,11 @@ Convert a standard SAM file into the optimized RNTuple-based RAM format.
 ```
 
 Options: `-noindex` skips the region index, `-illumina` stores 8-level binned
-quality scores, `-dropqual` stores none.
+quality scores, `-dropqual` stores none, `-compression N` sets the ROOT
+compression code (algorithm*100+level; the default 505 is ZSTD level 5).
+
+The index needs the input in coordinate order. An unsorted input converts
+fine but gets no index, and region queries on it read the whole file.
 
 ### Region Querying
 
@@ -53,6 +57,19 @@ Count the records overlapping a genomic region, as `samtools view -c` does.
 ```bash
 # Usage: ./tools/ramntupleview [input.root] "[chromosome]:[start]-[end]"
 ./tools/ramntupleview output.root "chr1:10150-10300"
+```
+
+### Dumping back to SAM
+
+`ramdump` writes a RAM file out as SAM and takes the `samtools view` options
+`-h`, `-H`, `-c`, `-f`, `-F` and `-o`, so its output can be checked against
+samtools directly.
+```bash
+# The whole file with its header; should reproduce the input SAM
+./tools/ramdump -h output.root > roundtrip.sam
+
+# Count primary alignments in a region
+./tools/ramdump -c -F 0x900 output.root "chr1:10150-10300"
 ```
 
 ## Benchmark Results
