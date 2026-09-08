@@ -225,6 +225,7 @@ public:
          fgMaxRefSpan = span;
    }
    static bool IsCoordinateSorted() { return fgCoordinateSorted; }
+   static void SetCoordinateSorted(bool sorted) { fgCoordinateSorted = sorted; }
    /// Feeds one placed record to the running order check.
    static void NotePlacement(int32_t refid_, int32_t pos_)
    {
@@ -245,6 +246,7 @@ public:
    static void WriteAllRefs(TFile &file);
    static void ReadAllRefs(const std::string &filename = "");
    static void WriteIndex(TFile &file);
+   static void WriteIndex(TFile &file, const RAMNTupleIndex &index);
    static void ReadIndex(const std::string &filename = "");
 
    // RNTuple model creation

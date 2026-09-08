@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include "generate_sam_benchmark.h"
@@ -36,7 +37,7 @@ TEST_F(ChromosomeSplitTest, NoDataLoss)
    auto regularReader = ROOT::RNTupleReader::Open("RAM", "test_regular.root");
    Long64_t totalEntries = regularReader->GetNEntries();
 
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
 
    Long64_t splitEntriesSum = 0;
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
@@ -54,7 +55,7 @@ TEST_F(ChromosomeSplitTest, NoDataLoss)
 
 TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
 {
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
 
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
       std::string filename = entry.path().filename().string();
@@ -79,7 +80,7 @@ TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
 
 TEST_F(ChromosomeSplitTest, MetadataPresent)
 {
-   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1, 4);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
 
    int filesChecked = 0;
    for (const auto &entry : std::filesystem::directory_iterator(".")) {
@@ -97,4 +98,19 @@ TEST_F(ChromosomeSplitTest, MetadataPresent)
    }
 
    EXPECT_GT(filesChecked, 0);
+}
+
+TEST_F(ChromosomeSplitTest, RegionCountsMatchTheUnsplitFile)
+{
+   samtoramntuple("test.sam", "test_regular.root", false, true, true, 505, 1);
+   samtoramntuple_split_by_chromosome("test.sam", "test_split", 505, 1);
+
+   for (const auto &entry : std::filesystem::directory_iterator(".")) {
+      std::string filename = entry.path().filename().string();
+      if (filename.find("test_split_") != 0 || filename.find(".root") == std::string::npos)
+         continue;
+      std::string chr = filename.substr(11, filename.size() - 11 - 5);
+      EXPECT_EQ(ramntupleview(filename.c_str(), chr.c_str()), ramntupleview("test_regular.root", chr.c_str()))
+         << filename;
+   }
 }

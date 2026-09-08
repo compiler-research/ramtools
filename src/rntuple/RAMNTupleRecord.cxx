@@ -328,7 +328,13 @@ void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
 
 void RAMNTupleRecord::WriteIndex(TFile &file)
 {
-   if (!fgIndex || fgIndex->Size() == 0 || !file.IsOpen())
+   if (fgIndex)
+      WriteIndex(file, *fgIndex);
+}
+
+void RAMNTupleRecord::WriteIndex(TFile &file, const RAMNTupleIndex &index)
+{
+   if (index.Size() == 0 || !file.IsOpen())
       return;
    file.cd();
 
@@ -343,7 +349,7 @@ void RAMNTupleRecord::WriteIndex(TFile &file)
    auto indexEntry = indexWriter->GetModel().CreateEntry();
    auto indexPtr = indexEntry->GetPtr<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries");
 
-   *indexPtr = fgIndex->GetEntries();
+   *indexPtr = index.GetEntries();
    indexWriter->Fill(*indexEntry);
 }
 

@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
 
     try {
        if (do_split) {
-          samtoramntuple_split_by_chromosome(input, output, compression, quality_mode, 4);
+          samtoramntuple_split_by_chromosome(input, output, compression, quality_mode);
        } else {
           std::string ramfile = std::string(output);
           if (ramfile.find(".root") == std::string::npos && ramfile.find(".ram") == std::string::npos) {
