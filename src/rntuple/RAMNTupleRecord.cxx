@@ -215,8 +215,9 @@ void RAMNTupleRecord::InitializeRefs()
       fgRnextRefs = std::make_unique<RAMNTupleRefs>();
    if (!fgIndex)
       fgIndex = std::make_unique<RAMNTupleIndex>();
-   // Per-file, so a second conversion in the same process does not inherit the
-   // first file's span.
+   // Per-file, so a second file in the same process does not inherit the
+   // first one's index or span.
+   fgIndex->Clear();
    fgMaxRefSpan = 0;
 }
 
