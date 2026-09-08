@@ -248,6 +248,8 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
    while (sam_read1(bamIn, hdr, rec) >= 0) {
       FillRecord(recordPtr.get(), rec, hdr, quality_policy);
       RAMNTupleRecord::NoteRefSpan(recordPtr->GetRefSpan());
+      if (!(rec->core.flag & kUnmapped) && recordPtr->GetREFID() >= 0)
+         RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
       writer->Fill(*entry);
 
       if (index && !(rec->core.flag & kUnmapped) && recordPtr->GetREFID() >= 0) {
@@ -275,7 +277,12 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
    bam_destroy1(rec);
    writer.reset();
 
-   if (index)
+   // An index is only usable on a sorted file; the file records which it is.
+   const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
+   if (index && !sorted)
+      std::cerr << bamfile
+                << " is not in coordinate order, so no index was written; region queries will read it in full.\n";
+   if (index && sorted)
       RAMNTupleRecord::WriteIndex(*rootFile);
    RAMNTupleRecord::WriteAllRefs(*rootFile);
 
@@ -306,7 +313,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
              << "Number of entries: " << count << "\n";
    RAMNTupleRecord::GetRnameRefs()->Print();
    RAMNTupleRecord::GetRnextRefs()->Print();
-   if (index)
+   if (index && sorted)
       std::cout << "Index entries: " << RAMNTupleRecord::GetIndex()->Size() << "\n";
 
    stopwatch.Print();

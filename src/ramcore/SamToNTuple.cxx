@@ -102,6 +102,8 @@ void samtoramntuple(const char *datafile,
        }
 
        RAMNTupleRecord::NoteRefSpan(recordPtr->GetRefSpan());
+       if (!(sam_record.flag & kUnmapped) && recordPtr->GetREFID() >= 0)
+          RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
        writer->Fill(*defaultEntry);
 
        // Index building: create a sparse lookup table so region queries can jump
@@ -143,8 +145,14 @@ void samtoramntuple(const char *datafile,
 
     writer.reset();
 
-    if (index) {
-        RAMNTupleRecord::WriteIndex(*rootFile);
+    // An index is only usable on a sorted file; the file records which it is.
+    const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
+    if (index && !sorted) {
+       fprintf(stderr, "%s is not in coordinate order, so no index was written; region queries will read it in full.\n",
+               datafile);
+    }
+    if (index && sorted) {
+       RAMNTupleRecord::WriteIndex(*rootFile);
     }
     RAMNTupleRecord::WriteAllRefs(*rootFile);
 
@@ -159,8 +167,8 @@ void samtoramntuple(const char *datafile,
     RAMNTupleRecord::GetRnameRefs()->Print();
     RAMNTupleRecord::GetRnextRefs()->Print();
 
-    if (index) {
-        printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
+    if (index && sorted) {
+       printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
     }
 
     printf("\nProcessed %zu SAM headers\n", parser.GetLinesProcessed() - parser.GetRecordsProcessed());
