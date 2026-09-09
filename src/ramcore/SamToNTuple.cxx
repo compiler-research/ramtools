@@ -5,21 +5,17 @@
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
-#include <ROOT/RNTupleParallelWriter.hxx>
-#include <ROOT/RNTupleFillContext.hxx>
 #include <TStopwatch.h>
 #include <TList.h>
 #include <TNamed.h>
 #include <TFile.h>
-#include <TROOT.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <memory>
-#include <mutex>
+#include <stdexcept>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace {
@@ -102,6 +98,8 @@ void samtoramntuple(const char *datafile,
        }
 
        RAMNTupleRecord::NoteRefSpan(recordPtr->GetRefSpan());
+       if (!(sam_record.flag & kUnmapped) && recordPtr->GetREFID() >= 0)
+          RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
        writer->Fill(*defaultEntry);
 
        // Index building: create a sparse lookup table so region queries can jump
@@ -143,8 +141,14 @@ void samtoramntuple(const char *datafile,
 
     writer.reset();
 
-    if (index) {
-        RAMNTupleRecord::WriteIndex(*rootFile);
+    // An index is only usable on a sorted file; the file records which it is.
+    const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
+    if (index && !sorted) {
+       fprintf(stderr, "%s is not in coordinate order, so no index was written; region queries will read it in full.\n",
+               datafile);
+    }
+    if (index && sorted) {
+       RAMNTupleRecord::WriteIndex(*rootFile);
     }
     RAMNTupleRecord::WriteAllRefs(*rootFile);
 
@@ -159,8 +163,8 @@ void samtoramntuple(const char *datafile,
     RAMNTupleRecord::GetRnameRefs()->Print();
     RAMNTupleRecord::GetRnextRefs()->Print();
 
-    if (index) {
-        printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
+    if (index && sorted) {
+       printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
     }
 
     printf("\nProcessed %zu SAM headers\n", parser.GetLinesProcessed() - parser.GetRecordsProcessed());
@@ -169,19 +173,36 @@ void samtoramntuple(const char *datafile,
     stopwatch.Print();
 }
 
+namespace {
+
+// One output file, held open while the input streams past it.
+struct ChromosomeWriter {
+   std::unique_ptr<TFile> file{};
+   std::unique_ptr<ROOT::RNTupleWriter> writer{};
+   std::unique_ptr<ROOT::REntry> entry{};
+   std::shared_ptr<RAMNTupleRecord> record{};
+   RAMNTupleIndex index{};
+   int64_t rows = 0;
+   int64_t mapped = 0;
+   int32_t last_pos = -1;
+   int32_t last_indexed_pos = -kPositionInterval;
+   bool sorted = true;
+};
+
+} // namespace
+
 void samtoramntuple_split_by_chromosome(const char *datafile, const char *output_prefix, int compression_algorithm,
-                                        uint32_t quality_policy, int num_threads)
+                                        uint32_t quality_policy)
 {
-   ROOT::EnableThreadSafety();
    RAMNTupleRecord::InitializeRefs();
 
-   std::map<std::string, std::vector<ramcore::SamRecord>> chromosome_records;
-   std::vector<std::pair<std::string, std::string>> headers;
-
-   ramcore::SamParser parser;
+   std::map<std::string, ChromosomeWriter> writers;
+   TList headers;
+   headers.SetName("headers");
+   headers.SetOwner(true);
 
    auto header_callback = [&](const std::string &tag, const std::string &content) {
-      headers.push_back({tag, content});
+      headers.Add(std::make_unique<TNamed>(tag.c_str(), content.c_str()).release());
 
       if (tag == "@SQ") {
          size_t sn_pos = content.find("SN:");
@@ -195,129 +216,103 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       }
    };
 
-   auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
-      if (sam_record.rname != "*") {
-         chromosome_records[sam_record.rname].push_back(sam_record);
-      }
-   };
+   auto open_writer = [&](const std::string &chr) -> ChromosomeWriter & {
+      auto it = writers.find(chr);
+      if (it != writers.end())
+         return it->second;
 
-   parser.ParseFile(datafile, header_callback, record_callback);
+      ChromosomeWriter &cw = writers[chr];
+      std::string filename{output_prefix};
+      filename += "_";
+      filename += chr;
+      filename += ".root";
+      cw.file.reset(TFile::Open(filename.c_str(), "RECREATE"));
+      if (!cw.file || !cw.file->IsOpen())
+         throw std::runtime_error("cannot create " + filename);
 
-   std::vector<std::string> chr_names;
-   for (const auto &[chr, records] : chromosome_records) {
-      chr_names.push_back(chr);
-   }
-
-   std::vector<std::thread> sort_threads;
-   for (const auto &chr : chr_names) {
-      sort_threads.emplace_back([&chromosome_records, chr]() {
-         auto &records = chromosome_records[chr];
-         std::sort(records.begin(), records.end(),
-                   [](const ramcore::SamRecord &a, const ramcore::SamRecord &b) { return a.pos < b.pos; });
-      });
-   }
-   for (auto &t : sort_threads) {
-      t.join();
-   }
-
-   std::mutex global_record_mutex;
-
-   auto write_chromosome_parallel = [&](const std::string &chr, std::mutex &record_mutex) {
-      const auto &records = chromosome_records[chr];
-
-      std::string filename = std::string(output_prefix) + "_" + chr + ".root";
-
-      auto model = RAMNTupleRecord::MakeModel();
       ROOT::RNTupleWriteOptions writeOptions;
-
       writeOptions.SetCompression(compression_algorithm);
-      writeOptions.SetApproxZippedClusterSize(200 * 1024 * 1024);
-      writeOptions.SetMaxUnzippedClusterSize(1024 * 1024 * 1024);
-      writeOptions.SetMaxUnzippedPageSize(1024 * 1024);
-      writeOptions.SetUseBufferedWrite(true);
+      writeOptions.SetMaxUnzippedPageSize(64000);
+      // Every chromosome's buffers are open at once, so keep the clusters small.
+      writeOptions.SetApproxZippedClusterSize(8 * 1024 * 1024);
 
-      auto parallel_writer = ROOT::RNTupleParallelWriter::Recreate(std::move(model), "RAM", filename, writeOptions);
-
-      const int contexts_per_file = std::min(4, num_threads);
-      const size_t records_per_context = (records.size() + contexts_per_file - 1) / contexts_per_file;
-
-      std::vector<std::thread> write_threads;
-
-      for (int ctx = 0; ctx < contexts_per_file && ctx * records_per_context < records.size(); ++ctx) {
-         write_threads.emplace_back([&, ctx]() {
-            auto fill_context = parallel_writer->CreateFillContext();
-            auto entry = fill_context->GetModel().CreateEntry();
-            auto recordPtr = entry->GetPtr<RAMNTupleRecord>("record").get();
-
-            size_t start = ctx * records_per_context;
-            size_t end = std::min(start + records_per_context, records.size());
-            uint32_t max_span = 0;
-
-            for (size_t i = start; i < end; ++i) {
-               const auto &sam_record = records[i];
-
-               recordPtr->SetBit(quality_policy);
-               recordPtr->SetQNAME(sam_record.qname);
-               recordPtr->SetFLAG(sam_record.flag);
-
-               {
-                  std::lock_guard<std::mutex> lock(record_mutex);
-                  recordPtr->SetREFID(sam_record.rname);
-                  recordPtr->SetREFNEXT(sam_record.rnext);
-               }
-
-               recordPtr->SetPOS(sam_record.pos);
-               recordPtr->SetMAPQ(sam_record.mapq);
-               recordPtr->SetCIGAR(sam_record.cigar);
-               max_span = std::max(max_span, recordPtr->GetRefSpan());
-               recordPtr->SetPNEXT(sam_record.pnext);
-               recordPtr->SetTLEN(sam_record.tlen);
-               recordPtr->SetSEQ(sam_record.seq);
-               recordPtr->SetQUAL(sam_record.qual);
-
-               recordPtr->ResetNOPT();
-               for (const auto &opt : sam_record.optional_fields) {
-                  recordPtr->SetOPT(opt);
-               }
-
-               fill_context->Fill(*entry);
-            }
-
-            std::lock_guard<std::mutex> lock(record_mutex);
-            RAMNTupleRecord::NoteRefSpan(max_span);
-         });
-      }
-
-      for (auto &t : write_threads) {
-         t.join();
-      }
-
-      parallel_writer.reset();
-
-      std::unique_ptr<TFile> file(TFile::Open(filename.c_str(), "UPDATE"));
-
-      TList h;
-      h.SetName("headers");
-      for (const auto &[tag, content] : headers) {
-         h.Add(new TNamed(tag.c_str(), content.c_str()));
-      }
-
-      RAMNTupleRecord::WriteAllRefs(*file);
-      h.Write("headers", TObject::kSingleKey);
-
-      file->Close();
+      cw.writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *cw.file, writeOptions);
+      cw.entry = cw.writer->GetModel().CreateEntry();
+      cw.record = cw.entry->GetPtr<RAMNTupleRecord>("record");
+      return cw;
    };
 
-   size_t chr_idx = 0;
-   while (chr_idx < chr_names.size()) {
-      std::vector<std::thread> threads;
+   auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t) {
+      // A record with no reference has no chromosome file to go to.
+      if (sam_record.rname == "*")
+         return;
 
-      for (int i = 0; i < num_threads && chr_idx < chr_names.size(); ++i, ++chr_idx) {
-         threads.emplace_back(write_chromosome_parallel, chr_names[chr_idx], std::ref(global_record_mutex));
-      }
+      ChromosomeWriter &cw = open_writer(sam_record.rname);
+      RAMNTupleRecord &rec = *cw.record;
 
-      for (auto &t : threads) {
-         t.join();
+      rec.SetBit(quality_policy);
+      rec.SetQNAME(sam_record.qname);
+      rec.SetFLAG(sam_record.flag);
+      rec.SetREFID(sam_record.rname);
+      rec.SetPOS(sam_record.pos);
+      rec.SetMAPQ(sam_record.mapq);
+      rec.SetCIGAR(sam_record.cigar);
+      rec.SetREFNEXT(sam_record.rnext);
+      rec.SetPNEXT(sam_record.pnext);
+      rec.SetTLEN(sam_record.tlen);
+      rec.SetSEQ(sam_record.seq);
+      rec.SetQUAL(sam_record.qual);
+
+      rec.ResetNOPT();
+      for (const auto &opt : sam_record.optional_fields)
+         rec.SetOPT(opt);
+
+      RAMNTupleRecord::NoteRefSpan(rec.GetRefSpan());
+      cw.writer->Fill(*cw.entry);
+      const int64_t row = cw.rows++;
+
+      if (sam_record.flag & kUnmapped)
+         return;
+
+      const int32_t pos = rec.GetPOS() - 1;
+      if (pos < cw.last_pos)
+         cw.sorted = false;
+      cw.last_pos = pos;
+
+      // Same sparse-index rule as the single-file writer, kept per file so the
+      // rows it records are the rows of this file.
+      const bool far_enough = (pos - cw.last_indexed_pos >= kPositionInterval);
+      const bool periodic = (cw.mapped % kMappedInterval == 0);
+      if ((far_enough || periodic) && pos != cw.last_indexed_pos) {
+         cw.index.AddItem(rec.GetREFID(), pos, row);
+         cw.last_indexed_pos = pos;
       }
+      cw.mapped++;
+   };
+
+   ramcore::SamParser parser;
+   if (!parser.ParseFile(datafile, header_callback, record_callback)) {
+      printf("Failed to parse SAM file %s\n", datafile);
+      return;
+   }
+
+   // The reference table and the longest span are only complete once the whole
+   // input has been read, so every file is finished here.
+   for (auto &[chr, cw] : writers) {
+      cw.writer.reset();
+
+      RAMNTupleRecord::SetCoordinateSorted(cw.sorted);
+      if (cw.sorted)
+         RAMNTupleRecord::WriteIndex(*cw.file, cw.index);
+      else
+         fprintf(stderr, "%s: %s is not in coordinate order, so no index was written.\n", datafile, chr.c_str());
+      RAMNTupleRecord::WriteAllRefs(*cw.file);
+
+      cw.file->cd();
+      headers.Write("headers", TObject::kSingleKey);
+      cw.file->Close();
+
+      printf("%s_%s.root: %lld records, %zu index entries\n", output_prefix, chr.c_str(),
+             static_cast<long long>(cw.rows), cw.sorted ? cw.index.Size() : 0);
    }
 }

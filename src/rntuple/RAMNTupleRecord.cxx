@@ -19,6 +19,9 @@ std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnameRefs = nullptr;
 std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
 std::unique_ptr<RAMNTupleIndex> RAMNTupleRecord::fgIndex = nullptr;
 uint32_t RAMNTupleRecord::fgMaxRefSpan = 0;
+bool RAMNTupleRecord::fgCoordinateSorted = true;
+int32_t RAMNTupleRecord::fgLastPlacedRefId = -1;
+int32_t RAMNTupleRecord::fgLastPlacedPos = -1;
 
 static constexpr std::array<char, 16> kCodeToSeq{'=', 'A', 'C', 'M', 'G', 'R', 'S', 'V',
                                                  'T', 'W', 'Y', 'H', 'K', 'D', 'B', 'N'};
@@ -215,9 +218,13 @@ void RAMNTupleRecord::InitializeRefs()
       fgRnextRefs = std::make_unique<RAMNTupleRefs>();
    if (!fgIndex)
       fgIndex = std::make_unique<RAMNTupleIndex>();
-   // Per-file, so a second conversion in the same process does not inherit the
-   // first file's span.
+   // Per-file, so a second file in the same process does not inherit the
+   // first one's index or span.
+   fgIndex->Clear();
    fgMaxRefSpan = 0;
+   fgCoordinateSorted = true;
+   fgLastPlacedRefId = -1;
+   fgLastPlacedPos = -1;
 }
 
 std::unique_ptr<RNTupleReader> RAMNTupleRecord::OpenRAMFile(const std::string &filename, const std::string &ntupleName)
@@ -248,6 +255,7 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    auto rnameField = metaModel->MakeField<std::vector<std::string>>("rname_refs");
    auto rnextField = metaModel->MakeField<std::vector<std::string>>("rnext_refs");
    auto spanField = metaModel->MakeField<uint32_t>("max_ref_span");
+   auto sortedField = metaModel->MakeField<bool>("coordinate_sorted");
 
    RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
@@ -258,10 +266,12 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    auto rnextPtr = metaEntry->GetPtr<std::vector<std::string>>("rnext_refs");
 
    auto spanPtr = metaEntry->GetPtr<uint32_t>("max_ref_span");
+   auto sortedPtr = metaEntry->GetPtr<bool>("coordinate_sorted");
 
    *rnamePtr = fgRnameRefs->GetRefs();
    *rnextPtr = fgRnextRefs->GetRefs();
    *spanPtr = fgMaxRefSpan;
+   *sortedPtr = fgCoordinateSorted;
    metaWriter->Fill(*metaEntry);
 }
 
@@ -292,6 +302,14 @@ void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
          // Field doesn't exist
       }
 
+      fgCoordinateSorted = true;
+      try {
+         auto sorted_view = reader->GetView<bool>("coordinate_sorted");
+         fgCoordinateSorted = sorted_view(0);
+      } catch (...) {
+         // Field doesn't exist
+      }
+
       // Read next reference names
       try {
          auto rnext_view = reader->GetView<std::vector<std::string>>("rnext_refs");
@@ -310,7 +328,13 @@ void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
 
 void RAMNTupleRecord::WriteIndex(TFile &file)
 {
-   if (!fgIndex || fgIndex->Size() == 0 || !file.IsOpen())
+   if (fgIndex)
+      WriteIndex(file, *fgIndex);
+}
+
+void RAMNTupleRecord::WriteIndex(TFile &file, const RAMNTupleIndex &index)
+{
+   if (index.Size() == 0 || !file.IsOpen())
       return;
    file.cd();
 
@@ -325,7 +349,7 @@ void RAMNTupleRecord::WriteIndex(TFile &file)
    auto indexEntry = indexWriter->GetModel().CreateEntry();
    auto indexPtr = indexEntry->GetPtr<std::vector<RAMNTupleIndex::IndexEntry>>("index_entries");
 
-   *indexPtr = fgIndex->GetEntries();
+   *indexPtr = index.GetEntries();
    indexWriter->Fill(*indexEntry);
 }
 
