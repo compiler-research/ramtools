@@ -22,7 +22,7 @@ cmake ..
 make -j$(nproc)
 
 # 2. Convert a SAM file to the RAM format
-./tools/samtoramntuple ../test/samexample.sam output.root
+./tools/samtoramntuple input.sam output.root
 
 # 3. Query a specific region from the command line
 ./tools/ramntupleview output.root "chr1:15700-15800"
@@ -40,13 +40,16 @@ Convert a standard SAM file into the optimized RNTuple-based RAM format.
 ./tools/samtoramntuple input.sam output.root
 
 # Split by chromosome for parallel processing
-# (Creates output-chr1.root, output-chr2.root, etc.)
+# (Creates output_chr1.root, output_chr2.root, etc.)
 ./tools/samtoramntuple input.sam output -split
 ```
 
+Options: `-noindex` skips the region index, `-illumina` stores 8-level binned
+quality scores, `-dropqual` stores none.
+
 ### Region Querying
 
-Query a specific genomic region from a RAM file, similar to samtools view.
+Count the records overlapping a genomic region, as `samtools view -c` does.
 ```bash
 # Usage: ./tools/ramntupleview [input.root] "[chromosome]:[start]-[end]"
 ./tools/ramntupleview output.root "chr1:10150-10300"
