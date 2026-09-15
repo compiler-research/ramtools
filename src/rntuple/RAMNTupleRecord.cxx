@@ -207,10 +207,10 @@ void RAMNTupleIndex::Print() const
 RAMNTupleRecord::RAMNTupleRecord()
    : flag(0), refid(-1), pos(0), mapq(0), refnext(-1), pnext(0), tlen(0), compression_flags(kPhred33)
 {
-   InitializeRefs();
+   EnsureTables();
 }
 
-void RAMNTupleRecord::InitializeRefs()
+void RAMNTupleRecord::EnsureTables()
 {
    if (!fgRnameRefs)
       fgRnameRefs = std::make_unique<RAMNTupleRefs>();
@@ -218,8 +218,14 @@ void RAMNTupleRecord::InitializeRefs()
       fgRnextRefs = std::make_unique<RAMNTupleRefs>();
    if (!fgIndex)
       fgIndex = std::make_unique<RAMNTupleIndex>();
-   // Per-file, so a second file in the same process does not inherit the
-   // first one's index or span.
+}
+
+// Resets the per-file state. Only the writers and OpenRAMFile() may call this:
+// RNTuple constructs a record whenever a view or a writer model is created,
+// so the constructor must not.
+void RAMNTupleRecord::InitializeRefs()
+{
+   EnsureTables();
    fgIndex->Clear();
    fgMaxRefSpan = 0;
    fgCoordinateSorted = true;

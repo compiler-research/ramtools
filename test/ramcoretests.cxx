@@ -341,6 +341,64 @@ TEST_F(ramcoreTest, SortedFileIsIndexedAndMarkedSorted)
    std::remove(rntupleFile);
 }
 
+// RNTuple constructs a record whenever a view or a writer model is created.
+// That must not touch the state OpenRAMFile loaded: ramdump creates a record
+// view after opening the file, and a reset there made an unsorted file look
+// sorted, so the scan stopped early and dropped records.
+TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
+{
+   const char *unsortedSam = "test_ctor_unsorted.sam";
+   const char *unsortedFile = "test_ctor_unsorted.root";
+   {
+      std::ofstream sam(unsortedSam);
+      sam << "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n";
+      sam << "a\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      sam << "b\t0\tchr1\t90000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
+      sam << "c\t0\tchr1\t1050\t60\t50M\t*\t0\t0\t" << std::string(50, 'T') << "\t*\n";
+   }
+   testing::internal::CaptureStderr();
+   samtoramntuple(unsortedSam, unsortedFile, /*index=*/true, false, false, 505, 0);
+   testing::internal::GetCapturedStderr();
+
+   {
+      auto reader = RAMNTupleRecord::OpenRAMFile(unsortedFile);
+      ASSERT_NE(reader, nullptr);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const RAMNTupleRecord scratch;
+      EXPECT_FALSE(RAMNTupleRecord::IsCoordinateSorted());
+      EXPECT_EQ(ramntuplescan(*reader, "chr1:1000-1100", nullptr), 2);
+   }
+
+   const char *sortedSam = "test_ctor_sorted.sam";
+   const char *sortedFile = "test_ctor_sorted.root";
+   {
+      std::ofstream sam(sortedSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000000\n";
+      sam << "spanning\t0\tchr1\t1000\t60\t10M199990N10M\t*\t0\t0\t" << std::string(20, 'A') << "\t*\n";
+      sam << "short\t0\tchr1\t300000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
+   }
+   samtoramntuple(sortedSam, sortedFile, /*index=*/true, false, false, 505, 0);
+
+   {
+      auto reader = RAMNTupleRecord::OpenRAMFile(sortedFile);
+      ASSERT_NE(reader, nullptr);
+      const uint32_t span = RAMNTupleRecord::GetMaxRefSpan();
+      const size_t entries = RAMNTupleRecord::GetIndex()->Size();
+      EXPECT_EQ(span, 200010U);
+      EXPECT_GT(entries, 0U);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      const RAMNTupleRecord another;
+      EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), span);
+      EXPECT_EQ(RAMNTupleRecord::GetIndex()->Size(), entries);
+      EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted());
+   }
+
+   std::remove(unsortedSam);
+   std::remove(unsortedFile);
+   std::remove(sortedSam);
+   std::remove(sortedFile);
+}
+
 TEST_F(ramcoreTest, IndexGetRowsInRange)
 {
    RAMNTupleRecord::InitializeRefs();

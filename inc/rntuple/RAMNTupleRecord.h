@@ -255,6 +255,8 @@ public:
    void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
 
 private:
+   /// Creates the shared tables on first use without touching their contents.
+   static void EnsureTables();
    static void WriteRefs(TFile &file, const RAMNTupleRefs *refs, const std::string &refname);
    static void ReadRefs(const std::string &filename, std::unique_ptr<RAMNTupleRefs> &refs, const std::string &refname);
    static void WriteRnameRefs(TFile &file) { WriteRefs(file, fgRnameRefs.get(), "RnameRefs"); }

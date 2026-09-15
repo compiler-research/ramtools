@@ -5,6 +5,8 @@
 #include "generate_sam_benchmark.h"
 #include <ROOT/RNTupleReader.hxx>
 #include <cstdio>
+#include <fstream>
+#include <string>
 #include <filesystem>
 
 class ChromosomeSplitTest : public ::testing::Test {
@@ -113,4 +115,27 @@ TEST_F(ChromosomeSplitTest, RegionCountsMatchTheUnsplitFile)
       EXPECT_EQ(ramntupleview(filename.c_str(), chr.c_str()), ramntupleview("test_regular.root", chr.c_str()))
          << filename;
    }
+}
+
+// Opening each chromosome's writer constructs a record. That used to reset the
+// longest span seen so far, so earlier chromosomes' files were written with a
+// span too small for the region seek to back off enough.
+TEST_F(ChromosomeSplitTest, SplitFilesKeepTheLongestSpan)
+{
+   const char *spanSam = "test_split_span.sam";
+   {
+      std::ofstream sam(spanSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000000\n@SQ\tSN:chr2\tLN:1000000\n";
+      sam << "spanning\t0\tchr1\t1000\t60\t10M199990N10M\t*\t0\t0\t" << std::string(20, 'A') << "\t*\n";
+      sam << "short\t0\tchr1\t300000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
+      sam << "other\t0\tchr2\t100\t60\t4M\t*\t0\t0\tACGT\t*\n";
+   }
+   samtoramntuple_split_by_chromosome(spanSam, "test_split", 505, 1);
+
+   auto reader = RAMNTupleRecord::OpenRAMFile("test_split_chr1.root");
+   ASSERT_NE(reader, nullptr);
+   EXPECT_GE(RAMNTupleRecord::GetMaxRefSpan(), 200010U);
+   EXPECT_EQ(ramntupleview("test_split_chr1.root", "chr1:200000-201000"), 1) << "the spanning read reaches the region";
+
+   std::remove(spanSam);
 }
