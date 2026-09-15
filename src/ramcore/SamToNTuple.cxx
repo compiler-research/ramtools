@@ -18,18 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace {
-
-constexpr uint16_t kUnmapped = 0x4;
-constexpr int32_t kPositionInterval = 10000;
-constexpr int64_t kMappedInterval = 100;
-
-} // namespace
-
-void samtoramntuple(const char *datafile,
-                    const char *treefile,
-                    bool index, bool split, bool cache,
-                    int compression_algorithm,
+void samtoramntuple(const char *datafile, const char *treefile, bool split, bool cache, int compression_algorithm,
                     uint32_t quality_policy)
 {
     TStopwatch stopwatch;
@@ -58,10 +47,6 @@ void samtoramntuple(const char *datafile,
 
     ramcore::SamParser parser;
 
-    int64_t mapped_count = 0;
-    int32_t last_refid = -1;
-    int32_t last_indexed_pos = -kPositionInterval;
-
     auto header_callback = [&headers](const std::string& tag, const std::string& content) {
         headers.Add(new TNamed(tag.c_str(), content.c_str()));
 
@@ -77,7 +62,7 @@ void samtoramntuple(const char *datafile,
         }
     };
 
-    auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t record_num) {
+    auto record_callback = [&](const ramcore::SamRecord &sam_record, size_t) {
        recordPtr->SetBit(quality_policy);
 
        recordPtr->SetQNAME(sam_record.qname);
@@ -98,40 +83,8 @@ void samtoramntuple(const char *datafile,
        }
 
        RAMNTupleRecord::NoteRefSpan(recordPtr->GetRefSpan());
-       if (!(sam_record.flag & kUnmapped) && recordPtr->GetREFID() >= 0)
-          RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
+       RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
        writer->Fill(*defaultEntry);
-
-       // Index building: create a sparse lookup table so region queries can jump
-       // directly to the relevant records instead of scanning from the beginning.
-       //
-       // Only mapped reads with a valid chromosome get indexed. The index maps
-       // (chromosome, position) → record_number.
-       //
-       // An entry is created when any of these triggers fire:
-       //   1. New chromosome — so queries on that chromosome have a starting point
-       //   2. Position gap >= 10kb — limits how far a query must scan forward
-       //   3. Every 100th mapped read — density guarantee for pileup regions
-       //      where reads are close together and the 10kb gap never triggers
-       //
-       // Duplicate entries at the same (chromosome, position) are skipped to ensure
-       // the index always points to the first record at any given position.
-       if (index && !(sam_record.flag & kUnmapped) && recordPtr->GetREFID() >= 0) {
-          int32_t current_refid = recordPtr->GetREFID();
-          int32_t current_pos = recordPtr->GetPOS() - 1;
-
-          bool new_chrom = (current_refid != last_refid);
-          bool far_enough = (current_pos - last_indexed_pos >= kPositionInterval);
-          bool periodic = (mapped_count % kMappedInterval == 0);
-          bool duplicate = (!new_chrom && current_pos == last_indexed_pos);
-
-          if ((new_chrom || far_enough || periodic) && !duplicate) {
-             RAMNTupleRecord::GetIndex()->AddItem(current_refid, current_pos, record_num);
-             last_refid = current_refid;
-             last_indexed_pos = current_pos;
-          }
-          mapped_count++;
-       }
     };
 
     if (!parser.ParseFile(datafile, header_callback, record_callback)) {
@@ -141,15 +94,9 @@ void samtoramntuple(const char *datafile,
 
     writer.reset();
 
-    // An index is only usable on a sorted file; the file records which it is.
-    const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
-    if (index && !sorted) {
-       fprintf(stderr, "%s is not in coordinate order, so no index was written; region queries will read it in full.\n",
-               datafile);
-    }
-    if (index && sorted) {
-       RAMNTupleRecord::WriteIndex(*rootFile);
-    }
+    // Region queries can only seek on a sorted file; the file records which it is.
+    if (!RAMNTupleRecord::IsCoordinateSorted())
+       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);
     RAMNTupleRecord::WriteAllRefs(*rootFile);
 
     // One key for the list; without kSingleKey every line is written as its own
@@ -162,10 +109,6 @@ void samtoramntuple(const char *datafile,
 
     RAMNTupleRecord::GetRnameRefs()->Print();
     RAMNTupleRecord::GetRnextRefs()->Print();
-
-    if (index && sorted) {
-       printf("\nIndex entries: %zu\n", RAMNTupleRecord::GetIndex()->Size());
-    }
 
     printf("\nProcessed %zu SAM headers\n", parser.GetLinesProcessed() - parser.GetRecordsProcessed());
     printf("Processed %zu SAM records\n\n", parser.GetRecordsProcessed());
@@ -181,11 +124,8 @@ struct ChromosomeWriter {
    std::unique_ptr<ROOT::RNTupleWriter> writer{};
    std::unique_ptr<ROOT::REntry> entry{};
    std::shared_ptr<RAMNTupleRecord> record{};
-   RAMNTupleIndex index{};
    int64_t rows = 0;
-   int64_t mapped = 0;
    int32_t last_pos = -1;
-   int32_t last_indexed_pos = -kPositionInterval;
    bool sorted = true;
 };
 
@@ -269,25 +209,13 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
       RAMNTupleRecord::NoteRefSpan(rec.GetRefSpan());
       cw.writer->Fill(*cw.entry);
-      const int64_t row = cw.rows++;
+      cw.rows++;
 
-      if (sam_record.flag & kUnmapped)
-         return;
-
+      // One reference per file, so the order check is on the position alone.
       const int32_t pos = rec.GetPOS() - 1;
       if (pos < cw.last_pos)
          cw.sorted = false;
       cw.last_pos = pos;
-
-      // Same sparse-index rule as the single-file writer, kept per file so the
-      // rows it records are the rows of this file.
-      const bool far_enough = (pos - cw.last_indexed_pos >= kPositionInterval);
-      const bool periodic = (cw.mapped % kMappedInterval == 0);
-      if ((far_enough || periodic) && pos != cw.last_indexed_pos) {
-         cw.index.AddItem(rec.GetREFID(), pos, row);
-         cw.last_indexed_pos = pos;
-      }
-      cw.mapped++;
    };
 
    ramcore::SamParser parser;
@@ -302,17 +230,15 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       cw.writer.reset();
 
       RAMNTupleRecord::SetCoordinateSorted(cw.sorted);
-      if (cw.sorted)
-         RAMNTupleRecord::WriteIndex(*cw.file, cw.index);
-      else
-         fprintf(stderr, "%s: %s is not in coordinate order, so no index was written.\n", datafile, chr.c_str());
+      if (!cw.sorted)
+         fprintf(stderr, "%s: %s is not in coordinate order; region queries will read it in full.\n", datafile,
+                 chr.c_str());
       RAMNTupleRecord::WriteAllRefs(*cw.file);
 
       cw.file->cd();
       headers.Write("headers", TObject::kSingleKey);
       cw.file->Close();
 
-      printf("%s_%s.root: %lld records, %zu index entries\n", output_prefix, chr.c_str(),
-             static_cast<long long>(cw.rows), cw.sorted ? cw.index.Size() : 0);
+      printf("%s_%s.root: %lld records\n", output_prefix, chr.c_str(), static_cast<long long>(cw.rows));
    }
 }

@@ -199,7 +199,7 @@ protected:
 
 TEST_F(BamToNTupleTest, ConversionProducesEntries)
 {
-   bamtoramntuple("test.bam", "test_bam.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test.bam", "test_bam.ram", false, true, 505, 0U);
 
    ASSERT_TRUE(std::filesystem::exists("test_bam.ram"));
 
@@ -210,9 +210,9 @@ TEST_F(BamToNTupleTest, ConversionProducesEntries)
 
 TEST_F(BamToNTupleTest, SameEntryCountAsSAMPath)
 {
-   bamtoramntuple("test.bam", "test_bam.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test.bam", "test_bam.ram", false, true, 505, 0U);
 
-   samtoramntuple("test_compare.sam", "test_sam.ram", true, true, true, 505, 0U);
+   samtoramntuple("test_compare.sam", "test_sam.ram", true, true, 505, 0U);
 
    auto bamReader = ROOT::RNTupleReader::Open("RAM", "test_bam.ram");
    auto samReader = ROOT::RNTupleReader::Open("RAM", "test_sam.ram");
@@ -224,7 +224,7 @@ TEST_F(BamToNTupleTest, SameEntryCountAsSAMPath)
 
 TEST_F(BamToNTupleTest, RegionQueryWorks)
 {
-   bamtoramntuple("test.bam", "test_bam.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test.bam", "test_bam.ram", false, true, 505, 0U);
 
    const std::array<const char *, 3> regions = {"chr1:100-200", "chr2:500-1000", "chr5:1000-5000"};
 
@@ -238,7 +238,7 @@ TEST_F(BamToNTupleTest, RegionQueryWorks)
 
 TEST_F(BamToNTupleTest, MandatoryFieldsPresent)
 {
-   bamtoramntuple("test.bam", "test_bam.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test.bam", "test_bam.ram", false, true, 505, 0U);
 
    auto reader = ROOT::RNTupleReader::Open("RAM", "test_bam.ram");
    ASSERT_NE(reader, nullptr);
@@ -252,7 +252,7 @@ TEST_F(BamToNTupleTest, RichBAMCoversAllTagTypes)
 {
    GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
 
-   bamtoramntuple("test_rich.bam", "test_rich.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test_rich.bam", "test_rich.ram", false, true, 505, 0U);
 
    auto reader = ROOT::RNTupleReader::Open("RAM", "test_rich.ram");
    ASSERT_NE(reader, nullptr);
@@ -262,26 +262,17 @@ TEST_F(BamToNTupleTest, RichBAMCoversAllTagTypes)
 TEST_F(BamToNTupleTest, InvalidFileReturnsGracefully)
 {
    testing::internal::CaptureStderr();
-   bamtoramntuple("nonexistent.bam", "out.ram", true, false, true, 505, 0U);
+   bamtoramntuple("nonexistent.bam", "out.ram", false, true, 505, 0U);
    std::string err = testing::internal::GetCapturedStderr();
    EXPECT_NE(err.find("Cannot open BAM"), std::string::npos);
    EXPECT_FALSE(std::filesystem::exists("out.ram"));
-}
-
-TEST_F(BamToNTupleTest, ConversionWithoutIndex)
-{
-   bamtoramntuple("test.bam", "test_bam.ram", false, false, true, 505, 0U);
-
-   auto reader = ROOT::RNTupleReader::Open("RAM", "test_bam.ram");
-   ASSERT_NE(reader, nullptr);
-   EXPECT_GT(reader->GetNEntries(), 0);
 }
 
 TEST_F(BamToNTupleTest, UnmappedAndMissingQualityHandled)
 {
    GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
 
-   bamtoramntuple("test_rich.bam", "test_rich.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test_rich.bam", "test_rich.ram", false, true, 505, 0U);
 
    testing::internal::CaptureStdout();
    const Long64_t count = ramntupleview("test_rich.ram", "chr1:100-2000", opts);
@@ -293,7 +284,7 @@ TEST_F(BamToNTupleTest, DifferentChromMateHandled)
 {
    GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
 
-   bamtoramntuple("test_rich.bam", "test_rich.ram", true, false, true, 505, 0U);
+   bamtoramntuple("test_rich.bam", "test_rich.ram", false, true, 505, 0U);
 
    testing::internal::CaptureStdout();
    const Long64_t count = ramntupleview("test_rich.ram", "chr2:400-600", opts);

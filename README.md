@@ -44,12 +44,13 @@ Convert a standard SAM file into the optimized RNTuple-based RAM format.
 ./tools/samtoramntuple input.sam output -split
 ```
 
-Options: `-noindex` skips the region index, `-illumina` stores 8-level binned
-quality scores, `-dropqual` stores none, `-compression N` sets the ROOT
-compression code (algorithm*100+level; the default 505 is ZSTD level 5).
+Options: `-illumina` stores 8-level binned quality scores, `-dropqual`
+stores none, `-compression N` sets the ROOT compression code
+(algorithm*100+level; the default 505 is ZSTD level 5).
 
-The index needs the input in coordinate order. An unsorted input converts
-fine but gets no index, and region queries on it read the whole file.
+Region queries seek by binary search over the position column, which needs
+the input in coordinate order. An unsorted input converts fine, but region
+queries on it read the whole file.
 
 ### Region Querying
 

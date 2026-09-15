@@ -33,7 +33,6 @@ int main(int argc, char *argv[])
    if (argc < 2) {
       std::cout << "Usage: " << argv[0] << " <input.bam> [output]\n"
                 << "Options:\n"
-                << "  -noindex     Disable indexing\n"
                 << "  -illumina    Use Illumina quality binning\n"
                 << "  -dropqual    Drop quality scores\n"
                 << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n";
@@ -43,7 +42,6 @@ int main(int argc, char *argv[])
    const char *input = argv[1];
    const char *output = nullptr;
 
-   bool do_index = true;
    uint32_t quality_mode = RAMNTupleRecord::kPhred33;
    int compression = 505;
    bool want_compression = false;
@@ -56,9 +54,7 @@ int main(int argc, char *argv[])
             return 1;
          }
          want_compression = false;
-      } else if (arg == "-noindex")
-         do_index = false;
-      else if (arg == "-illumina" || arg == "-dropqual")
+      } else if (arg == "-illumina" || arg == "-dropqual")
          quality_mode = (arg == "-illumina") ? RAMNTupleRecord::kIlluminaBinning : RAMNTupleRecord::kDrop;
       else if (arg == "-compression")
          want_compression = true;
@@ -84,7 +80,7 @@ int main(int argc, char *argv[])
       ramfile += ".ram";
 
    bamtoramntuple(input, ramfile.c_str(),
-                  /*index=*/do_index, /*split=*/false, /*cache=*/true,
+                  /*split=*/false, /*cache=*/true,
                   /*compression_algorithm=*/compression, /*quality_policy=*/quality_mode);
 
    return 0;

@@ -24,7 +24,7 @@ static void BM_SamToRNTuple(benchmark::State &state)
       FILE *original_stdout = stdout;
       stdout = fopen(NULL_DEVICE, "w");
 
-      samtoramntuple(sam_file.c_str(), rntuple_file.c_str(), true, true, true, 505, 0);
+      samtoramntuple(sam_file.c_str(), rntuple_file.c_str(), true, true, 505, 0);
 
       fclose(stdout);
       stdout = original_stdout;

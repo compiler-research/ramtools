@@ -4,10 +4,7 @@
 #include <cstdint>
 #include <string>
 
-void samtoramntuple(const char *datafile,
-                    const char *treefile,
-                    bool index, bool split, bool cache,
-                    int compression_algorithm,
+void samtoramntuple(const char *datafile, const char *treefile, bool split, bool cache, int compression_algorithm,
                     uint32_t quality_policy);
 
 /// Writes one RAM file per reference, named <output_prefix>_<rname>.root.

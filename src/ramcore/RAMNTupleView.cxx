@@ -112,6 +112,25 @@ bool parseRegion(const std::string &region, TString &rname, Int_t &start, Int_t 
 
 } // namespace
 
+// First row at or after (refid, pos) in a sorted file: binary search over the
+// two columns. Unplaced records (refid -1) sort last.
+static Long64_t firstRowAtOrAfter(ROOT::RNTupleView<int32_t> &refidView, ROOT::RNTupleView<int32_t> &posView,
+                                  Long64_t total, int32_t refid, int32_t pos)
+{
+   Long64_t lo = 0;
+   Long64_t hi = total;
+   while (lo < hi) {
+      const Long64_t mid = lo + (hi - lo) / 2;
+      const int32_t r = refidView(mid);
+      const bool before = r >= 0 && (r < refid || (r == refid && posView(mid) < pos));
+      if (before)
+         lo = mid + 1;
+      else
+         hi = mid;
+   }
+   return lo;
+}
+
 // NOLINTNEXTLINE(misc-use-internal-linkage)
 Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std::function<void(Long64_t)> &on_row)
 {
@@ -150,22 +169,15 @@ Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std
    auto posView = reader.GetView<int32_t>("record.pos");
    auto cigarView = reader.GetView<std::vector<uint32_t>>("record.cigar");
 
-   // The index entry at or before the region start is not enough on its own: a
-   // read beginning earlier can still reach into the region, and starting there
-   // would step over it. Backing off by the longest span in the file is exact.
-   // A file that does not record the span (0) is scanned from the reference's
-   // first entry instead.
-   // Seeking and stopping early both assume coordinate order. A file without
-   // it is read end to end with the same overlap test.
+   // Back off by the longest span so a read that starts before the region and
+   // reaches into it is not stepped over; a span of 0 means the file predates
+   // that field and the scan starts at the reference's first record.
    const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
-   auto index = RAMNTupleRecord::GetIndex();
    Long64_t start = 0;
-   if (sorted && index && index->Size() > 0) {
+   if (sorted) {
       const Int_t maxSpan = static_cast<Int_t>(RAMNTupleRecord::GetMaxRefSpan());
       const Int_t seekPos = (maxSpan > 0 && rs > maxSpan) ? rs - maxSpan : 0;
-      start = index->GetRow(refid, seekPos);
-      if (start < 0)
-         start = 0;
+      start = firstRowAtOrAfter(refidView, posView, total, refid, seekPos);
    }
 
    Long64_t count = 0;

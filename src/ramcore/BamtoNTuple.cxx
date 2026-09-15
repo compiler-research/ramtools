@@ -25,10 +25,6 @@
 
 namespace {
 
-constexpr uint16_t kUnmapped = 0x4;
-constexpr int32_t kPositionInterval = 10000;
-constexpr int64_t kMappedInterval = 100;
-
 std::string GetSeq(const bam1_t *b)
 {
    const int len = b->core.l_qseq;
@@ -195,7 +191,7 @@ void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uin
 
 } // namespace
 
-void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool /*split*/, bool /*cache*/,
+void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, bool /*cache*/,
                     int compression_algorithm, uint32_t quality_policy)
 {
    TStopwatch stopwatch;
@@ -241,33 +237,12 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
 
    bam1_t *rec = bam_init1();
    std::size_t count = 0;
-   int64_t mapped_count = 0;
-   int32_t last_refid = -1;
-   int32_t last_indexed_pos = -kPositionInterval;
 
    while (sam_read1(bamIn, hdr, rec) >= 0) {
       FillRecord(recordPtr.get(), rec, hdr, quality_policy);
       RAMNTupleRecord::NoteRefSpan(recordPtr->GetRefSpan());
-      if (!(rec->core.flag & kUnmapped) && recordPtr->GetREFID() >= 0)
-         RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
+      RAMNTupleRecord::NotePlacement(recordPtr->GetREFID(), recordPtr->GetPOS() - 1);
       writer->Fill(*entry);
-
-      if (index && !(rec->core.flag & kUnmapped) && recordPtr->GetREFID() >= 0) {
-         int32_t current_refid = recordPtr->GetREFID();
-         int32_t current_pos = recordPtr->GetPOS() - 1;
-
-         bool new_chrom = (current_refid != last_refid);
-         bool far_enough = (current_pos - last_indexed_pos >= kPositionInterval);
-         bool periodic = (mapped_count % kMappedInterval == 0);
-         bool duplicate = (!new_chrom && current_pos == last_indexed_pos);
-
-         if ((new_chrom || far_enough || periodic) && !duplicate) {
-            RAMNTupleRecord::GetIndex()->AddItem(current_refid, current_pos, static_cast<int64_t>(count));
-            last_refid = current_refid;
-            last_indexed_pos = current_pos;
-         }
-         mapped_count++;
-      }
 
       ++count;
       if (count % 1000000 == 0)
@@ -277,13 +252,9 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
    bam_destroy1(rec);
    writer.reset();
 
-   // An index is only usable on a sorted file; the file records which it is.
-   const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
-   if (index && !sorted)
-      std::cerr << bamfile
-                << " is not in coordinate order, so no index was written; region queries will read it in full.\n";
-   if (index && sorted)
-      RAMNTupleRecord::WriteIndex(*rootFile);
+   // Region queries can only seek on a sorted file; the file records which it is.
+   if (!RAMNTupleRecord::IsCoordinateSorted())
+      std::cerr << bamfile << " is not in coordinate order; region queries will read it in full.\n";
    RAMNTupleRecord::WriteAllRefs(*rootFile);
 
    TList headers;
@@ -313,8 +284,6 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool index, bool 
              << "Number of entries: " << count << "\n";
    RAMNTupleRecord::GetRnameRefs()->Print();
    RAMNTupleRecord::GetRnextRefs()->Print();
-   if (index && sorted)
-      std::cout << "Index entries: " << RAMNTupleRecord::GetIndex()->Size() << "\n";
 
    stopwatch.Print();
 }

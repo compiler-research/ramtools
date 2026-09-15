@@ -31,7 +31,6 @@ int main(int argc, char* argv[]) {
        std::cout << "Usage: " << argv[0] << " <input.sam> [output]\n";
        std::cout << "Options:\n";
        std::cout << "  -split       Split by chromosome\n";
-       std::cout << "  -noindex     Disable indexing\n";
        std::cout << "  -illumina    Use Illumina quality binning\n";
        std::cout << "  -dropqual    Drop quality scores\n";
        std::cout << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n";
@@ -42,7 +41,6 @@ int main(int argc, char* argv[]) {
     const char* output = nullptr;
 
     bool do_split = false;
-    bool do_index = true;
     uint32_t quality_mode = RAMNTupleRecord::kPhred33;
     int compression = 505;
     bool want_compression = false;
@@ -57,8 +55,6 @@ int main(int argc, char* argv[]) {
            want_compression = false;
         } else if (arg == "-split") {
            do_split = true;
-        } else if (arg == "-noindex") {
-           do_index = false;
         } else if (arg == "-illumina") {
            quality_mode = RAMNTupleRecord::kIlluminaBinning;
         } else if (arg == "-dropqual") {
@@ -92,7 +88,7 @@ int main(int argc, char* argv[]) {
           if (ramfile.find(".root") == std::string::npos && ramfile.find(".ram") == std::string::npos) {
              ramfile += ".ram";
           }
-          samtoramntuple(input, ramfile.c_str(), do_index, true, true, compression, quality_mode);
+          samtoramntuple(input, ramfile.c_str(), true, true, compression, quality_mode);
        }
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
