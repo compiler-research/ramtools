@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <string_view>
 
 using namespace ROOT;
@@ -139,53 +140,87 @@ void RAMNTupleRefs::Print() const
    }
 }
 // RAMNTupleIndex Implementation
+namespace {
+
+// The order the writers append anchors in, and the order look-ups assume.
+bool IndexEntryLess(const RAMNTupleIndex::IndexEntry &a, const RAMNTupleIndex::IndexEntry &b)
+{
+   return (a.refid != b.refid) ? (a.refid < b.refid) : (a.pos < b.pos);
+}
+
+RAMNTupleIndex::IndexEntry IndexKey(int32_t refid, int32_t pos)
+{
+   return {refid, pos, 0};
+}
+
+} // namespace
+
 void RAMNTupleIndex::AddItem(int32_t refid, int32_t pos, int64_t row)
 {
    fIndex.push_back({refid, pos, row});
-   auto key = std::make_pair(refid, pos);
-   fIndexMap[key] = row;
+}
+
+void RAMNTupleIndex::SetEntries(const std::vector<IndexEntry> &entries)
+{
+   fIndex = entries;
+
+   // The writers append in (refid,pos) order, but these come off a file: a
+   // binary search over anchors in any other order returns a row that is not
+   // the one the scan has to start at.
+   if (!std::is_sorted(fIndex.begin(), fIndex.end(), IndexEntryLess)) {
+      ::Warning("RAMNTupleIndex::SetEntries", "%zu index entries were not in (refid,pos) order; sorting them",
+                fIndex.size());
+      std::stable_sort(fIndex.begin(), fIndex.end(), IndexEntryLess);
+   }
 }
 
 int64_t RAMNTupleIndex::GetRow(int32_t refid, int32_t pos) const
 {
-   if (fIndexMap.empty() && !fIndex.empty()) {
-      const_cast<RAMNTupleIndex *>(this)->RebuildMap();
-   }
-
-   auto key = std::make_pair(refid, pos);
-   auto low = fIndexMap.lower_bound(key);
-
-   if (low == fIndexMap.end()) {
+   if (fIndex.empty())
       return -1;
-   } else if (low == fIndexMap.begin()) {
-      return low->second;
-   } else {
-      if (low->first.first == refid && low->first.second == pos) {
-         return low->second;
-      } else {
-         --low;
-         return low->second;
-      }
-   }
-}
 
-void RAMNTupleIndex::RebuildMap() const
-{
-   fIndexMap.clear();
-   for (const auto &entry : fIndex) {
-      fIndexMap[{entry.refid, entry.pos}] = entry.entry;
+   // The first anchor at or after the query.
+   auto it = std::lower_bound(fIndex.begin(), fIndex.end(), IndexKey(refid, pos), IndexEntryLess);
+
+   // Anchors can share a position; the scan has to start at the first of them.
+   if (it != fIndex.end() && it->refid == refid && it->pos == pos)
+      return it->entry;
+
+   // Every anchor follows the query, so start at the first one.
+   if (it == fIndex.begin())
+      return fIndex.front().entry;
+
+   // Otherwise the last anchor before the query. Reaching the end here means
+   // every anchor precedes it, which makes the last one the answer rather than
+   // a miss -- returning -1 used to send the caller back to row 0.
+   --it;
+
+   // Stepping back can land on the previous reference, either because the query
+   // precedes the first anchor of its own or because that reference has none.
+   // The first anchor of the requested reference is a closer, equally safe start.
+   if (it->refid != refid) {
+      const auto first =
+         std::lower_bound(fIndex.begin(), fIndex.end(), IndexKey(refid, std::numeric_limits<int32_t>::min()),
+                          IndexEntryLess);
+      if (first != fIndex.end() && first->refid == refid)
+         return first->entry;
    }
+
+   return it->entry;
 }
 
 std::vector<int64_t> RAMNTupleIndex::GetRowsInRange(int32_t refid, int32_t start, int32_t end) const
 {
    std::vector<int64_t> rows;
+   if (start > end)
+      return rows;
 
-   for (const auto &entry : fIndex) {
-      if (entry.refid == refid && entry.pos >= start && entry.pos <= end) {
-         rows.push_back(entry.entry);
-      }
-   }
+   const auto first = std::lower_bound(fIndex.begin(), fIndex.end(), IndexKey(refid, start), IndexEntryLess);
+   const auto last = std::upper_bound(fIndex.begin(), fIndex.end(), IndexKey(refid, end), IndexEntryLess);
+
+   rows.reserve(static_cast<size_t>(std::distance(first, last)));
+   for (auto it = first; it != last; ++it)
+      rows.push_back(it->entry);
 
    return rows;
 }

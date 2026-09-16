@@ -399,6 +399,80 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
    std::remove(sortedFile);
 }
 
+// Where a region scan starts. A query past every anchor used to come back as
+// -1, which ramntuplescan reads as "no starting point" and turns into a scan
+// from row 0 of the file: correct, but the whole file instead of a seek.
+TEST_F(ramcoreTest, IndexGetRow)
+{
+   RAMNTupleRecord::InitializeRefs();
+   auto *index = RAMNTupleRecord::GetIndex();
+
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/100), -1) << "an empty index has no starting point to offer";
+
+   index->AddItem(/*refid=*/0, /*pos=*/100, /*row=*/0);
+   index->AddItem(/*refid=*/0, /*pos=*/200, /*row=*/1);
+   index->AddItem(/*refid=*/0, /*pos=*/300, /*row=*/2);
+   // refid 1 is deliberately absent: a reference whose reads are all unmapped
+   // gets no anchors, and a query on it still has to start somewhere sane.
+   index->AddItem(/*refid=*/2, /*pos=*/150, /*row=*/3);
+
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/50), 0) << "before the first anchor";
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/200), 1) << "exactly on an anchor";
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/250), 1) << "between two anchors";
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/400), 2) << "past the last anchor of this reference";
+   EXPECT_EQ(index->GetRow(/*refid=*/2, /*pos=*/10), 3) << "before the first anchor of its own reference";
+   EXPECT_EQ(index->GetRow(/*refid=*/2, /*pos=*/9999), 3) << "past every anchor in the file";
+   EXPECT_EQ(index->GetRow(/*refid=*/1, /*pos=*/10), 2) << "a reference with no anchors starts after the one before it";
+   EXPECT_EQ(index->GetRow(/*refid=*/3, /*pos=*/10), 3) << "a reference ordered after every anchor";
+   EXPECT_GE(index->GetRow(/*refid=*/0, /*pos=*/0), 0) << "a non-empty index always yields a row";
+}
+
+// Anchors read back from a file are external input, so the binary search cannot
+// simply trust that they arrive in (refid,pos) order.
+TEST_F(ramcoreTest, IndexSetEntriesOrdersAnchors)
+{
+   RAMNTupleRecord::InitializeRefs();
+   auto *index = RAMNTupleRecord::GetIndex();
+
+   index->SetEntries({{/*refid=*/1, /*pos=*/150, /*entry=*/3},
+                      {/*refid=*/0, /*pos=*/300, /*entry=*/2},
+                      {/*refid=*/0, /*pos=*/100, /*entry=*/0}});
+
+   EXPECT_EQ(index->Size(), 3U);
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/350), 2);
+   EXPECT_EQ(index->GetRow(/*refid=*/0, /*pos=*/50), 0);
+   EXPECT_EQ(index->GetRow(/*refid=*/1, /*pos=*/999), 3);
+}
+
+// A region past the last anchor has to give the same answer as the same file
+// converted without an index, which has no seek to get wrong.
+TEST_F(ramcoreTest, RegionPastTheLastAnchorMatchesTheUnindexedFile)
+{
+   const char *customSam = "test_tail_region.sam";
+   const char *indexedFile = "test_tail_indexed.root";
+   const char *plainFile = "test_tail_plain.root";
+
+   {
+      std::ofstream sam(customSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n";
+      sam << "@SQ\tSN:chr1\tLN:1000000\n";
+      for (int i = 0; i < 300; ++i)
+         sam << "r" << i << "\t0\tchr1\t" << (1000 + i * 100) << "\t60\t50M\t*\t0\t0\t" << std::string(50, 'A')
+             << "\t*\n";
+   }
+
+   samtoramntuple(customSam, indexedFile, /*index=*/true, false, false, 505, 0);
+   samtoramntuple(customSam, plainFile, /*index=*/false, false, false, 505, 0);
+
+   // The last read starts at 30900 and the last anchor is at or before it.
+   for (const char *region : {"chr1:30800-31000", "chr1:30900-30949", "chr1:40000-50000"})
+      EXPECT_EQ(ramntupleview(indexedFile, region, opts), ramntupleview(plainFile, region, opts)) << region;
+
+   std::remove(customSam);
+   std::remove(indexedFile);
+   std::remove(plainFile);
+}
+
 TEST_F(ramcoreTest, IndexGetRowsInRange)
 {
    RAMNTupleRecord::InitializeRefs();

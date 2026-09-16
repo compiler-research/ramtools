@@ -14,7 +14,6 @@
 
 #include <string>
 #include <vector>
-#include <map>
 #include <memory>
 #include <cstdint>
 
@@ -66,9 +65,10 @@ public:
  * \class RAMNTupleIndex
  * \brief Sparse genomic index for fast region queries on RNTuple files.
  *
- * The index is stored as a plain `std::vector<IndexEntry>` for efficient
- * serialisation and complemented by a lazily-initialised `std::map` that
- * supports O(log n) look-ups by (refid,pos).
+ * The anchors live in one `std::vector<IndexEntry>`, ordered by (refid,pos):
+ * the writers append them in that order, and `SetEntries` restores it for
+ * anchors read back from a file. Look-ups binary-search that vector, so the
+ * index costs nothing to open.
  */
 class RAMNTupleIndex {
 public:
@@ -80,15 +80,15 @@ public:
 
 private:
    std::vector<IndexEntry> fIndex;
-   mutable std::map<std::pair<int32_t, int32_t>, int64_t> fIndexMap;
-
-   void RebuildMap() const;
 
 public:
    RAMNTupleIndex() = default;
    ~RAMNTupleIndex() = default;
 
    void AddItem(int32_t refid, int32_t pos, int64_t row);
+
+   /// Row a scan for (refid,pos) must start at: the last anchor at or before it,
+   /// or the first anchor of `refid` when the position precedes all of them.
    int64_t GetRow(int32_t refid, int32_t pos) const;
    std::vector<int64_t> GetRowsInRange(int32_t refid, int32_t start, int32_t end) const;
 
@@ -97,16 +97,8 @@ public:
 
    // For RNTuple serialization
    const std::vector<IndexEntry> &GetEntries() const { return fIndex; }
-   void SetEntries(const std::vector<IndexEntry> &entries)
-   {
-      fIndex = entries;
-      fIndexMap.clear();
-   }
-   void Clear()
-   {
-      fIndex.clear();
-      fIndexMap.clear();
-   }
+   void SetEntries(const std::vector<IndexEntry> &entries);
+   void Clear() { fIndex.clear(); }
 };
 /**
  * \class RAMNTupleRecord
