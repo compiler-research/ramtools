@@ -199,9 +199,9 @@ int64_t RAMNTupleIndex::GetRow(int32_t refid, int32_t pos) const
    // precedes the first anchor of its own or because that reference has none.
    // The first anchor of the requested reference is a closer, equally safe start.
    if (it->refid != refid) {
-      const auto first =
-         std::lower_bound(fIndex.begin(), fIndex.end(), IndexKey(refid, std::numeric_limits<int32_t>::min()),
-                          IndexEntryLess);
+      const auto first = std::lower_bound(fIndex.begin(), fIndex.end(),
+                                          IndexKey(refid, std::numeric_limits<int32_t>::min()), IndexEntryLess);
+
       if (first != fIndex.end() && first->refid == refid)
          return first->entry;
    }
