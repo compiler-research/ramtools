@@ -394,9 +394,9 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
    std::remove(sortedFile);
 }
 
-// A sorted file with two references, a placed unmapped mate and unplaced
-// records at the end: the seek has to land on the first candidate row and every
-// count has to match what a scan of the whole file gives.
+// A sorted file with two populated references, a placed unmapped mate, an empty
+// reference and unplaced records at the end: the seek has to land on the first
+// candidate row and every count has to match what a scan of the whole file gives.
 TEST_F(ramcoreTest, SeekMatchesAFullScanOnASortedFile)
 {
    const char *customSam = "test_seek.sam";
@@ -416,7 +416,8 @@ TEST_F(ramcoreTest, SeekMatchesAFullScanOnASortedFile)
    recs.push_back({"*", 4, 0});
    {
       std::ofstream sam(customSam);
-      sam << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:100000\n@SQ\tSN:chr2\tLN:100000\n";
+      sam << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:100000\n@SQ\tSN:chr2\tLN:100000\n"
+          << "@SQ\tSN:chr3\tLN:100000\n";
       int n = 0;
       for (const auto &r : recs) {
          const bool mapped = !(r.flag & 4);
@@ -448,9 +449,11 @@ TEST_F(ramcoreTest, SeekMatchesAFullScanOnASortedFile)
    EXPECT_EQ(ramntuplescan(*reader, "chr2:1-50", nullptr), expected("chr2", 1, 50));
    EXPECT_EQ(ramntuplescan(*reader, "chr2:4000-8200", nullptr), expected("chr2", 4000, 8200));
    EXPECT_EQ(ramntuplescan(*reader, "chr2:8100-8200", nullptr), expected("chr2", 8100, 8200));
-   EXPECT_EQ(ramntuplescan(*reader, "chr2:9000-9999", nullptr), 0);
+   EXPECT_EQ(ramntuplescan(*reader, "chr2:9000-9999", nullptr), 0) << "past the last chr2 record";
    EXPECT_EQ(ramntuplescan(*reader, "chr1", nullptr), 201);
    EXPECT_EQ(ramntuplescan(*reader, "chr2", nullptr), 200);
+   EXPECT_EQ(ramntuplescan(*reader, "chr3", nullptr), 0) << "an empty reference sorted after the last populated one";
+   EXPECT_EQ(ramntuplescan(*reader, "chr3:1-100", nullptr), 0);
 
    std::remove(customSam);
    std::remove(rntupleFile);

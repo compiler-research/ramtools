@@ -185,7 +185,9 @@ Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std
    for (Long64_t i = start; i < total; i++) {
       const int curRef = refidView(i);
       if (curRef != refid) {
-         if (sorted && curRef > refid)
+         // In a sorted file the unplaced records (refid -1) follow every placed
+         // one, so reaching them ends the scan the same as a later reference.
+         if (sorted && (curRef < 0 || curRef > refid))
             break;
          continue;
       }
