@@ -17,18 +17,20 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <iostream>
 
 void samtoramntuple(const char *datafile, const char *treefile, bool split, bool cache, int compression_algorithm,
                     uint32_t quality_policy)
 {
-    TStopwatch stopwatch;
-    stopwatch.Start();
+   ROOT::EnableImplicitMT();
+   TStopwatch stopwatch;
+   stopwatch.Start();
 
-    auto rootFile = std::unique_ptr<TFile>(TFile::Open(treefile, "RECREATE"));
-    if (!rootFile || !rootFile->IsOpen()) {
-        printf("Failed to create RAM file %s\n", treefile);
-        return;
-    }
+   auto rootFile = std::unique_ptr<TFile>(TFile::Open(treefile, "RECREATE"));
+   if (!rootFile || !rootFile->IsOpen()) {
+      std::cout << "Failed to create RAM file " << treefile << "\n";
+      return;
+   }
 
     RAMNTupleRecord::InitializeRefs();
 
