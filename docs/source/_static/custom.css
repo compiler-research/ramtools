@@ -1,0 +1,29 @@
+/* API reference: one entry per declaration, with room to breathe. */
+dl.cpp {
+    margin: 1.5rem 0 2rem 0;
+}
+dl.cpp > dt.sig {
+    padding: 0.5rem 0.75rem;
+    line-height: 1.6;
+}
+dl.cpp > dd {
+    margin: 0.5rem 0 0 1.25rem;
+}
+dl.cpp > dd > p:last-child {
+    margin-bottom: 0;
+}
+
+/* Quieter headings: a clear scale without the oversized bold titles. */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin-top: 2.2rem;
+}
+h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+}

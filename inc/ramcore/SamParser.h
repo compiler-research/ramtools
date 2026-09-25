@@ -79,13 +79,18 @@ class SamParser {
 public:
     using HeaderCallback = std::function<void(const std::string& tag, const std::string& content)>;
     using RecordCallback = std::function<void(const SamRecord& record, size_t record_number)>;
-    
+
+    /// Reads \a filename line by line. Header lines go to \a header_cb as
+    /// (tag, text after the first tab); every valid alignment goes to
+    /// \a record_cb with its 0-based ordinal. A malformed record is reported
+    /// on standard error with its line number and skipped. Returns false only
+    /// when the file cannot be opened.
     bool ParseFile(const char* filename, 
                    HeaderCallback header_cb, 
                    RecordCallback record_cb);
-    
-    size_t GetLinesProcessed() const { return lines_processed_; }
-    size_t GetRecordsProcessed() const { return records_processed_; }
+
+    size_t GetLinesProcessed() const { return lines_processed_; }     ///< lines read, header included
+    size_t GetRecordsProcessed() const { return records_processed_; } ///< valid records delivered
 
     /// Parses one alignment line in place; false if malformed. Thread-safe.
     static bool ParseRecord(char *line, SamRecord &record, size_t line_number);
@@ -95,6 +100,7 @@ public:
     size_t records_processed_ = 0;
 };
 
+/// Removes trailing CR and LF characters in place.
 void StripCRLF(char* str);
 
 } 

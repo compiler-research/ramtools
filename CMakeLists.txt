@@ -11,6 +11,7 @@ option(RAMTOOLS_BUILD_TESTS "Build unit tests" ON)
 option(RAMTOOLS_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(RAMTOOLS_BUILD_TOOLS "Build tools" ON)
 option(ENABLE_COVERAGE "Enable code coverage reporting" OFF)
+option(RAMTOOLS_BUILD_DOCS "Build the documentation with Sphinx" OFF)
 
 if(ENABLE_COVERAGE)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -93,4 +94,8 @@ if(RAMTOOLS_BUILD_TESTS)
             COMMENT "Running tests and generating code coverage report..."
         )
     endif()
+endif()
+
+if(RAMTOOLS_BUILD_DOCS)
+    add_subdirectory(docs)
 endif()

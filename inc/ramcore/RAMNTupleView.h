@@ -8,10 +8,12 @@ namespace ROOT {
 class RNTupleReader;
 }
 
+/// Options for ramntupleview(). None of them changes the result; they are
+/// kept for the tool and benchmark interfaces.
 struct RAMNTupleViewOpts {
-   bool fCache = true;
-   bool fPerfStats = false;
-   std::string perfStatsFilename = "perf.root";
+   bool fCache = true;                          ///< unused
+   bool fPerfStats = false;                     ///< unused
+   std::string perfStatsFilename = "perf.root"; ///< unused
 };
 
 /// Calls on_row for every record overlapping query, in file order, and returns
@@ -26,7 +28,8 @@ struct RAMNTupleViewOpts {
 /// An unsorted file is read end to end with the same overlap rule.
 Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std::function<void(Long64_t)> &on_row);
 
-/// Counts the records overlapping query.
+/// Opens \a file and counts the records overlapping \a query; prints the count
+/// and the elapsed time. Returns 0 when the file cannot be opened.
 Long64_t ramntupleview(const char *file, const char *query = "", const RAMNTupleViewOpts & = RAMNTupleViewOpts());
 
 #endif // RAMCORE_RAMNTUPLEVIEW_H
