@@ -135,6 +135,7 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
 
    auto viewPos = reader->GetView<int>("record.pos");
    auto viewSeq = reader->GetView<std::string>("record.seq");
+   auto viewFlags = reader->GetView<uint32_t>("record.compression_flags");
 
    ASSERT_GT(reader->GetNEntries(), 0);
 
@@ -143,15 +144,13 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
 
    EXPECT_GT(firstPos, 0);
 
-   size_t expectedSize = 18 + 4;
-   EXPECT_EQ(firstSeq.size(), expectedSize);
+   // The column holds the bases themselves, with no length prefix: the string
+   // column already records the length.
+   EXPECT_TRUE(viewFlags(0) & RAMNTupleRecord::kSeqRaw);
+   EXPECT_EQ(firstSeq.size(), 36U);
+   EXPECT_EQ(firstSeq.find_first_not_of("ACGTN"), std::string::npos) << firstSeq;
 
-   uint32_t storedLen = 0;
-   std::memcpy(&storedLen, firstSeq.data(), sizeof(storedLen));
-   EXPECT_EQ(storedLen, 36);
-
-   std::cout << "[   INFO   ] Data Integrity - Pos: " << firstPos << ", Encoded Seq Size: " << firstSeq.size()
-             << " (Header: " << storedLen << ")" << std::endl;
+   std::cout << "[   INFO   ] Data Integrity - Pos: " << firstPos << ", Stored Seq: " << firstSeq << std::endl;
 }
 
 TEST_F(ramcoreTest, RNTupleViewCigarOverlap)
@@ -618,6 +617,92 @@ TEST_F(ramcoreTest, RecordGetters)
    // Length must be preserved for real quality strings.
    binRecord.SetQUAL("IIIIIIIIII");
    EXPECT_EQ(binRecord.GetQUAL().size(), 10U);
+}
+
+// SEQ is stored as text, but must read back exactly as the 4-bit packing did,
+// so files written before and after the change describe the same reads.
+TEST_F(ramcoreTest, SeqTextMatchesThePackedRoundTrip)
+{
+   std::string everyByte;
+   for (int b = 1; b < 256; ++b)
+      everyByte.push_back(static_cast<char>(b));
+
+   for (const std::string &seq : {std::string("ACGTN"), std::string("acgtn"), std::string("=ACMGRSVTWYHKDBN"),
+                                  std::string(".xZ-"), std::string(""), everyByte}) {
+      const std::string packed = RAMNTupleUtils::EncodeSequence(seq);
+      const std::string unpacked = RAMNTupleUtils::DecodeSequence(packed.data() + 4, packed.size() - 4, seq.size());
+
+      RAMNTupleRecord record;
+      record.SetSEQ(seq);
+      EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kSeqRaw));
+      EXPECT_EQ(record.seq, unpacked) << "stored bytes for input of length " << seq.size();
+      EXPECT_EQ(record.GetSEQ(), unpacked);
+      EXPECT_EQ(record.GetSEQLEN(), static_cast<int>(seq.size()));
+   }
+
+   RAMNTupleRecord missing;
+   missing.SetSEQ("*");
+   EXPECT_EQ(missing.GetSEQ(), "*");
+   EXPECT_EQ(missing.GetSEQLEN(), 0);
+}
+
+// Records from files written before kSeqRaw carry packed bytes and no flag.
+TEST_F(ramcoreTest, PackedSeqWithoutTheFlagStillDecodes)
+{
+   RAMNTupleRecord record;
+   record.seq = RAMNTupleUtils::EncodeSequence("ACGTNAC");
+   ASSERT_FALSE(record.TestBit(RAMNTupleRecord::kSeqRaw));
+   EXPECT_EQ(record.GetSEQ(), "ACGTNAC");
+   EXPECT_EQ(record.GetSEQLEN(), 7);
+
+   RAMNTupleRecord missing;
+   missing.seq = RAMNTupleUtils::EncodeSequence("*");
+   EXPECT_EQ(missing.GetSEQ(), "*");
+   EXPECT_EQ(missing.GetSEQLEN(), 0);
+}
+
+// Changing the quality mode after SetSEQ must not reinterpret the stored text as
+// packed bytes.
+TEST_F(ramcoreTest, SetCompressionModeKeepsTheSeqEncoding)
+{
+   RAMNTupleRecord record;
+   record.SetSEQ("ACGT");
+   record.SetCompressionMode(RAMNTupleRecord::kIlluminaBinning);
+
+   EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kSeqRaw));
+   EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kIlluminaBinning));
+   EXPECT_FALSE(record.TestBit(RAMNTupleRecord::kPhred33));
+   EXPECT_EQ(record.GetSEQ(), "ACGT");
+}
+
+TEST_F(ramcoreTest, SeqSurvivesAFileAsNormalizedText)
+{
+   const char *customSam = "test_seq_text.sam";
+   const char *rntupleFile = "test_seq_text.root";
+
+   {
+      std::ofstream sam(customSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n";
+      sam << "@SQ\tSN:chr1\tLN:100000\n";
+      // 'y' is IUPAC (C or T) and survives; 'x' and 'j' are not bases.
+      sam << "lower\t0\tchr1\t1000\t60\t8M\t*\t0\t0\tacgtNyxj\t*\n";
+      sam << "absent\t0\tchr1\t2000\t60\t8M\t*\t0\t0\t*\t*\n";
+   }
+
+   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+
+   auto reader = RAMNTupleRecord::OpenRAMFile(rntupleFile);
+   ASSERT_NE(reader, nullptr);
+   ASSERT_EQ(reader->GetNEntries(), 2U);
+   auto view = reader->GetView<RAMNTupleRecord>("record");
+
+   EXPECT_EQ(view(0).GetSEQ(), "ACGTNYNN");
+   EXPECT_EQ(view(0).GetSEQLEN(), 8);
+   EXPECT_EQ(view(1).GetSEQ(), "*");
+   EXPECT_EQ(view(1).GetSEQLEN(), 0);
+
+   std::remove(customSam);
+   std::remove(rntupleFile);
 }
 
 } // namespace

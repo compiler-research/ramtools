@@ -104,6 +104,13 @@ public:
       kDrop = 1 << 16             // Drop quality score
    };
 
+   // Sequence storage. SetSEQ sets this bit on every record it writes; records
+   // from files written before it existed lack it and hold the 4-bit packing
+   // that GetSEQ still decodes.
+   enum ESeqEncodingBits {
+      kSeqRaw = 1 << 17 // SEQ stored as uppercase IUPAC text, not 4-bit packed
+   };
+
    // Alignment data fields
    std::string qname;             // Query template NAME
    uint16_t flag;                 // Bitwise FLAG
@@ -114,7 +121,7 @@ public:
    int32_t refnext;               // Reference ID of the mate/next read
    int32_t pnext;                 // 0-based position of the mate/next read
    int32_t tlen;                  // Observed Template LENgth
-   std::string seq;               // Segment sequence (encoded)
+   std::string seq;               // Segment sequence (text, or 4-bit packed without kSeqRaw)
    std::string qual;              // Quality scores (encoded)
    std::vector<std::string> tags; // Optional SAM tags
 
@@ -210,7 +217,12 @@ public:
    // RNTuple model creation
    static std::unique_ptr<ROOT::RNTupleModel> MakeModel();
 
-   void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
+   /// Replaces the quality mode. kSeqRaw describes how `seq` is already stored,
+   /// so it stays as SetSEQ left it: clearing it would make GetSEQ unpack text.
+   void SetCompressionMode(uint32_t flags)
+   {
+      compression_flags = (flags & ~static_cast<uint32_t>(kSeqRaw)) | (compression_flags & kSeqRaw);
+   }
 
 private:
    /// Creates the shared tables on first use without touching their contents.
@@ -228,6 +240,7 @@ private:
 
 // Sequence and Quality utilities
 namespace RAMNTupleUtils {
+std::string NormalizeSequence(const std::string &seq);
 std::string EncodeSequence(const std::string &seq);
 std::string DecodeSequence(const char *packed, size_t packed_size, size_t length);
 
