@@ -1,7 +1,9 @@
 #include "ramcore/SamToNTuple.h"
+#include "ramcore/QualityBlocks.h"
 #include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
 
+#include <ROOT/REntry.hxx>
 #include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
@@ -76,8 +78,7 @@ namespace {
 struct ChromosomeWriter {
    std::unique_ptr<TFile> file{};
    std::unique_ptr<ROOT::RNTupleWriter> writer{};
-   std::unique_ptr<ROOT::REntry> entry{};
-   std::shared_ptr<RAMNTupleRecord> record{};
+   std::unique_ptr<QualityBlockWriter> out;
    int64_t rows = 0;
    int32_t last_pos = -1;
    bool sorted = true;
@@ -120,8 +121,9 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       writeOptions.SetApproxZippedClusterSize(8 * 1024 * 1024);
 
       cw.writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *cw.file, writeOptions);
-      cw.entry = cw.writer->GetModel().CreateEntry();
-      cw.record = cw.entry->GetPtr<RAMNTupleRecord>("record");
+      auto *writer = cw.writer.get();
+      cw.out = std::make_unique<QualityBlockWriter>(writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
+                                                    [writer](ROOT::REntry &e) { writer->Fill(e); });
       return cw;
    };
 
@@ -131,14 +133,14 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
          return;
 
       ChromosomeWriter &cw = open_writer(sam_record.rname);
-      RAMNTupleRecord &rec = *cw.record;
+      RAMNTupleRecord &rec = cw.out->Record();
 
       FillRecordFields(sam_record, rec, quality_policy);
       rec.SetREFID(sam_record.rname);
       rec.SetREFNEXT(sam_record.rnext);
 
       RAMNTupleRecord::NoteRefSpan(rec.GetRefSpan());
-      cw.writer->Fill(*cw.entry);
+      cw.out->Add();
       cw.rows++;
 
       // One reference per file, so the order check is on the position alone.
@@ -157,6 +159,9 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    // The reference table and the longest span are only complete once the whole
    // input has been read, so every file is finished here.
    for (auto &[chr, cw] : writers) {
+      cw.out->Finish();
+      RAMNTupleRecord::SetQualBlockEnds(cw.out->TakeBlockEnds());
+      cw.out.reset();
       cw.writer.reset();
 
       RAMNTupleRecord::SetCoordinateSorted(cw.sorted);
@@ -344,6 +349,7 @@ struct Progress {
    bool failed = false; ///< A worker or the reader gave up; everyone stops.
    FileOrder order;
    size_t records = 0;
+   std::vector<uint64_t> qual_block_ends;
    std::vector<std::pair<std::string, std::string>> late_headers;
 
    void Fail()
@@ -394,9 +400,8 @@ public:
    ~CloseQueueOnExit() { m_queue.Abort(); }
 };
 
-BlockOrder ProcessBlock(Block &block, ROOT::RNTupleFillContext &ctx, ROOT::REntry &entry, RAMNTupleRecord &rec,
-                        uint32_t quality_policy, RefCache &rname_cache, RefCache &rnext_cache,
-                        ramcore::SamRecord &sam_record, size_t &records,
+BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_policy, RefCache &rname_cache,
+                        RefCache &rnext_cache, ramcore::SamRecord &sam_record, size_t &records,
                         std::vector<std::pair<std::string, std::string>> &late_headers)
 {
    BlockOrder order;
@@ -435,13 +440,14 @@ BlockOrder ProcessBlock(Block &block, ROOT::RNTupleFillContext &ctx, ROOT::REntr
       if (!ramcore::SamParser::ParseRecord(line, sam_record, this_line))
          continue;
 
+      RAMNTupleRecord &rec = out.Record();
       FillRecordFields(sam_record, rec, quality_policy);
       rec.refid = rname_cache.Lookup(rname_refs, sam_record.rname);
       rec.refnext = rnext_cache.Lookup(rnext_refs, sam_record.rnext);
 
       order.max_span = std::max(order.max_span, rec.GetRefSpan());
       order.Note(rec.refid, rec.pos);
-      ctx.Fill(entry);
+      out.Add();
       records++;
    }
    return order;
@@ -452,8 +458,7 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
 {
    const StopOthersOnException guard(progress, queue);
 
-   auto entry = ctx->CreateEntry();
-   auto rec = entry->GetPtr<RAMNTupleRecord>("record");
+   QualityBlockWriter out(ctx->CreateEntry(), ctx->CreateEntry(), [&ctx](ROOT::REntry &e) { ctx->Fill(e); });
    RefCache rname_cache;
    RefCache rnext_cache;
    ramcore::SamRecord sam_record;
@@ -462,8 +467,11 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
    while (queue.Pop(block)) {
       size_t records = 0;
       std::vector<std::pair<std::string, std::string>> late_headers;
-      const BlockOrder order = ProcessBlock(block, *ctx, *entry, *rec, quality_policy, rname_cache, rnext_cache,
-                                            sam_record, records, late_headers);
+      const BlockOrder order =
+         ProcessBlock(block, out, quality_policy, rname_cache, rnext_cache, sam_record, records, late_headers);
+      // Quality blocks end with the input block, whose clusters are committed as a unit.
+      out.Finish();
+      const std::vector<uint64_t> block_ends = out.TakeBlockEnds();
       ctx->FlushCluster();
 
       std::unique_lock<std::mutex> lock(progress.mutex);
@@ -472,6 +480,8 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
          return;
       ctx->CommitStagedClusters();
       progress.order.Add(order);
+      for (const uint64_t end : block_ends)
+         progress.qual_block_ends.push_back(progress.records + end);
       progress.records += records;
       progress.late_headers.insert(progress.late_headers.end(), late_headers.begin(), late_headers.end());
       progress.next_seq++;
@@ -565,6 +575,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
 
    auto model = ROOT::RNTupleModel::CreateBare();
    model->MakeField<RAMNTupleRecord>("record");
+   model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
 
    ROOT::RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(compression_algorithm);
@@ -620,6 +631,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
 
    RAMNTupleRecord::SetCoordinateSorted(progress.order.check.sorted);
    RAMNTupleRecord::NoteRefSpan(progress.order.max_span);
+   RAMNTupleRecord::SetQualBlockEnds(std::move(progress.qual_block_ends));
    if (!progress.order.check.sorted)
       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);
    RAMNTupleRecord::WriteAllRefs(*rootFile);

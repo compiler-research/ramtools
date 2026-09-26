@@ -30,7 +30,10 @@ sudo apt-get install -y build-essential cmake git pkg-config libhts-dev libtbb-d
 ```
 
 `libhts-dev` is htslib, which reads the BAM input. `libtbb-dev` and `libvdt-dev`
-are needed by ROOT.
+are needed by ROOT. Quality scores are compressed with fqzcomp from htscodecs,
+the codec CRAM 3.1 uses; if `libhtscodecs-dev` is installed it is used,
+otherwise the build downloads htscodecs 1.6.7 and compiles the two files it
+needs.
 
 ### 2. ROOT
 
@@ -63,8 +66,9 @@ cmake --build build -j$(nproc)
 ```
 
 The first configure downloads GoogleTest and Google Benchmark for the tests and
-benchmarks. Without network access, turn both off with
-`-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
+benchmarks, and htscodecs unless `libhtscodecs-dev` is installed. Without
+network access, install `libhtscodecs-dev` and turn the tests and benchmarks
+off with `-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
 
 The tools are in `build/tools/`. Running one without arguments prints its
 usage:

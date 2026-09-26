@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
+#include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamParser.h"
 #include "ramcore/SamToNTuple.h"
@@ -382,10 +383,13 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
       ASSERT_NE(reader, nullptr);
       const uint32_t span = RAMNTupleRecord::GetMaxRefSpan();
       EXPECT_EQ(span, 200010U);
+      const std::vector<uint64_t> blocks = RAMNTupleRecord::GetQualBlockEnds();
+      EXPECT_EQ(blocks, std::vector<uint64_t>{1}) << "both records are in one quality block";
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const RAMNTupleRecord another;
       EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), span);
       EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted());
+      EXPECT_EQ(RAMNTupleRecord::GetQualBlockEnds(), blocks);
    }
 
    std::remove(unsortedSam);
@@ -834,21 +838,21 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
       sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
    }
 
-   // No compression of QUAL field, stored as it is
+   // Lossless: the quality goes into an fqzcomp block and comes back unchanged
    samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505,
                   /*quality_policy=*/0);
 
    {
-      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      auto reader = RAMNTupleRecord::OpenRAMFile(ramFile);
       ASSERT_NE(reader, nullptr);
 
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const auto &rec = view(0);
+      EXPECT_TRUE(rec.TestBit(RAMNTupleRecord::kQualInBlock));
+      EXPECT_TRUE(rec.qual.empty()) << "the quality is in the block, not the record";
 
-      std::string decoded = rec.GetQUAL();
-
-      // MUST be identical
-      EXPECT_EQ(decoded, qual) << "QUAL should remain unchanged without compression";
+      QualityBlockReader quals(*reader);
+      EXPECT_EQ(quals.Get(rec, 0), qual) << "QUAL should come back unchanged";
    }
 
    std::remove(ramFile);

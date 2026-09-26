@@ -2,10 +2,12 @@
 // `ramdump -h file.ram` should reproduce the SAM the file was built from, and
 // `ramdump -c region` should agree with `samtools view -c region`.
 
+#include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/RNTupleReader.hxx>
+#include <ROOT/RNTupleTypes.hxx>
 #include <Rtypes.h>
 #include <TFile.h>
 #include <TList.h>
@@ -82,7 +84,7 @@ void WriteHeader(const std::string &file, SamWriter &out)
    }
 }
 
-void WriteRecord(const RAMNTupleRecord &rec, SamWriter &out)
+void WriteRecord(const RAMNTupleRecord &rec, const std::string &qual, SamWriter &out)
 {
    out.Str(rec.GetQNAME());
    out.Tab();
@@ -104,7 +106,7 @@ void WriteRecord(const RAMNTupleRecord &rec, SamWriter &out)
    out.Tab();
    out.Str(rec.GetSEQ());
    out.Tab();
-   out.Str(rec.GetQUAL());
+   out.Str(qual);
 
    for (const auto &tag : rec.GetTags()) {
       out.Tab();
@@ -228,6 +230,7 @@ int main(int argc, char *argv[])
    }
 
    auto view = reader->GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*reader);
    Long64_t kept = 0;
 
    ramntuplescan(*reader, region.c_str(), [&](Long64_t row) {
@@ -237,7 +240,7 @@ int main(int argc, char *argv[])
          return;
       kept++;
       if (!countOnly)
-         WriteRecord(rec, writer);
+         WriteRecord(rec, quals.Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
    });
 
    if (countOnly) {

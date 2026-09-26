@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ramtools VERSION 1.0.0 LANGUAGES CXX)
+project(ramtools VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -33,6 +33,9 @@ include(${ROOT_USE_FILE})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(htslib REQUIRED IMPORTED_TARGET htslib)
 
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
+include(RamtoolsHtscodecs)
+
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
 set(CMAKE_INSTALL_INCLUDEDIR include)
@@ -51,6 +54,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx
         src/ramcore/BamtoNTuple.cxx
+        src/ramcore/QualityBlocks.cxx
     LINKDEF
         inc/rntuple/LinkDef.h
     DEPENDENCIES
@@ -69,6 +73,7 @@ target_include_directories(ramcore
 )
 
 target_link_libraries(ramcore PUBLIC PkgConfig::htslib)
+target_link_libraries(ramcore PRIVATE ramtools::fqzcomp)
 
 install(DIRECTORY inc/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
