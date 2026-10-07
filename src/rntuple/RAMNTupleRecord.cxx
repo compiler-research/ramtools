@@ -302,6 +302,8 @@ uint32_t RAMNTupleRecord::GetRefSpan() const
 
 int RAMNTupleRecord::GetSEQLEN() const
 {
+   if (TestBit(kSeqRaw))
+      return (seq == "*") ? 0 : static_cast<int>(seq.size());
    if (seq.size() < 4)
       return 0;
    return static_cast<int>(LoadLE32(seq.data()));
@@ -317,13 +319,22 @@ std::string RAMNTupleRecord::GetCIGAR() const
    return RAMNTupleUtils::FormatCIGAR(cigar);
 }
 
+// Text, not the 4-bit packing: overlapping reads share runs of bases, which the
+// compressor matches as long as they stay byte-aligned. Packing shifts every
+// odd-offset overlap by half a byte, and zstd files came out larger with it.
 void RAMNTupleRecord::SetSEQ(const std::string &seq_str)
 {
-   seq = RAMNTupleUtils::EncodeSequence(seq_str);
+   // "*" is SAM's "sequence not stored" sentinel. Normalizing never produces
+   // '*', so it cannot be mistaken for a stored read.
+   seq = (seq_str == "*") ? seq_str : RAMNTupleUtils::NormalizeSequence(seq_str);
+   compression_flags |= kSeqRaw;
 }
 
 std::string RAMNTupleRecord::GetSEQ() const
 {
+   if (TestBit(kSeqRaw))
+      return seq;
+
    // Restores the "*" that EncodeSequence folded into an empty payload.
    if (seq.size() < 4)
       return "*";
@@ -405,6 +416,16 @@ void InitializeTables()
       return true;
    }();
    (void)initialised;
+}
+
+std::string NormalizeSequence(const std::string &seq)
+{
+   InitializeTables();
+
+   std::string normalized(seq.size(), 'N');
+   for (size_t i = 0; i < seq.size(); i++)
+      normalized[i] = kCodeToSeq[kSeqToCode[static_cast<uint8_t>(seq[i])]];
+   return normalized;
 }
 
 std::string EncodeSequence(const std::string &seq)
