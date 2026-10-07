@@ -1,7 +1,10 @@
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
+#include <ROOT/RNTupleModel.hxx>
 #include <ROOT/RNTupleView.hxx>
+#include <ROOT/RNTupleWriter.hxx>
 #include <Rtypes.h>
+#include <TFile.h>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -12,6 +15,7 @@
 #include <initializer_list>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
@@ -391,6 +395,55 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
    std::remove(unsortedFile);
    std::remove(sortedSam);
    std::remove(sortedFile);
+}
+
+// The converters always write METADATA with one entry, but a RAM file from
+// another writer may have none, or an empty one. It still opens, and is read
+// with the defaults, not with what the previously opened file left behind.
+TEST_F(ramcoreTest, FileWithoutMetadataOpensWithDefaults)
+{
+   const char *unsortedSam = "test_nometa_unsorted.sam";
+   const char *unsortedFile = "test_nometa_unsorted.root";
+   const char *absentFile = "test_nometa_absent.root";
+   const char *emptyFile = "test_nometa_empty.root";
+   {
+      std::ofstream sam(unsortedSam);
+      sam << "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n";
+      sam << "a\t0\tchr1\t2000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
+      sam << "b\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
+   }
+   testing::internal::CaptureStderr();
+   samtoramntuple(unsortedSam, unsortedFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   testing::internal::GetCapturedStderr();
+
+   {
+      std::unique_ptr<TFile> file(TFile::Open(absentFile, "RECREATE"));
+      auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
+   }
+   {
+      std::unique_ptr<TFile> file(TFile::Open(emptyFile, "RECREATE"));
+      auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
+      auto metaModel = ROOT::RNTupleModel::Create();
+      metaModel->MakeField<uint32_t>("max_ref_span");
+      auto metaWriter = ROOT::RNTupleWriter::Append(std::move(metaModel), "METADATA", *file);
+   }
+
+   for (const char *rntupleFile : {absentFile, emptyFile}) {
+      ASSERT_NE(RAMNTupleRecord::OpenRAMFile(unsortedFile), nullptr);
+      ASSERT_FALSE(RAMNTupleRecord::IsCoordinateSorted());
+      ASSERT_EQ(RAMNTupleRecord::GetMaxRefSpan(), 50U);
+
+      auto reader = RAMNTupleRecord::OpenRAMFile(rntupleFile);
+      ASSERT_NE(reader, nullptr) << rntupleFile;
+      EXPECT_EQ(reader->GetNEntries(), 0U) << rntupleFile;
+      EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted()) << rntupleFile;
+      EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), 0U) << rntupleFile;
+   }
+
+   std::remove(unsortedSam);
+   std::remove(unsortedFile);
+   std::remove(absentFile);
+   std::remove(emptyFile);
 }
 
 // A sorted file with two populated references, a placed unmapped mate, an empty
