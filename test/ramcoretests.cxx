@@ -689,7 +689,7 @@ TEST_F(ramcoreTest, SeqSurvivesAFileAsNormalizedText)
       sam << "absent\t0\tchr1\t2000\t60\t8M\t*\t0\t0\t*\t*\n";
    }
 
-   samtoramntuple(customSam, rntupleFile, true, false, false, 505, 0);
+   samtoramntuple(customSam, rntupleFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    auto reader = RAMNTupleRecord::OpenRAMFile(rntupleFile);
    ASSERT_NE(reader, nullptr);
