@@ -3,7 +3,6 @@
 // Complete implementation of RAM format using RNTuple
 
 #include "rntuple/RAMNTupleRecord.h"
-#include <ROOT/RNTuple.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
@@ -191,22 +190,27 @@ void RAMNTupleRecord::InitializeRefs()
    fgOrder = RAMCoordinateOrder{};
 }
 
-// Whether the file holds an RNTuple of that name; false for a missing file.
-static bool HasNTuple(const std::string &filename, const std::string &ntupleName)
+// RNTupleReader reports a missing file or RNTuple only by throwing. Checking
+// with TFile first costs more than it saves: opening a TFile starts ROOT's
+// interpreter, about 0.35 s and 125 MB on every open.
+static std::unique_ptr<RNTupleReader> TryOpen(const std::string &ntupleName, const std::string &filename)
 {
-   std::unique_ptr<TFile> file(TFile::Open(filename.c_str(), "READ"));
-   return file && !file->IsZombie() && file->Get<ROOT::RNTuple>(ntupleName.c_str()) != nullptr;
+   try {
+      return RNTupleReader::Open(ntupleName, filename);
+   } catch (const std::exception &) {
+      return nullptr;
+   }
 }
 
 std::unique_ptr<RNTupleReader> RAMNTupleRecord::OpenRAMFile(const std::string &filename, const std::string &ntupleName)
 {
    InitializeRefs();
 
-   if (!HasNTuple(filename, ntupleName)) {
+   auto reader = TryOpen(ntupleName, filename);
+   if (!reader) {
       ::Error("RAMNTupleRecord::OpenRAMFile", "%s has no RNTuple %s", filename.c_str(), ntupleName.c_str());
       return nullptr;
    }
-   auto reader = RNTupleReader::Open(ntupleName, filename);
    ReadAllRefs(filename);
    return reader;
 }
@@ -245,10 +249,8 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
 
 void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
 {
-   if (!HasNTuple(filename, "METADATA"))
-      return;
-   auto reader = RNTupleReader::Open("METADATA", filename);
-   if (reader->GetNEntries() == 0)
+   auto reader = TryOpen("METADATA", filename);
+   if (!reader || reader->GetNEntries() == 0)
       return;
    const auto &desc = reader->GetDescriptor();
    auto has = [&](const char *field) { return desc.FindFieldId(field) != ROOT::kInvalidDescriptorId; };
