@@ -1,4 +1,5 @@
 // Many small blocks on several threads must equal one block on one thread.
+#include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMNTupleRecord.h"
@@ -78,12 +79,13 @@ Dump ReadBack(const char *file)
    d.max_span = RAMNTupleRecord::GetMaxRefSpan();
    d.rname_refs = RAMNTupleRecord::GetRnameRefs()->GetRefs();
    auto view = reader->GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*reader);
    for (auto i : reader->GetEntryRange()) {
       const RAMNTupleRecord &r = view(i);
       std::string line = r.GetQNAME() + "\t" + std::to_string(r.GetFLAG()) + "\t" + r.GetRNAME() + "\t" +
                          std::to_string(r.GetPOS()) + "\t" + std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" +
                          r.GetRNEXT() + "\t" + std::to_string(r.GetPNEXT()) + "\t" + std::to_string(r.GetTLEN()) +
-                         "\t" + r.GetSEQ() + "\t" + r.GetQUAL();
+                         "\t" + r.GetSEQ() + "\t" + quals.Get(r, i);
       for (const auto &t : r.GetTags())
          line += "\t" + t;
       d.lines.push_back(line);
@@ -104,6 +106,33 @@ protected:
       std::remove(kPar);
    }
 };
+
+// With -fqzcomp every input block ends its quality blocks, and the block ends
+// gathered from all threads have to line up with the rows. Each read has its
+// own qualities, so a quality read back from the wrong row shows.
+TEST_F(ParallelConversionTest, FqzcompOnSeveralThreadsKeepsEveryQuality)
+{
+   std::string sam = Header();
+   for (int n = 0; n < 200; ++n) {
+      std::string qual(50, '!');
+      for (size_t i = 0; i < qual.size(); ++i)
+         qual[i] = static_cast<char>('!' + (((n * 7) + static_cast<int>(i)) % 60));
+      sam += "r" + std::to_string(n) + "\t0\tchr1\t" + std::to_string(1 + (n * 37)) + "\t60\t50M\t*\t0\t0\t" +
+             std::string(50, 'A') + "\t" + ((n % 9 == 0) ? std::string("*") : qual) + "\n";
+   }
+   WriteSam(kSam, sam);
+   samtoramntuple(kSam, kSeq, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   const Dump plain = ReadBack(kSeq);
+
+   samtoramntuple(kSam, kPar, /*compression_algorithm=*/505,
+                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock, /*threads=*/3,
+                  kTinyBlock);
+   const Dump fqz = ReadBack(kPar);
+   EXPECT_GT(RAMNTupleRecord::GetQualBlockEnds().size(), 10U) << "many input blocks, so many quality blocks";
+
+   ASSERT_EQ(fqz.lines.size(), 200U);
+   EXPECT_EQ(fqz.lines, plain.lines) << "every quality comes back from its block, on its row";
+}
 
 TEST_F(ParallelConversionTest, ManyBlocksOnSeveralThreadsMatchOneBlockRecordForRecord)
 {

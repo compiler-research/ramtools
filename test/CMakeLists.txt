@@ -30,6 +30,7 @@ add_ramcore_test(ramcoretests ramcoretests.cxx)
 add_ramcore_test(chromosome_split_test chromosome_split_test.cxx)
 add_ramcore_test(bam_conversion bam_conversion.cxx)
 add_ramcore_test(parallel_conversion_test parallel_conversion_test.cxx)
+add_ramcore_test(quality_blocks_test quality_blocks_test.cxx)
 
 if(TARGET samtoramntuple)
     add_test(NAME samtoramntuple_rejects_bad_compression COMMAND samtoramntuple in.sam -compression asd)
@@ -44,6 +45,10 @@ if(TARGET samtoramntuple)
     set_tests_properties(samtoramntuple_rejects_bad_threads bamtoramntuple_rejects_bad_threads
         samtoramntuple_rejects_trailing_threads bamtoramntuple_rejects_trailing_threads
         PROPERTIES PASS_REGULAR_EXPRESSION "invalid -threads value")
+    add_test(NAME samtoramntuple_rejects_fqzcomp_with_illumina COMMAND samtoramntuple in.sam -fqzcomp -illumina)
+    add_test(NAME bamtoramntuple_rejects_fqzcomp_with_dropqual COMMAND bamtoramntuple in.bam -dropqual -fqzcomp)
+    set_tests_properties(samtoramntuple_rejects_fqzcomp_with_illumina bamtoramntuple_rejects_fqzcomp_with_dropqual
+        PROPERTIES PASS_REGULAR_EXPRESSION "-fqzcomp compresses lossless qualities")
 endif()
 
 if(TARGET ramdump)
@@ -54,6 +59,6 @@ if(TARGET ramdump)
         RAMDUMP_BIN="$<TARGET_FILE:ramdump>")
 endif()
 
-install(TARGETS ramcoretests chromosome_split_test bam_conversion parallel_conversion_test
+install(TARGETS ramcoretests chromosome_split_test bam_conversion parallel_conversion_test quality_blocks_test
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

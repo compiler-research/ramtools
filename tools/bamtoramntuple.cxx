@@ -51,6 +51,8 @@ int main(int argc, char *argv[])
                 << "Options:\n"
                 << "  -illumina    Use Illumina quality binning\n"
                 << "  -dropqual    Drop quality scores\n"
+                << "  -fqzcomp     Compress quality scores with fqzcomp, as CRAM 3.1 does: a smaller\n"
+                << "               file, slower conversion and dumps\n"
                 << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n"
                 << "  -threads N   compress pages on N threads (default 1)\n";
       return 1;
@@ -60,6 +62,7 @@ int main(int argc, char *argv[])
    const char *output = nullptr;
 
    uint32_t quality_mode = RAMNTupleRecord::kPhred33;
+   bool fqzcomp = false;
    int compression = 505;
    bool want_compression = false;
    int threads = 1;
@@ -83,6 +86,8 @@ int main(int argc, char *argv[])
          want_threads = true;
       else if (arg == "-illumina" || arg == "-dropqual")
          quality_mode = (arg == "-illumina") ? RAMNTupleRecord::kIlluminaBinning : RAMNTupleRecord::kDrop;
+      else if (arg == "-fqzcomp")
+         fqzcomp = true;
       else if (arg == "-compression")
          want_compression = true;
       else if (arg[0] != '-')
@@ -95,6 +100,13 @@ int main(int argc, char *argv[])
    if (want_threads) {
       std::cerr << "-threads needs a value\n";
       return 1;
+   }
+   if (fqzcomp) {
+      if (quality_mode != RAMNTupleRecord::kPhred33) {
+         std::cerr << "-fqzcomp compresses lossless qualities; drop -illumina or -dropqual\n";
+         return 1;
+      }
+      quality_mode |= RAMNTupleRecord::kQualInBlock;
    }
    // The writer compresses pages on ROOT's thread pool once implicit
    // multithreading is on; the BAM reader already uses htslib threads.

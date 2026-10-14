@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
+#include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamParser.h"
 #include "ramcore/SamToNTuple.h"
@@ -378,17 +379,23 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
       sam << "spanning\t0\tchr1\t1000\t60\t10M199990N10M\t*\t0\t0\t" << std::string(20, 'A') << "\t*\n";
       sam << "short\t0\tchr1\t300000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
    }
-   samtoramntuple(sortedSam, sortedFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   samtoramntuple(sortedSam, sortedFile, /*compression_algorithm=*/505,
+                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock);
 
    {
       auto reader = RAMNTupleRecord::OpenRAMFile(sortedFile);
       ASSERT_NE(reader, nullptr);
       const uint32_t span = RAMNTupleRecord::GetMaxRefSpan();
       EXPECT_EQ(span, 200010U);
+      // A copy on purpose: compared with the ends after the record below is constructed.
+      // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
+      const std::vector<uint64_t> blocks = RAMNTupleRecord::GetQualBlockEnds();
+      EXPECT_EQ(blocks, std::vector<uint64_t>{1}) << "both records are in one quality block";
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const RAMNTupleRecord another;
       EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), span);
       EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted());
+      EXPECT_EQ(RAMNTupleRecord::GetQualBlockEnds(), blocks);
    }
 
    std::remove(unsortedSam);
@@ -972,21 +979,34 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
       sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
    }
 
-   // No compression of QUAL field, stored as it is
-   samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505,
-                  /*quality_policy=*/0);
+   // Lossless: stored as it is
+   samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    {
-      auto reader = ROOT::RNTupleReader::Open("RAM", ramFile);
+      auto reader = RAMNTupleRecord::OpenRAMFile(ramFile);
+      ASSERT_NE(reader, nullptr);
+      auto view = reader->GetView<RAMNTupleRecord>("record");
+      EXPECT_FALSE(view(0).TestBit(RAMNTupleRecord::kQualInBlock)) << "blocks only with -fqzcomp";
+      EXPECT_EQ(view(0).GetQUAL(), qual) << "QUAL should remain unchanged without compression";
+   }
+
+   std::remove(ramFile);
+
+   // Lossless with -fqzcomp: the quality goes into an fqzcomp block and comes back unchanged
+   samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505,
+                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock);
+
+   {
+      auto reader = RAMNTupleRecord::OpenRAMFile(ramFile);
       ASSERT_NE(reader, nullptr);
 
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const auto &rec = view(0);
+      EXPECT_TRUE(rec.TestBit(RAMNTupleRecord::kQualInBlock));
+      EXPECT_TRUE(rec.qual.empty()) << "the quality is in the block, not the record";
 
-      std::string decoded = rec.GetQUAL();
-
-      // MUST be identical
-      EXPECT_EQ(decoded, qual) << "QUAL should remain unchanged without compression";
+      QualityBlockReader quals(*reader);
+      EXPECT_EQ(quals.Get(rec, 0), qual) << "QUAL should come back unchanged";
    }
 
    std::remove(ramFile);
