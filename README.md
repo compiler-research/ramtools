@@ -109,7 +109,8 @@ becoming `reads.ram`. Options for either tool:
 With `-threads N`, `samtoramntuple` reads the input in 64 MB blocks and every
 thread parses, encodes and compresses blocks of its own. The blocks are written
 in input order, so the records come out in the order they went in, whatever
-the thread count. It needs about 2 × N × 64 MB of memory on top of ROOT's own.
+the thread count. It needs about (N + 1) × 64 MB of memory on top of ROOT's
+own: a block for every thread and one read ahead.
 `bamtoramntuple`, and `samtoramntuple` with `-split`, parse on one thread and
 use the others to compress.
 
