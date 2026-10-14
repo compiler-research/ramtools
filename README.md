@@ -1,5 +1,7 @@
 # RAMTools
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23362909.svg)](https://doi.org/10.5281/zenodo.23362909)
+
 RAM (ROOT Alignment/Map) is a file format for aligned sequencing reads, the same
 data as a BAM, stored column by column in ROOT's RNTuple format. A RAM file is
 about a quarter smaller than the BAM of the same reads, needs no reference to be
@@ -256,7 +258,9 @@ removed.
 
 If you use RAMTools in published work, cite the version you used. The "Cite
 this repository" button on the GitHub page gives the reference in APA and
-BibTeX form, taken from [CITATION.cff](CITATION.cff).
+BibTeX form, taken from [CITATION.cff](CITATION.cff). Every release is archived
+on Zenodo with a DOI of its own; [10.5281/zenodo.23362909](https://doi.org/10.5281/zenodo.23362909)
+stands for all versions and leads to the latest.
 
 ## Contributing
 
