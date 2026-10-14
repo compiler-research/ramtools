@@ -291,6 +291,14 @@ public:
       m_notEmpty.notify_one();
    }
 
+   /// Returns once a Push would not have to wait, so the reader can read its
+   /// next block when there is room for it instead of holding it until then.
+   void WaitForRoom()
+   {
+      std::unique_lock<std::mutex> lock(m_mutex);
+      m_notFull.wait(lock, [&] { return m_blocks.size() < m_capacity || m_closed; });
+   }
+
    bool Pop(Block &block)
    {
       std::unique_lock<std::mutex> lock(m_mutex);
@@ -464,6 +472,9 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
       std::vector<std::pair<std::string, std::string>> late_headers;
       const BlockOrder order = ProcessBlock(block, *ctx, *entry, *rec, quality_policy, rname_cache, rnext_cache,
                                             sam_record, records, late_headers);
+      // The records are in the fill context now: free the text before
+      // compressing and waiting for this block's turn.
+      std::vector<char>().swap(block.data);
       ctx->FlushCluster();
 
       std::unique_lock<std::mutex> lock(progress.mutex);
@@ -576,7 +587,10 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    {
       auto writer = ROOT::RNTupleParallelWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
 
-      BlockQueue queue(static_cast<size_t>(threads));
+      // One block waiting is enough: reading a block takes a fraction of the
+      // time a worker spends parsing and compressing one, and every block held
+      // costs block_bytes of memory.
+      BlockQueue queue(/*capacity=*/1);
       // Destruction order on an exception: close the queue, join the futures,
       // drop the contexts, then the writer.
       std::vector<std::shared_ptr<ROOT::RNTupleFillContext>> contexts;
@@ -600,6 +614,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
             lines += static_cast<size_t>(std::count(block.data.begin(), block.data.end(), '\n'));
             queue.Push(std::move(block));
             block = Block{};
+            queue.WaitForRoom();
             more = !progress.Failed() && reader.Next(block.data);
          }
       }
