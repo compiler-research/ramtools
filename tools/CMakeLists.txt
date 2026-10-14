@@ -27,7 +27,7 @@ ROOT_EXECUTABLE(bamtoramntuple
     bamtoramntuple.cxx
     LIBRARIES
         ramcore
-        hts
+        PkgConfig::htslib
         ROOT::Core
         ROOT::ROOTNTuple
 )
