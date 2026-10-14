@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <mutex>
@@ -24,6 +25,7 @@ std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnameRefs = nullptr;
 std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
 uint32_t RAMNTupleRecord::fgMaxRefSpan = 0;
 RAMCoordinateOrder RAMNTupleRecord::fgOrder{};
+std::vector<uint64_t> RAMNTupleRecord::fgQualBlockEnds{};
 
 static constexpr std::array<char, 16> kCodeToSeq{'=', 'A', 'C', 'M', 'G', 'R', 'S', 'V',
                                                  'T', 'W', 'Y', 'H', 'K', 'D', 'B', 'N'};
@@ -188,6 +190,7 @@ void RAMNTupleRecord::InitializeRefs()
    EnsureTables();
    fgMaxRefSpan = 0;
    fgOrder = RAMCoordinateOrder{};
+   fgQualBlockEnds.clear();
 }
 
 // RNTupleReader reports a missing file or RNTuple only by throwing. Checking
@@ -228,6 +231,7 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    auto rnextField = metaModel->MakeField<std::vector<std::string>>("rnext_refs");
    auto spanField = metaModel->MakeField<uint32_t>("max_ref_span");
    auto sortedField = metaModel->MakeField<bool>("coordinate_sorted");
+   auto blocksField = metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends");
 
    RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
@@ -239,11 +243,13 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
 
    auto spanPtr = metaEntry->GetPtr<uint32_t>("max_ref_span");
    auto sortedPtr = metaEntry->GetPtr<bool>("coordinate_sorted");
+   auto blocksPtr = metaEntry->GetPtr<std::vector<uint64_t>>("qual_block_ends");
 
    *rnamePtr = fgRnameRefs->GetRefs();
    *rnextPtr = fgRnextRefs->GetRefs();
    *spanPtr = fgMaxRefSpan;
    *sortedPtr = fgOrder.sorted;
+   *blocksPtr = fgQualBlockEnds;
    metaWriter->Fill(*metaEntry);
 }
 
@@ -264,6 +270,8 @@ void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
    // such files are read as sorted.
    fgMaxRefSpan = has("max_ref_span") ? reader->GetView<uint32_t>("max_ref_span")(0) : 0;
    fgOrder.sorted = has("coordinate_sorted") ? reader->GetView<bool>("coordinate_sorted")(0) : true;
+   if (has("qual_block_ends"))
+      fgQualBlockEnds = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
 }
 
 void RAMNTupleRecord::SetRNAME(const std::string &rname)
@@ -394,6 +402,7 @@ std::unique_ptr<RNTupleModel> RAMNTupleRecord::MakeModel()
    auto model = RNTupleModel::Create();
 
    model->MakeField<RAMNTupleRecord>("record");
+   model->MakeField<std::vector<std::uint8_t>>(kQualBlockField);
 
    return model;
 }

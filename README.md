@@ -32,7 +32,10 @@ sudo apt-get install -y build-essential cmake git pkg-config libhts-dev libtbb-d
 ```
 
 `libhts-dev` is htslib, which reads the BAM input. `libtbb-dev` and `libvdt-dev`
-are needed by ROOT.
+are needed by ROOT. The `-fqzcomp` option compresses quality scores with
+fqzcomp from htscodecs, the codec CRAM 3.1 uses; if `libhtscodecs-dev` is
+installed it is used, otherwise the build downloads htscodecs 1.6.7 and
+compiles the two files it needs.
 
 ### 2. ROOT
 
@@ -65,8 +68,9 @@ cmake --build build -j$(nproc)
 ```
 
 The first configure downloads GoogleTest and Google Benchmark for the tests and
-benchmarks. Without network access, turn both off with
-`-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
+benchmarks, and htscodecs unless `libhtscodecs-dev` is installed. Without
+network access, install `libhtscodecs-dev` and turn the tests and benchmarks
+off with `-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
 
 The tools are in `build/tools/`. Running one without arguments prints its
 usage:
@@ -104,6 +108,7 @@ becoming `reads.ram`. Options for either tool:
 | `-threads N` | converts on N threads, see below |
 | `-illumina` | stores quality scores in Illumina's 8 bins, which makes the file smaller |
 | `-dropqual` | stores no quality scores |
+| `-fqzcomp` | compresses quality scores with fqzcomp, as CRAM 3.1 does: a smaller file, slower conversion and dumps (see below); not with `-illumina` or `-dropqual` |
 | `-split` | `samtoramntuple` only: one file per reference, `reads_chr1.root`, `reads_chr2.root`, and so on |
 
 With `-threads N`, `samtoramntuple` reads the input in 64 MB blocks and every
@@ -239,6 +244,14 @@ little difference: the 10 Mb query takes 0.46 to 0.55 s across all of them.
 compression. The default is 505, ZSTD level 5. For a quick conversion use 501
 or 503 with `-threads`; for the smallest file, 509 at a much higher conversion
 cost.
+
+`-fqzcomp` compresses the quality scores, the largest part of a file, with
+fqzcomp from htscodecs, the codec CRAM 3.1 uses, in blocks of 10,000 records.
+On 2 million records of chromosome 11 the file is 8% smaller (148.5 MB instead
+of 161.6 MB). The price is time and memory: conversion takes 20 to 30% longer
+and about 65 MB more per thread, and dumping records about 30% longer with up to
+200 MB more memory, because a dump decodes every block it touches. Counting
+records in a region reads no qualities and is as fast as without it.
 
 ## Versioning
 

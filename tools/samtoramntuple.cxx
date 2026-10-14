@@ -49,6 +49,8 @@ int main(int argc, char* argv[]) {
        std::cout << "  -split       Split by chromosome\n";
        std::cout << "  -illumina    Use Illumina quality binning\n";
        std::cout << "  -dropqual    Drop quality scores\n";
+       std::cout << "  -fqzcomp     Compress quality scores with fqzcomp, as CRAM 3.1 does: a smaller\n"
+                 << "               file, slower conversion and dumps\n";
        std::cout << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n";
        std::cout << "  -threads N   parse and compress on N threads (default 1)\n";
        return 1;
@@ -58,6 +60,7 @@ int main(int argc, char* argv[]) {
     const char* output = nullptr;
 
     bool do_split = false;
+    bool fqzcomp = false;
     uint32_t quality_mode = RAMNTupleRecord::kPhred33;
     int compression = 505;
     bool want_compression = false;
@@ -86,6 +89,8 @@ int main(int argc, char* argv[]) {
            quality_mode = RAMNTupleRecord::kIlluminaBinning;
         } else if (arg == "-dropqual") {
            quality_mode = RAMNTupleRecord::kDrop;
+        } else if (arg == "-fqzcomp") {
+           fqzcomp = true;
         } else if (arg == "-compression") {
            want_compression = true;
         } else if (arg[0] != '-') {
@@ -99,6 +104,13 @@ int main(int argc, char* argv[]) {
     if (want_threads) {
        std::cerr << "-threads needs a value\n";
        return 1;
+    }
+    if (fqzcomp) {
+       if (quality_mode != RAMNTupleRecord::kPhred33) {
+          std::cerr << "-fqzcomp compresses lossless qualities; drop -illumina or -dropqual\n";
+          return 1;
+       }
+       quality_mode |= RAMNTupleRecord::kQualInBlock;
     }
     // Split mode has one parser; its threads compress pages only.
     if (threads > 1 && do_split)
