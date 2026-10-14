@@ -44,6 +44,7 @@ The suites live in `test/`:
 | `bam_conversion` | BAM input through htslib, compared with the same reads converted from SAM |
 | `chromosome_split_test` | split output against the unsplit file |
 | `parallel_conversion_test` | `-threads` conversion with tiny blocks: the same records as one block, the sort check across block boundaries, long headers, malformed lines and read errors |
+| `quality_blocks_test` | `-fqzcomp` quality blocks: which qualities go into a block, reading them back in any order, and damaged block ends |
 | `ramdump_test` | the built tools on a fixture: the dump reproduces the input and counts follow samtools' rules |
 
 Run one suite on its own while you work, it is faster than `ctest`:
@@ -87,6 +88,10 @@ Every pull request runs four checks:
 - Put the evidence in the description: what you ran, what it printed, and what
   you compared it against. Reviewers check claims against samtools, so give
   them the command that shows the agreement.
+- Add a line under `[Unreleased]` in `CHANGELOG.md`, in Added, Changed, Removed
+  or Fixed, with a link to the PR. Say what a user notices and, for speed or
+  size, by how much. Changes users do not see, such as tests, CI or a
+  refactoring, need no line.
 - Keep the code minimal. A reviewer should be able to read the whole diff in
   one sitting; if a change is getting long, split it.
 - Public functions and members in `inc/` carry a short `///` comment saying
