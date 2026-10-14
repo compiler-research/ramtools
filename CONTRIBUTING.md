@@ -100,11 +100,19 @@ Every pull request runs four checks:
 
 ## One rule about the shared state
 
-`RAMNTupleRecord` keeps the reference-name tables, the longest span and the
-sort flag as static members that describe the file currently open or being
-written. `InitializeRefs()` resets them, and only the converters and
-`OpenRAMFile()` may call it. RNTuple constructs a record whenever a view or a
-writer model is created, so the constructor must never touch that state; a
-reset there once made an unsorted file look sorted and dropped records from
-queries. If you add per-file state, reset it in `InitializeRefs()` and extend
-the test `ConstructingARecordKeepsTheOpenFileState`.
+`RAMNTupleRecord` keeps the reference-name tables, the longest span, the sort
+flag, the quality block ends and the SAM header as static members that
+describe the file currently open or being written. `InitializeRefs()` resets
+them, and only the converters and `OpenRAMFile()` may call it. RNTuple
+constructs a record whenever a view or a writer model is created, so the
+constructor must never touch that state; a reset there once made an unsorted
+file look sorted and dropped records from queries. If you add per-file state,
+reset it in `InitializeRefs()` and extend the test
+`ConstructingARecordKeepsTheOpenFileState`.
+
+## Changing the file format
+
+Any change to what a RAM file holds, in the records or in METADATA, bumps
+`RAMNTupleRecord::kFormatVersion`. Until 1.0 a reader opens only files of its
+own version, so there is no code for reading older layouts: a file written
+before the change is refused with a message to convert it again.

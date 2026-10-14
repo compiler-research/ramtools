@@ -22,6 +22,20 @@ the README for what that means before 1.0.
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
   ([#98]).
+- RAM files record a format version, and a reader opens only files of its own
+  version: files written by 0.1.0 must be converted again. Until 1.0 the format
+  may change between minor releases; see "Versioning" in the README ([#101]).
+- The SAM header is stored in METADATA instead of a ROOT `TList`, so
+  `ramdump -H` and `-h` no longer start ROOT's interpreter. On 2 million
+  records of chromosome 11, `-H` goes from 0.86 s and 50 MB to 0.35 s and 6 MB,
+  a 1 kb region with `-h` from 0.86 s and 90 MB to 0.40 s and 47 MB, and the
+  whole file with `-h` from 6.2 s and 96 MB to 5.3 s and 55 MB ([#101]).
+
+### Removed
+
+- Reading files written by 0.1.0 and earlier, and with them SEQ in the 4-bit
+  packing: `kSeqRaw`, `RAMNTupleUtils::EncodeSequence` and
+  `RAMNTupleUtils::DecodeSequence` ([#101]).
 
 ## [0.1.0] - 2026-10-14
 
@@ -163,3 +177,4 @@ it stay readable by every later release.
 [#95]: https://github.com/compiler-research/ramtools/pull/95
 [#98]: https://github.com/compiler-research/ramtools/pull/98
 [#99]: https://github.com/compiler-research/ramtools/pull/99
+[#101]: https://github.com/compiler-research/ramtools/pull/101

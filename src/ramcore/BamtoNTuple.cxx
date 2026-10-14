@@ -8,8 +8,6 @@
 #include <ROOT/RNTupleWriteOptions.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <TFile.h>
-#include <TList.h>
-#include <TNamed.h>
 #include <TStopwatch.h>
 
 #include <htslib/hts.h>
@@ -24,6 +22,8 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -260,26 +260,19 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
    // Region queries can only seek on a sorted file; the file records which it is.
    if (!RAMNTupleRecord::IsCoordinateSorted())
       std::cerr << bamfile << " is not in coordinate order; region queries will read it in full.\n";
-   RAMNTupleRecord::WriteAllRefs(*rootFile);
 
-   TList headers;
-   headers.SetName("headers");
+   std::vector<std::string> headers;
    const char *text = sam_hdr_str(hdr);
    if (text != nullptr) {
       std::istringstream ss(text);
       std::string line;
       while (std::getline(ss, line)) {
-         if (line.size() < 3)
-            continue;
-         // Same split as the SAM writer: the tag, then everything after the first tab.
-         const size_t tab = line.find('\t');
-         auto named_obj = std::make_unique<TNamed>(
-            line.substr(0, tab).c_str(), line.substr(tab == std::string::npos ? line.size() : tab + 1).c_str());
-         headers.Add(named_obj.release());
+         if (line.size() >= 3)
+            headers.push_back(line);
       }
    }
-   // One key for the list; without kSingleKey every line is written as its own key.
-   headers.Write("headers", TObject::kSingleKey);
+   RAMNTupleRecord::SetHeaderLines(std::move(headers));
+   RAMNTupleRecord::WriteAllRefs(*rootFile);
 
    rootFile->Close();
    sam_hdr_destroy(hdr);

@@ -10,9 +10,6 @@
 #include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
-#include <TFile.h>
-#include <TList.h>
-#include <TNamed.h>
 
 #include <cerrno>
 #include <cstdint>
@@ -58,29 +55,11 @@ struct SamWriter {
    }
 };
 
-// The converters store each header line as a TNamed: the tag ("@SQ") as the
-// name and everything after the first tab as the title.
-void WriteHeader(const std::string &file, SamWriter &out)
+// The header of the file OpenRAMFile() loaded.
+void WriteHeader(SamWriter &out)
 {
-   std::unique_ptr<TFile> f(TFile::Open(file.c_str(), "READ"));
-   if (!f || f->IsZombie())
-      return;
-
-   auto *headers = f->Get<TList>("headers");
-   if (!headers)
-      return;
-
-   TIter next(headers);
-   while (auto *obj = next()) {
-      auto *named = dynamic_cast<TNamed *>(obj);
-      if (!named)
-         continue;
-      out.Str(named->GetName());
-      const std::string content = named->GetTitle();
-      if (!content.empty()) {
-         out.Tab();
-         out.Str(content);
-      }
+   for (const auto &line : RAMNTupleRecord::GetHeaderLines()) {
+      out.Str(line);
       out.EndLine();
    }
 }
@@ -272,19 +251,19 @@ int main(int argc, char *argv[])
    }
    SamWriter writer(owned ? owned.get() : stdout);
 
-   if (headerOnly) {
-      WriteHeader(file, writer);
-      return 0;
-   }
-
    auto reader = RAMNTupleRecord::OpenRAMFile(file);
    if (!reader) {
       std::cerr << "ramdump: cannot open " << file << "\n";
       return 1;
    }
 
+   if (headerOnly) {
+      WriteHeader(writer);
+      return 0;
+   }
+
    if (withHeader && !countOnly)
-      WriteHeader(file, writer);
+      WriteHeader(writer);
 
    // Counting with no FLAG filter never has to decode a record.
    if (countOnly && requireFlags == 0 && excludeFlags == 0) {

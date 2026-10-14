@@ -6,6 +6,7 @@
 #include <Rtypes.h>
 #include <TFile.h>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -17,6 +18,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
 #include "ramcore/QualityBlocks.h"
@@ -140,7 +142,6 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
 
    auto viewPos = reader->GetView<int>("record.pos");
    auto viewSeq = reader->GetView<std::string>("record.seq");
-   auto viewFlags = reader->GetView<uint32_t>("record.compression_flags");
 
    ASSERT_GT(reader->GetNEntries(), 0);
 
@@ -151,7 +152,6 @@ TEST_F(ramcoreTest, RNTupleDataIntegrity)
 
    // The column holds the bases themselves, with no length prefix: the string
    // column already records the length.
-   EXPECT_TRUE(viewFlags(0) & RAMNTupleRecord::kSeqRaw);
    EXPECT_EQ(firstSeq.size(), 36U);
    EXPECT_EQ(firstSeq.find_first_not_of("ACGTN"), std::string::npos) << firstSeq;
 
@@ -391,11 +391,14 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
       // NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
       const std::vector<uint64_t> blocks = RAMNTupleRecord::GetQualBlockEnds();
       EXPECT_EQ(blocks, std::vector<uint64_t>{1}) << "both records are in one quality block";
+      const std::vector<std::string> header = {"@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:1000000"};
+      EXPECT_EQ(RAMNTupleRecord::GetHeaderLines(), header);
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const RAMNTupleRecord another;
       EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), span);
       EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted());
       EXPECT_EQ(RAMNTupleRecord::GetQualBlockEnds(), blocks);
+      EXPECT_EQ(RAMNTupleRecord::GetHeaderLines(), header);
    }
 
    std::remove(unsortedSam);
@@ -404,53 +407,60 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
    std::remove(sortedFile);
 }
 
-// The converters always write METADATA with one entry, but a RAM file from
-// another writer may have none, or an empty one. It still opens, and is read
-// with the defaults, not with what the previously opened file left behind.
-TEST_F(ramcoreTest, FileWithoutMetadataOpensWithDefaults)
+// Until 1.0 a reader opens only files of its own format version, and says why
+// it refuses the others rather than reading them wrongly.
+TEST_F(ramcoreTest, FilesOfAnotherFormatVersionAreRefused)
 {
-   const char *unsortedSam = "test_nometa_unsorted.sam";
-   const char *unsortedFile = "test_nometa_unsorted.root";
-   const char *absentFile = "test_nometa_absent.root";
-   const char *emptyFile = "test_nometa_empty.root";
+   const char *sam = "test_version.sam";
+   const char *current = "test_version_current.root";
+   const char *noMetadata = "test_version_nometa.root";
+   const char *oldLayout = "test_version_old.root";
+   const char *newer = "test_version_newer.root";
    {
-      std::ofstream sam(unsortedSam);
-      sam << "@HD\tVN:1.6\tSO:unsorted\n@SQ\tSN:chr1\tLN:100000\n";
-      sam << "a\t0\tchr1\t2000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
-      sam << "b\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
+      std::ofstream out(sam);
+      out << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:100000\n";
+      out << "a\t0\tchr1\t1000\t60\t50M\t*\t0\t0\t" << std::string(50, 'A') << "\t*\n";
    }
-   testing::internal::CaptureStderr();
-   samtoramntuple(unsortedSam, unsortedFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
-   testing::internal::GetCapturedStderr();
+   samtoramntuple(sam, current, /*compression_algorithm=*/505, /*quality_policy=*/0);
 
    {
-      std::unique_ptr<TFile> file(TFile::Open(absentFile, "RECREATE"));
+      std::unique_ptr<TFile> file(TFile::Open(noMetadata, "RECREATE"));
       auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
    }
+   // METADATA as 0.1.0 wrote it, with no format_version.
    {
-      std::unique_ptr<TFile> file(TFile::Open(emptyFile, "RECREATE"));
+      std::unique_ptr<TFile> file(TFile::Open(oldLayout, "RECREATE"));
       auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
       auto metaModel = ROOT::RNTupleModel::Create();
+      metaModel->MakeField<std::vector<std::string>>("rname_refs");
       metaModel->MakeField<uint32_t>("max_ref_span");
       auto metaWriter = ROOT::RNTupleWriter::Append(std::move(metaModel), "METADATA", *file);
+      metaWriter->Fill();
+   }
+   const uint32_t nextVersion = RAMNTupleRecord::kFormatVersion + 1;
+   {
+      std::unique_ptr<TFile> file(TFile::Open(newer, "RECREATE"));
+      auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
+      auto metaModel = ROOT::RNTupleModel::Create();
+      *metaModel->MakeField<uint32_t>("format_version") = nextVersion;
+      auto metaWriter = ROOT::RNTupleWriter::Append(std::move(metaModel), "METADATA", *file);
+      metaWriter->Fill();
    }
 
-   for (const char *rntupleFile : {absentFile, emptyFile}) {
-      ASSERT_NE(RAMNTupleRecord::OpenRAMFile(unsortedFile), nullptr);
-      ASSERT_FALSE(RAMNTupleRecord::IsCoordinateSorted());
-      ASSERT_EQ(RAMNTupleRecord::GetMaxRefSpan(), 50U);
-
-      auto reader = RAMNTupleRecord::OpenRAMFile(rntupleFile);
-      ASSERT_NE(reader, nullptr) << rntupleFile;
-      EXPECT_EQ(reader->GetNEntries(), 0U) << rntupleFile;
-      EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted()) << rntupleFile;
-      EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), 0U) << rntupleFile;
+   EXPECT_NE(RAMNTupleRecord::OpenRAMFile(current), nullptr);
+   const std::vector<std::pair<const char *, std::string>> refused = {
+      {noMetadata, "has no METADATA"},
+      {oldLayout, "written by RAMTools 0.1.0 or earlier"},
+      {newer, "format version " + std::to_string(nextVersion)},
+   };
+   for (const auto &[file, reason] : refused) {
+      testing::internal::CaptureStderr();
+      EXPECT_EQ(RAMNTupleRecord::OpenRAMFile(file), nullptr) << file;
+      EXPECT_NE(testing::internal::GetCapturedStderr().find(reason), std::string::npos) << file;
    }
 
-   std::remove(unsortedSam);
-   std::remove(unsortedFile);
-   std::remove(absentFile);
-   std::remove(emptyFile);
+   for (const char *f : {sam, current, noMetadata, oldLayout, newer})
+      std::remove(f);
 }
 
 // A sorted file with two populated references, a placed unmapped mate, an empty
@@ -679,24 +689,28 @@ TEST_F(ramcoreTest, RecordGetters)
    EXPECT_EQ(binRecord.GetQUAL().size(), 10U);
 }
 
-// SEQ is stored as text, but must read back exactly as the 4-bit packing did,
-// so files written before and after the change describe the same reads.
-TEST_F(ramcoreTest, SeqTextMatchesThePackedRoundTrip)
+// SEQ is stored as uppercase IUPAC text: lowercase bases are raised, and any
+// byte that is not a base or '=' becomes 'N', as htslib does.
+TEST_F(ramcoreTest, SeqIsStoredAsNormalizedText)
 {
+   const std::string kBases = "=ACMGRSVTWYHKDBN";
    std::string everyByte;
-   for (int b = 1; b < 256; ++b)
+   std::string everyByteNormalized;
+   for (int b = 1; b < 256; ++b) {
       everyByte.push_back(static_cast<char>(b));
+      const char upper = static_cast<char>(std::toupper(b));
+      everyByteNormalized.push_back(kBases.find(upper) != std::string::npos ? upper : 'N');
+   }
 
-   for (const std::string &seq : {std::string("ACGTN"), std::string("acgtn"), std::string("=ACMGRSVTWYHKDBN"),
-                                  std::string(".xZ-"), std::string(""), everyByte}) {
-      const std::string packed = RAMNTupleUtils::EncodeSequence(seq);
-      const std::string unpacked = RAMNTupleUtils::DecodeSequence(packed.data() + 4, packed.size() - 4, seq.size());
-
+   const std::vector<std::pair<std::string, std::string>> cases = {
+      {"ACGTN", "ACGTN"}, {"acgtn", "ACGTN"}, {kBases, kBases},
+      {".xZ-", "NNNN"},   {"", ""},           {everyByte, everyByteNormalized},
+   };
+   for (const auto &[seq, stored] : cases) {
       RAMNTupleRecord record;
       record.SetSEQ(seq);
-      EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kSeqRaw));
-      EXPECT_EQ(record.seq, unpacked) << "stored bytes for input of length " << seq.size();
-      EXPECT_EQ(record.GetSEQ(), unpacked);
+      EXPECT_EQ(record.seq, stored) << "input of length " << seq.size();
+      EXPECT_EQ(record.GetSEQ(), stored);
       EXPECT_EQ(record.GetSEQLEN(), static_cast<int>(seq.size()));
    }
 
@@ -706,30 +720,12 @@ TEST_F(ramcoreTest, SeqTextMatchesThePackedRoundTrip)
    EXPECT_EQ(missing.GetSEQLEN(), 0);
 }
 
-// Records from files written before kSeqRaw carry packed bytes and no flag.
-TEST_F(ramcoreTest, PackedSeqWithoutTheFlagStillDecodes)
-{
-   RAMNTupleRecord record;
-   record.seq = RAMNTupleUtils::EncodeSequence("ACGTNAC");
-   ASSERT_FALSE(record.TestBit(RAMNTupleRecord::kSeqRaw));
-   EXPECT_EQ(record.GetSEQ(), "ACGTNAC");
-   EXPECT_EQ(record.GetSEQLEN(), 7);
-
-   RAMNTupleRecord missing;
-   missing.seq = RAMNTupleUtils::EncodeSequence("*");
-   EXPECT_EQ(missing.GetSEQ(), "*");
-   EXPECT_EQ(missing.GetSEQLEN(), 0);
-}
-
-// Changing the quality mode after SetSEQ must not reinterpret the stored text as
-// packed bytes.
-TEST_F(ramcoreTest, SetCompressionModeKeepsTheSeqEncoding)
+TEST_F(ramcoreTest, SetCompressionModeReplacesTheQualityMode)
 {
    RAMNTupleRecord record;
    record.SetSEQ("ACGT");
    record.SetCompressionMode(RAMNTupleRecord::kIlluminaBinning);
 
-   EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kSeqRaw));
    EXPECT_TRUE(record.TestBit(RAMNTupleRecord::kIlluminaBinning));
    EXPECT_FALSE(record.TestBit(RAMNTupleRecord::kPhred33));
    EXPECT_EQ(record.GetSEQ(), "ACGT");

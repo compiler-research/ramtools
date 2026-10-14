@@ -8,8 +8,6 @@
 #include <ROOT/RNTupleWriter.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
 #include <TStopwatch.h>
-#include <TList.h>
-#include <TNamed.h>
 #include <TFile.h>
 
 #include <ROOT/RNTupleFillContext.hxx>
@@ -35,17 +33,17 @@
 
 namespace {
 
-void HandleHeaderLine(TList &headers, const std::string &tag, const std::string &content)
+void HandleHeaderLine(std::vector<std::string> &headers, const std::string &line)
 {
-   headers.Add(new TNamed(tag.c_str(), content.c_str()));
+   headers.push_back(line);
 
-   if (tag == "@SQ") {
-      size_t sn_pos = content.find("SN:");
+   if (line.rfind("@SQ\t", 0) == 0) {
+      size_t sn_pos = line.find("SN:", 4);
       if (sn_pos != std::string::npos) {
          sn_pos += 3;
-         size_t tab_pos = content.find('\t', sn_pos);
+         size_t tab_pos = line.find('\t', sn_pos);
          std::string ref_name =
-            content.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
+            line.substr(sn_pos, tab_pos != std::string::npos ? tab_pos - sn_pos : std::string::npos);
          RAMNTupleRecord::GetRnameRefs()->GetRefId(ref_name);
       }
    }
@@ -92,12 +90,11 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    RAMNTupleRecord::InitializeRefs();
 
    std::map<std::string, ChromosomeWriter> writers;
-   TList headers;
-   headers.SetName("headers");
-   headers.SetOwner(true);
+   std::vector<std::string> headers;
 
+   // The parser splits a header line at its first tab.
    auto header_callback = [&](const std::string &tag, const std::string &content) {
-      HandleHeaderLine(headers, tag, content);
+      HandleHeaderLine(headers, content.empty() ? tag : tag + "\t" + content);
    };
 
    auto open_writer = [&](const std::string &chr) -> ChromosomeWriter & {
@@ -158,6 +155,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
    // The reference table and the longest span are only complete once the whole
    // input has been read, so every file is finished here.
+   RAMNTupleRecord::SetHeaderLines(std::move(headers));
    for (auto &[chr, cw] : writers) {
       cw.out->Finish();
       RAMNTupleRecord::SetQualBlockEnds(cw.out->TakeBlockEnds());
@@ -169,9 +167,6 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
          fprintf(stderr, "%s: %s is not in coordinate order; region queries will read it in full.\n", datafile,
                  chr.c_str());
       RAMNTupleRecord::WriteAllRefs(*cw.file);
-
-      cw.file->cd();
-      headers.Write("headers", TObject::kSingleKey);
       cw.file->Close();
 
       printf("%s_%s.root: %lld records\n", output_prefix, chr.c_str(), static_cast<long long>(cw.rows));
@@ -358,7 +353,7 @@ struct Progress {
    FileOrder order;
    size_t records = 0;
    std::vector<uint64_t> qual_block_ends;
-   std::vector<std::pair<std::string, std::string>> late_headers;
+   std::vector<std::string> late_headers;
 
    void Fail()
    {
@@ -410,7 +405,7 @@ public:
 
 BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_policy, RefCache &rname_cache,
                         RefCache &rnext_cache, ramcore::SamRecord &sam_record, size_t &records,
-                        std::vector<std::pair<std::string, std::string>> &late_headers)
+                        std::vector<std::string> &late_headers)
 {
    BlockOrder order;
    RAMNTupleRefs &rname_refs = *RAMNTupleRecord::GetRnameRefs();
@@ -435,12 +430,7 @@ BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_
          continue;
 
       if (data[line_start] == '@') {
-         const std::string_view header(line);
-         const size_t tab = header.find('\t');
-         if (tab != std::string_view::npos)
-            late_headers.emplace_back(header.substr(0, tab), header.substr(tab + 1));
-         else
-            late_headers.emplace_back(header, "");
+         late_headers.emplace_back(line);
          continue;
       }
 
@@ -474,7 +464,7 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
    Block block;
    while (queue.Pop(block)) {
       size_t records = 0;
-      std::vector<std::pair<std::string, std::string>> late_headers;
+      std::vector<std::string> late_headers;
       const BlockOrder order =
          ProcessBlock(block, out, quality_policy, rname_cache, rnext_cache, sam_record, records, late_headers);
       // The records are copied into the fill context and `out` now: free the
@@ -501,7 +491,7 @@ void WorkerMain(BlockQueue &queue, Progress &progress, const std::shared_ptr<ROO
 }
 
 // Returns the offset of the first record line, npos if the block is all header.
-size_t ConsumeHeader(std::vector<char> &data, TList &headers, size_t &lines)
+size_t ConsumeHeader(std::vector<char> &data, std::vector<std::string> &headers, size_t &lines)
 {
    size_t offset = 0;
    while (offset < data.size()) {
@@ -517,13 +507,8 @@ size_t ConsumeHeader(std::vector<char> &data, TList &headers, size_t &lines)
       }
       if (data[offset] != '@')
          return offset;
-      std::string line(data.begin() + static_cast<std::ptrdiff_t>(offset),
-                       data.begin() + static_cast<std::ptrdiff_t>(line_end));
-      const size_t tab = line.find('\t');
-      if (tab != std::string::npos)
-         HandleHeaderLine(headers, line.substr(0, tab), line.substr(tab + 1));
-      else
-         HandleHeaderLine(headers, line, "");
+      HandleHeaderLine(headers, std::string(data.begin() + static_cast<std::ptrdiff_t>(offset),
+                                            data.begin() + static_cast<std::ptrdiff_t>(line_end)));
       offset = next;
       lines++;
    }
@@ -555,8 +540,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    ROOT::EnableThreadSafety();
    RAMNTupleRecord::InitializeRefs();
 
-   TList headers;
-   headers.SetName("headers");
+   std::vector<std::string> headers;
 
    BlockReader reader(input.get(), block_bytes);
    size_t lines = 0;
@@ -641,8 +625,10 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
       return false;
    }
 
-   for (const auto &[tag, content] : progress.late_headers)
-      HandleHeaderLine(headers, tag, content);
+   for (const auto &line : progress.late_headers)
+      HandleHeaderLine(headers, line);
+   const size_t header_lines = headers.size();
+   RAMNTupleRecord::SetHeaderLines(std::move(headers));
 
    RAMNTupleRecord::SetCoordinateSorted(progress.order.check.sorted);
    RAMNTupleRecord::NoteRefSpan(progress.order.max_span);
@@ -650,8 +636,6 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    if (!progress.order.check.sorted)
       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);
    RAMNTupleRecord::WriteAllRefs(*rootFile);
-
-   headers.Write("headers", TObject::kSingleKey);
    rootFile->Close();
 
    printf("\nRAM file created: %s\n", treefile);
@@ -660,7 +644,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    RAMNTupleRecord::GetRnameRefs()->Print();
    RAMNTupleRecord::GetRnextRefs()->Print();
 
-   printf("\nProcessed %d SAM headers\n", headers.GetSize());
+   printf("\nProcessed %zu SAM headers\n", header_lines);
    printf("Processed %zu SAM records with %d threads\n\n", progress.records, threads);
 
    stopwatch.Print();

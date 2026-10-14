@@ -26,6 +26,7 @@ std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
 uint32_t RAMNTupleRecord::fgMaxRefSpan = 0;
 RAMCoordinateOrder RAMNTupleRecord::fgOrder{};
 std::vector<uint64_t> RAMNTupleRecord::fgQualBlockEnds{};
+std::vector<std::string> RAMNTupleRecord::fgHeaderLines{};
 
 static constexpr std::array<char, 16> kCodeToSeq{'=', 'A', 'C', 'M', 'G', 'R', 'S', 'V',
                                                  'T', 'W', 'Y', 'H', 'K', 'D', 'B', 'N'};
@@ -45,27 +46,6 @@ static constexpr uint8_t kCigarCodeInvalid = 0xFF;
 
 // (length << 4) | opcode leaves 28 bits for the length.
 static constexpr uint32_t kMaxCigarOpLen = 0x0FFFFFFF;
-
-// The 4-byte length prefix of a packed sequence, stored little-endian so the
-// byte order is part of the format and reads need no aligned load.
-static void StoreLE32(char *dst, uint32_t value)
-{
-   const std::array<unsigned char, 4> bytes{
-      static_cast<unsigned char>(value & 0xFF),
-      static_cast<unsigned char>((value >> 8) & 0xFF),
-      static_cast<unsigned char>((value >> 16) & 0xFF),
-      static_cast<unsigned char>((value >> 24) & 0xFF),
-   };
-   std::memcpy(dst, bytes.data(), bytes.size());
-}
-
-static uint32_t LoadLE32(const char *src)
-{
-   std::array<unsigned char, 4> bytes{};
-   std::memcpy(bytes.data(), src, bytes.size());
-   return static_cast<uint32_t>(bytes[0]) | (static_cast<uint32_t>(bytes[1]) << 8) |
-          (static_cast<uint32_t>(bytes[2]) << 16) | (static_cast<uint32_t>(bytes[3]) << 24);
-}
 
 // Illumina 8-level quality binning: maps Q0-40+ to 8 values (0,1,6,15,22,27,33,37,40)
 // Reduces quality data ~80% with minimal accuracy loss
@@ -191,6 +171,7 @@ void RAMNTupleRecord::InitializeRefs()
    fgMaxRefSpan = 0;
    fgOrder = RAMCoordinateOrder{};
    fgQualBlockEnds.clear();
+   fgHeaderLines.clear();
 }
 
 // RNTupleReader reports a missing file or RNTuple only by throwing. Checking
@@ -214,7 +195,8 @@ std::unique_ptr<RNTupleReader> RAMNTupleRecord::OpenRAMFile(const std::string &f
       ::Error("RAMNTupleRecord::OpenRAMFile", "%s has no RNTuple %s", filename.c_str(), ntupleName.c_str());
       return nullptr;
    }
-   ReadAllRefs(filename);
+   if (!ReadAllRefs(filename))
+      return nullptr;
    return reader;
 }
 
@@ -225,53 +207,53 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
       return;
    file.cd();
 
-   // Create a simple model for metadata
+   // One entry of per-file values, in an RNTuple of its own. The header is here
+   // rather than in a TList: reading a TList starts ROOT's interpreter.
    auto metaModel = RNTupleModel::Create();
-   auto rnameField = metaModel->MakeField<std::vector<std::string>>("rname_refs");
-   auto rnextField = metaModel->MakeField<std::vector<std::string>>("rnext_refs");
-   auto spanField = metaModel->MakeField<uint32_t>("max_ref_span");
-   auto sortedField = metaModel->MakeField<bool>("coordinate_sorted");
-   auto blocksField = metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends");
+   *metaModel->MakeField<uint32_t>("format_version") = kFormatVersion;
+   *metaModel->MakeField<std::vector<std::string>>("header_lines") = fgHeaderLines;
+   *metaModel->MakeField<std::vector<std::string>>("rname_refs") = fgRnameRefs->GetRefs();
+   *metaModel->MakeField<std::vector<std::string>>("rnext_refs") = fgRnextRefs->GetRefs();
+   *metaModel->MakeField<uint32_t>("max_ref_span") = fgMaxRefSpan;
+   *metaModel->MakeField<bool>("coordinate_sorted") = fgOrder.sorted;
+   *metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends") = fgQualBlockEnds;
 
    RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
 
    auto metaWriter = RNTupleWriter::Append(std::move(metaModel), "METADATA", file, writeOptions);
-   auto metaEntry = metaWriter->GetModel().CreateEntry();
-   auto rnamePtr = metaEntry->GetPtr<std::vector<std::string>>("rname_refs");
-   auto rnextPtr = metaEntry->GetPtr<std::vector<std::string>>("rnext_refs");
-
-   auto spanPtr = metaEntry->GetPtr<uint32_t>("max_ref_span");
-   auto sortedPtr = metaEntry->GetPtr<bool>("coordinate_sorted");
-   auto blocksPtr = metaEntry->GetPtr<std::vector<uint64_t>>("qual_block_ends");
-
-   *rnamePtr = fgRnameRefs->GetRefs();
-   *rnextPtr = fgRnextRefs->GetRefs();
-   *spanPtr = fgMaxRefSpan;
-   *sortedPtr = fgOrder.sorted;
-   *blocksPtr = fgQualBlockEnds;
-   metaWriter->Fill(*metaEntry);
+   metaWriter->Fill();
 }
 
-void RAMNTupleRecord::ReadAllRefs(const std::string &filename)
+bool RAMNTupleRecord::ReadAllRefs(const std::string &filename)
 {
    auto reader = TryOpen("METADATA", filename);
-   if (!reader || reader->GetNEntries() == 0)
-      return;
-   const auto &desc = reader->GetDescriptor();
-   auto has = [&](const char *field) { return desc.FindFieldId(field) != ROOT::kInvalidDescriptorId; };
+   if (!reader || reader->GetNEntries() == 0) {
+      ::Error("RAMNTupleRecord::OpenRAMFile", "%s has no METADATA; convert the input again with this RAMTools",
+              filename.c_str());
+      return false;
+   }
+   if (reader->GetDescriptor().FindFieldId("format_version") == ROOT::kInvalidDescriptorId) {
+      ::Error("RAMNTupleRecord::OpenRAMFile",
+              "%s was written by RAMTools 0.1.0 or earlier; convert the input again with this RAMTools",
+              filename.c_str());
+      return false;
+   }
+   const uint32_t version = reader->GetView<uint32_t>("format_version")(0);
+   if (version != kFormatVersion) {
+      ::Error("RAMNTupleRecord::OpenRAMFile",
+              "%s has RAM format version %u and this RAMTools reads version %u; convert the input again with it",
+              filename.c_str(), version, kFormatVersion);
+      return false;
+   }
 
-   if (has("rname_refs"))
-      fgRnameRefs->SetRefs(reader->GetView<std::vector<std::string>>("rname_refs")(0));
-   if (has("rnext_refs"))
-      fgRnextRefs->SetRefs(reader->GetView<std::vector<std::string>>("rnext_refs")(0));
-
-   // Absent in files written before the fields existed: 0 means "unknown", and
-   // such files are read as sorted.
-   fgMaxRefSpan = has("max_ref_span") ? reader->GetView<uint32_t>("max_ref_span")(0) : 0;
-   fgOrder.sorted = has("coordinate_sorted") ? reader->GetView<bool>("coordinate_sorted")(0) : true;
-   if (has("qual_block_ends"))
-      fgQualBlockEnds = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
+   fgHeaderLines = reader->GetView<std::vector<std::string>>("header_lines")(0);
+   fgRnameRefs->SetRefs(reader->GetView<std::vector<std::string>>("rname_refs")(0));
+   fgRnextRefs->SetRefs(reader->GetView<std::vector<std::string>>("rnext_refs")(0));
+   fgMaxRefSpan = reader->GetView<uint32_t>("max_ref_span")(0);
+   fgOrder.sorted = reader->GetView<bool>("coordinate_sorted")(0);
+   fgQualBlockEnds = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
+   return true;
 }
 
 void RAMNTupleRecord::SetRNAME(const std::string &rname)
@@ -312,11 +294,7 @@ uint32_t RAMNTupleRecord::GetRefSpan() const
 
 int RAMNTupleRecord::GetSEQLEN() const
 {
-   if (TestBit(kSeqRaw))
-      return (seq == "*") ? 0 : static_cast<int>(seq.size());
-   if (seq.size() < 4)
-      return 0;
-   return static_cast<int>(LoadLE32(seq.data()));
+   return (seq == "*") ? 0 : static_cast<int>(seq.size());
 }
 
 void RAMNTupleRecord::SetCIGAR(const std::string &cigar_str)
@@ -337,19 +315,6 @@ void RAMNTupleRecord::SetSEQ(const std::string &seq_str)
    // "*" is SAM's "sequence not stored" sentinel. Normalizing never produces
    // '*', so it cannot be mistaken for a stored read.
    seq = (seq_str == "*") ? seq_str : RAMNTupleUtils::NormalizeSequence(seq_str);
-   compression_flags |= kSeqRaw;
-}
-
-std::string RAMNTupleRecord::GetSEQ() const
-{
-   if (TestBit(kSeqRaw))
-      return seq;
-
-   // Restores the "*" that EncodeSequence folded into an empty payload.
-   if (seq.size() < 4)
-      return "*";
-   const uint32_t length = LoadLE32(seq.data());
-   return RAMNTupleUtils::DecodeSequence(seq.data() + 4, seq.size() - 4, length);
 }
 
 void RAMNTupleRecord::SetQUAL(const std::string &qual_str)
@@ -437,67 +402,6 @@ std::string NormalizeSequence(const std::string &seq)
    for (size_t i = 0; i < seq.size(); i++)
       normalized[i] = kCodeToSeq[kSeqToCode[static_cast<uint8_t>(seq[i])]];
    return normalized;
-}
-
-std::string EncodeSequence(const std::string &seq)
-{
-   InitializeTables();
-
-   // "*" is SAM's "sequence not stored" sentinel, not a one-base read. An empty
-   // packed string means "no sequence"; a genuinely empty SEQ still gets its
-   // 4-byte length prefix.
-   if (seq == "*") {
-      return {};
-   }
-
-   const uint32_t length = static_cast<uint32_t>(seq.length());
-   const size_t encoded_size = 4 + ((static_cast<size_t>(length) + 1) / 2);
-   std::string encoded;
-   encoded.resize(encoded_size);
-
-   StoreLE32(&encoded[0], length);
-
-   size_t j = 4;
-   for (size_t i = 0; i + 1 < length; i += 2) {
-      encoded[j++] = static_cast<char>((kSeqToCode[static_cast<uint8_t>(seq[i])] << 4) |
-                                       kSeqToCode[static_cast<uint8_t>(seq[i + 1])]);
-   }
-   if (length % 2) {
-      encoded[j] = static_cast<char>(kSeqToCode[static_cast<uint8_t>(seq[length - 1])] << 4);
-   }
-
-   return encoded;
-}
-
-// NOLINTNEXTLINE(misc-use-internal-linkage) -- declared in RAMNTupleRecord.h
-std::string DecodeSequence(const char *packed, size_t packed_size, size_t length)
-{
-   InitializeTables();
-
-   // A truncated payload would otherwise be read past its end and yield bases
-   // that were never stored.
-   const size_t needed = (length + 1) / 2;
-   if (packed == nullptr || packed_size < needed) {
-      ::Error("DecodeSequence", "packed sequence holds %zu bytes, %zu needed for %zu bases", packed_size, needed,
-              length);
-      return {};
-   }
-
-   std::string seq;
-   seq.resize(length);
-
-   const std::string_view packed_bytes(packed, packed_size);
-   const size_t pairs = length / 2;
-   for (size_t i = 0; i < pairs; i++) {
-      const uint8_t byte = static_cast<uint8_t>(packed_bytes[i]);
-      seq[i * 2] = kCodeToSeq[byte >> 4];
-      seq[i * 2 + 1] = kCodeToSeq[byte & 0xf];
-   }
-   if (length % 2) {
-      seq[length - 1] = kCodeToSeq[static_cast<uint8_t>(packed_bytes[length / 2]) >> 4];
-   }
-
-   return seq;
 }
 
 std::string EncodeQuality(const std::string &qual, uint32_t compression_flags)
