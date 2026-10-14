@@ -6,6 +6,8 @@
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/RNTupleReader.hxx>
+#include <ROOT/RNTupleTypes.hxx>
+#include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
 #include <TFile.h>
 #include <TList.h>
@@ -81,6 +83,69 @@ void WriteHeader(const std::string &file, SamWriter &out)
       out.EndLine();
    }
 }
+
+// Reads records one field at a time, straight into a record's members. A view
+// of the whole record (GetView<RAMNTupleRecord>) looks up ROOT's dictionary for
+// the class, and that starts ROOT's interpreter: about 0.4 s and 150 MB before
+// the first record. The members are plain types and need neither.
+class RecordReader {
+   RAMNTupleRecord m_record;
+   ROOT::RNTupleView<std::string> m_qname;
+   ROOT::RNTupleView<uint16_t> m_flag;
+   ROOT::RNTupleView<int32_t> m_refid;
+   ROOT::RNTupleView<int32_t> m_pos;
+   ROOT::RNTupleView<uint8_t> m_mapq;
+   ROOT::RNTupleView<std::vector<uint32_t>> m_cigar;
+   ROOT::RNTupleView<int32_t> m_refnext;
+   ROOT::RNTupleView<int32_t> m_pnext;
+   ROOT::RNTupleView<int32_t> m_tlen;
+   ROOT::RNTupleView<std::string> m_seq;
+   ROOT::RNTupleView<std::string> m_qual;
+   ROOT::RNTupleView<std::vector<std::string>> m_tags;
+   ROOT::RNTupleView<uint32_t> m_compressionFlags;
+
+public:
+   explicit RecordReader(ROOT::RNTupleReader &reader)
+      : m_qname(reader.GetView("record.qname", &m_record.qname)),
+        m_flag(reader.GetView("record.flag", &m_record.flag)),
+        m_refid(reader.GetView("record.refid", &m_record.refid)),
+        m_pos(reader.GetView("record.pos", &m_record.pos)),
+        m_mapq(reader.GetView("record.mapq", &m_record.mapq)),
+        m_cigar(reader.GetView("record.cigar", &m_record.cigar)),
+        m_refnext(reader.GetView("record.refnext", &m_record.refnext)),
+        m_pnext(reader.GetView("record.pnext", &m_record.pnext)),
+        m_tlen(reader.GetView("record.tlen", &m_record.tlen)),
+        m_seq(reader.GetView("record.seq", &m_record.seq)),
+        m_qual(reader.GetView("record.qual", &m_record.qual)),
+        m_tags(reader.GetView("record.tags", &m_record.tags)),
+        m_compressionFlags(reader.GetView("record.compression_flags", &m_record.compression_flags))
+   {
+   }
+   ~RecordReader() = default;
+   // The views write into m_record, so the reader must stay where it was built.
+   RecordReader(const RecordReader &) = delete;
+   RecordReader(RecordReader &&) = delete;
+   RecordReader &operator=(const RecordReader &) = delete;
+   RecordReader &operator=(RecordReader &&) = delete;
+
+   const RAMNTupleRecord &operator()(ROOT::NTupleSize_t row)
+   {
+      m_qname(row);
+      m_flag(row);
+      m_refid(row);
+      m_pos(row);
+      m_mapq(row);
+      m_cigar(row);
+      m_refnext(row);
+      m_pnext(row);
+      m_tlen(row);
+      m_seq(row);
+      m_qual(row);
+      m_tags(row);
+      m_compressionFlags(row);
+      return m_record;
+   }
+};
 
 void WriteRecord(const RAMNTupleRecord &rec, SamWriter &out)
 {
@@ -227,11 +292,11 @@ int main(int argc, char *argv[])
       return 0;
    }
 
-   auto view = reader->GetView<RAMNTupleRecord>("record");
+   RecordReader records(*reader);
    Long64_t kept = 0;
 
    ramntuplescan(*reader, region.c_str(), [&](Long64_t row) {
-      const auto &rec = view(row);
+      const auto &rec = records(row);
       const uint16_t flag = rec.GetFLAG();
       if ((flag & requireFlags) != requireFlags || (flag & excludeFlags))
          return;
