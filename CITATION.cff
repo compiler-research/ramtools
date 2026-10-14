@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use RAMTools, please cite the version you used as below."
+type: software
+title: RAMTools
+abstract: >-
+  RAM (ROOT Alignment/Map) is a file format for aligned sequencing reads, the
+  same data as a BAM, stored column by column in ROOT's RNTuple format.
+  RAMTools converts SAM and BAM files to RAM, answers region queries on them,
+  and writes them back out as SAM.
+authors:
+  - given-names: Martin
+    family-names: Vassilev
+  - given-names: Aditya
+    family-names: Pandey
+  - given-names: Jose Javier
+    family-names: Gonzalez Ortiz
+  - given-names: Fons
+    family-names: Rademakers
+  - given-names: Vassil
+    family-names: Vassilev
+contact:
+  - given-names: Martin
+    family-names: Vassilev
+repository-code: "https://github.com/compiler-research/ramtools"
+license: Apache-2.0
+version: 0.1.0
+date-released: "2026-10-14"
+keywords:
+  - genomics
+  - sequence alignment
+  - SAM
+  - BAM
+  - ROOT
+  - RNTuple
+  - columnar storage
