@@ -237,6 +237,27 @@ compression. The default is 505, ZSTD level 5. For a quick conversion use 501
 or 503 with `-threads`; for the smallest file, 509 at a much higher conversion
 cost.
 
+## Versioning
+
+RAMTools follows [Semantic Versioning](https://semver.org). Until 1.0, a minor
+release (0.2, 0.3, ...) may change the command-line options and the C++ API;
+[CHANGELOG.md](CHANGELOG.md) lists what changed in each release.
+
+Files are the exception: every RAM file written by a released version stays
+readable by every later version, so a file never has to be converted again
+after an upgrade. A newer version may write files that older versions cannot
+read.
+
+An option or public function that is going away is first marked deprecated in
+the changelog and prints a warning for at least one minor release before it is
+removed.
+
+## Citing
+
+If you use RAMTools in published work, cite the version you used. The "Cite
+this repository" button on the GitHub page gives the reference in APA and
+BibTeX form, taken from [CITATION.cff](CITATION.cff).
+
 ## Contributing
 
 Bug reports, test cases and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md)
