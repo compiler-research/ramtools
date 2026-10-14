@@ -21,6 +21,14 @@ authors:
 contact:
   - given-names: Martin
     family-names: Vassilev
+doi: 10.5281/zenodo.23362909
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23362909
+    description: All versions of RAMTools; resolves to the latest.
+  - type: doi
+    value: 10.5281/zenodo.23362910
+    description: Version 0.1.0.
 repository-code: "https://github.com/compiler-research/ramtools"
 license: Apache-2.0
 version: 0.1.0
