@@ -9,3 +9,7 @@ answer.
 **Tests**
 
 Which suite covers the change, and which test was added or changed.
+
+**Changelog**
+
+The line added under `[Unreleased]` in `CHANGELOG.md`, or why none is needed.

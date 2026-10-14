@@ -7,6 +7,22 @@ the README for what that means before 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- `-fqzcomp` on both converters compresses lossless quality scores with
+  fqzcomp, the codec of CRAM 3.1, in blocks of 10,000 records. On 2 million
+  records of chromosome 11 the file is 8.1% smaller, conversion takes 20 to 30%
+  longer and a full dump about 30% longer; region counts are unchanged. It is
+  off by default, and files written with it need this release or later to read
+  their qualities ([#90], [#99]).
+
+### Changed
+
+- `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
+  instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
+  695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
+  ([#98]).
+
 ## [0.1.0] - 2026-10-14
 
 The first tagged release. RAMTools began in 2017 at CERN openlab as a format
@@ -141,6 +157,9 @@ it stay readable by every later release.
 [#87]: https://github.com/compiler-research/ramtools/pull/87
 [#88]: https://github.com/compiler-research/ramtools/pull/88
 [#89]: https://github.com/compiler-research/ramtools/pull/89
+[#90]: https://github.com/compiler-research/ramtools/pull/90
 [#92]: https://github.com/compiler-research/ramtools/pull/92
 [#93]: https://github.com/compiler-research/ramtools/pull/93
 [#95]: https://github.com/compiler-research/ramtools/pull/95
+[#98]: https://github.com/compiler-research/ramtools/pull/98
+[#99]: https://github.com/compiler-research/ramtools/pull/99
