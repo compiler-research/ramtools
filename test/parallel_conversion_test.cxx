@@ -6,8 +6,6 @@
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
-#include <TFile.h>
-#include <TList.h>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -62,6 +60,7 @@ void WriteSam(const char *path, const std::string &content)
 }
 
 struct Dump {
+   std::vector<std::string> header;
    std::vector<std::string> lines;
    bool sorted = false;
    uint32_t max_span = 0;
@@ -75,6 +74,7 @@ Dump ReadBack(const char *file)
    EXPECT_NE(reader, nullptr) << file;
    if (!reader)
       return d;
+   d.header = RAMNTupleRecord::GetHeaderLines();
    d.sorted = RAMNTupleRecord::IsCoordinateSorted();
    d.max_span = RAMNTupleRecord::GetMaxRefSpan();
    d.rname_refs = RAMNTupleRecord::GetRnameRefs()->GetRefs();
@@ -235,10 +235,10 @@ TEST_F(ParallelConversionTest, HeaderLongerThanABlockIsReadBeforeTheRecords)
    EXPECT_EQ(par.lines, seq.lines);
    EXPECT_EQ(par.rname_refs, seq.rname_refs);
 
-   auto file = std::unique_ptr<TFile>(TFile::Open(kPar));
-   auto *headers = file->Get<TList>("headers");
-   ASSERT_NE(headers, nullptr);
-   EXPECT_EQ(headers->GetSize(), 45) << "@HD, three @SQ, @PG and forty @CO lines";
+   EXPECT_EQ(par.header, seq.header);
+   ASSERT_EQ(par.header.size(), 45U) << "@HD, three @SQ, @PG and forty @CO lines";
+   EXPECT_EQ(par.header.front(), "@HD\tVN:1.6\tSO:coordinate");
+   EXPECT_EQ(par.header.back(), "@CO\tcomment line number 39 padding padding padding padding");
 }
 
 TEST_F(ParallelConversionTest, MalformedAndEmptyLinesAreSkippedInEveryBlock)
@@ -267,10 +267,9 @@ TEST_F(ParallelConversionTest, MalformedAndEmptyLinesAreSkippedInEveryBlock)
    EXPECT_EQ(par.lines, seq.lines);
    EXPECT_TRUE(par.sorted);
 
-   auto file = std::unique_ptr<TFile>(TFile::Open(kPar));
-   auto *headers = file->Get<TList>("headers");
-   ASSERT_NE(headers, nullptr);
-   EXPECT_EQ(headers->GetSize(), 6) << "the late @CO line is kept";
+   EXPECT_EQ(par.header, seq.header);
+   ASSERT_EQ(par.header.size(), 6U) << "the late @CO line is kept";
+   EXPECT_EQ(par.header.back(), "@CO\ta comment among the records");
 }
 
 TEST_F(ParallelConversionTest, LastLineWithoutNewlineIsKept)

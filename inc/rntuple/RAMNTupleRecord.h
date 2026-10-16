@@ -109,12 +109,9 @@ public:
 
    static constexpr const char *kQualBlockField = "qualblock";
 
-   // Sequence storage. SetSEQ sets this bit on every record it writes; records
-   // from files written before it existed lack it and hold the 4-bit packing
-   // that GetSEQ still decodes.
-   enum ESeqEncodingBits {
-      kSeqRaw = 1 << 17 // SEQ stored as uppercase IUPAC text, not 4-bit packed
-   };
+   /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
+   /// only files of its own version; bump it with every change to the layout.
+   static constexpr uint32_t kFormatVersion = 2;
 
    // Alignment data fields
    std::string qname;             // Query template NAME
@@ -126,7 +123,7 @@ public:
    int32_t refnext;               // Reference ID of the mate/next read
    int32_t pnext;                 // 0-based position of the mate/next read
    int32_t tlen;                  // Observed Template LENgth
-   std::string seq;               // Segment sequence (text, or 4-bit packed without kSeqRaw)
+   std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"
    std::string qual;              // Quality scores (encoded)
    std::vector<std::string> tags; // Optional SAM tags
 
@@ -146,6 +143,9 @@ public:
 
    /// Last row of each quality block.
    static std::vector<uint64_t> fgQualBlockEnds;
+
+   /// The SAM header, one line per entry, without the newline.
+   static std::vector<std::string> fgHeaderLines;
 
 public:
    RAMNTupleRecord();
@@ -182,13 +182,13 @@ public:
    int32_t GetREFNEXT() const { return refnext; }
    int32_t GetPNEXT() const { return pnext + 1; } // Convert back to 1-based for SAM
    int32_t GetTLEN() const { return tlen; }
-   std::string GetSEQ() const;
+   [[nodiscard]] const std::string &GetSEQ() const { return seq; }
    std::string GetQUAL() const;
    const std::vector<std::string> &GetTags() const { return tags; }
    int GetNOPT() const { return static_cast<int>(tags.size()); }
    const std::string &GetOPT(int idx) const { return tags[idx]; }
 
-   // Return sequence length without decoding (fast)
+   /// Number of bases; 0 for "*".
    int GetSEQLEN() const;
 
    size_t GetNCIGAROP() const { return cigar.size(); }
@@ -217,22 +217,25 @@ public:
    static RAMNTupleRefs *GetRnextRefs() { return fgRnextRefs.get(); }
    static const std::vector<uint64_t> &GetQualBlockEnds() { return fgQualBlockEnds; }
    static void SetQualBlockEnds(std::vector<uint64_t> ends) { fgQualBlockEnds = std::move(ends); }
+   static const std::vector<std::string> &GetHeaderLines() { return fgHeaderLines; }
+   static void SetHeaderLines(std::vector<std::string> lines) { fgHeaderLines = std::move(lines); }
 
    // File I/O
+   /// Opens the RNTuple and loads METADATA; nullptr, with the reason printed,
+   /// for a file that is not a RAM file or has another format version.
    static std::unique_ptr<ROOT::RNTupleReader>
    OpenRAMFile(const std::string &filename, const std::string &ntupleName = "RAM");
+   /// Writes METADATA, the format version and the shared state, into \p file.
    static void WriteAllRefs(TFile &file);
-   static void ReadAllRefs(const std::string &filename = "");
+   /// Loads METADATA into the shared state; false, with the reason printed,
+   /// when the file has none or another format version.
+   static bool ReadAllRefs(const std::string &filename);
 
    // RNTuple model creation
    static std::unique_ptr<ROOT::RNTupleModel> MakeModel();
 
-   /// Replaces the quality mode. kSeqRaw describes how `seq` is already stored,
-   /// so it stays as SetSEQ left it: clearing it would make GetSEQ unpack text.
-   void SetCompressionMode(uint32_t flags)
-   {
-      compression_flags = (flags & ~static_cast<uint32_t>(kSeqRaw)) | (compression_flags & kSeqRaw);
-   }
+   /// Replaces the quality mode.
+   void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
 
 private:
    /// Creates the shared tables on first use without touching their contents.
@@ -251,8 +254,6 @@ private:
 // Sequence and Quality utilities
 namespace RAMNTupleUtils {
 std::string NormalizeSequence(const std::string &seq);
-std::string EncodeSequence(const std::string &seq);
-std::string DecodeSequence(const char *packed, size_t packed_size, size_t length);
 
 std::string EncodeQuality(const std::string &qual, uint32_t compression_flags);
 std::string DecodeQuality(const std::string &encoded_qual, uint32_t compression_flags);
