@@ -65,6 +65,7 @@ struct Dump {
    bool sorted = false;
    uint32_t max_span = 0;
    std::vector<std::string> rname_refs;
+   RAMRefCounts counts;
 };
 
 Dump ReadBack(const char *file)
@@ -78,6 +79,7 @@ Dump ReadBack(const char *file)
    d.sorted = RAMNTupleRecord::IsCoordinateSorted();
    d.max_span = RAMNTupleRecord::GetMaxRefSpan();
    d.rname_refs = RAMNTupleRecord::GetRnameRefs()->GetRefs();
+   d.counts = RAMNTupleRecord::GetRefCounts();
    auto view = reader->GetView<RAMNTupleRecord>("record");
    QualityBlockReader quals(*reader);
    for (auto i : reader->GetEntryRange()) {
@@ -150,6 +152,14 @@ TEST_F(ParallelConversionTest, ManyBlocksOnSeveralThreadsMatchOneBlockRecordForR
    EXPECT_EQ(par.max_span, seq.max_span);
    EXPECT_EQ(par.max_span, 50U);
    EXPECT_EQ(par.rname_refs, seq.rname_refs) << "reference ids follow the header in both";
+
+   // As samtools idxstats counts them; chr3 has no records but is listed.
+   EXPECT_EQ(par.counts.mapped, (std::vector<uint64_t>{300, 300, 0}));
+   EXPECT_EQ(par.counts.unmapped, (std::vector<uint64_t>{1, 0, 0})) << "the placed unmapped read";
+   EXPECT_EQ(par.counts.unplaced, 2U);
+   EXPECT_EQ(par.counts.mapped, seq.counts.mapped);
+   EXPECT_EQ(par.counts.unmapped, seq.counts.unmapped);
+   EXPECT_EQ(par.counts.unplaced, seq.counts.unplaced);
 
    auto reader = ROOT::RNTupleReader::Open("RAM", kPar);
    EXPECT_GT(reader->GetDescriptor().GetNClusters(), 20U);

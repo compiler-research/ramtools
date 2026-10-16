@@ -1,5 +1,5 @@
-// Runs the built samtoramntuple and ramdump on a small SAM and checks that the
-// dump reproduces the input and that its counts follow samtools' rules.
+// Runs the built samtoramntuple, ramdump and ramstats on a small SAM and checks
+// that the dump reproduces the input and that its counts follow samtools' rules.
 #include <gtest/gtest.h>
 #include <array>
 #include <cstdio>
@@ -52,15 +52,21 @@ std::string Command(const std::string &options, const std::string &file, const s
    return cmd;
 }
 
-// ramdump <options> <file> <region>, returning what it printed.
-std::string Dump(const std::string &options, const std::string &region = "")
+// What a command printed on standard output.
+std::string Output(const std::string &command)
 {
-   const std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(Command(options, kRamFile, region).c_str(), "r"), pclose);
+   const std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command.c_str(), "r"), pclose);
    std::string out{};
    std::array<char, 4096> buf{};
    while (pipe && fgets(buf.data(), buf.size(), pipe.get()))
       out += buf.data();
    return out;
+}
+
+// ramdump <options> <file> <region>, returning what it printed.
+std::string Dump(const std::string &options, const std::string &region = "")
+{
+   return Output(Command(options, kRamFile, region));
 }
 
 // ramdump <options> <file> <region> with its output discarded; 0 on success.
@@ -141,6 +147,16 @@ TEST_F(RamdumpTest, ThreadedConversionWritesTheSameRecords)
    ASSERT_EQ(Status("-h -o ramdump_test.out", threaded), 0);
    EXPECT_EQ(ReadFile(kOutFile), Header() + Records());
    std::remove(threaded);
+}
+
+// The expected text is what samtools 1.18 idxstats prints for the same SAM.
+TEST_F(RamdumpTest, IdxstatsFollowsSamtools)
+{
+   const std::string ramstats = RAMSTATS_BIN;
+   EXPECT_EQ(Output(ramstats + " idxstats " + kRamFile), "chr1\t1000\t3\t0\nchr2\t1000\t1\t0\n*\t0\t0\t1\n");
+   EXPECT_NE(std::system((ramstats + " >/dev/null 2>&1").c_str()), 0);
+   EXPECT_NE(std::system((ramstats + " flagstat " + kRamFile + " >/dev/null 2>&1").c_str()), 0);
+   EXPECT_NE(std::system((ramstats + " idxstats missing.root >/dev/null 2>&1").c_str()), 0);
 }
 
 TEST_F(RamdumpTest, RejectsBadArguments)

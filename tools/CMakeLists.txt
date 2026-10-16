@@ -23,6 +23,14 @@ ROOT_EXECUTABLE(ramdump
         ROOT::ROOTNTuple
 )
 
+ROOT_EXECUTABLE(ramstats
+    ramstats.cxx
+    LIBRARIES
+        ramcore
+        ROOT::Core
+        ROOT::ROOTNTuple
+)
+
 ROOT_EXECUTABLE(bamtoramntuple
     bamtoramntuple.cxx
     LIBRARIES
@@ -32,6 +40,6 @@ ROOT_EXECUTABLE(bamtoramntuple
         ROOT::ROOTNTuple
 )
 
-install(TARGETS samtoramntuple ramntupleview ramdump bamtoramntuple
+install(TARGETS samtoramntuple ramntupleview ramdump ramstats bamtoramntuple
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )

@@ -245,6 +245,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
       FillRecord(&record, rec, hdr, quality_policy);
       RAMNTupleRecord::NoteRefSpan(record.GetRefSpan());
       RAMNTupleRecord::NotePlacement(record.GetREFID(), record.GetPOS() - 1);
+      RAMNTupleRecord::NoteRefCount(record.GetREFID(), record.GetFLAG());
       out.Add();
 
       ++count;

@@ -83,6 +83,43 @@ struct RAMCoordinateOrder {
    }
 };
 
+/// Records per reference, counted as `samtools idxstats` counts them: a placed
+/// record by whether FLAG 0x4 is set, a record with no reference as unplaced.
+struct RAMRefCounts {
+   std::vector<uint64_t> mapped;   ///< By refid.
+   std::vector<uint64_t> unmapped; ///< By refid.
+   uint64_t unplaced = 0;
+
+   void Note(int32_t refid, uint16_t flag)
+   {
+      if (refid < 0) {
+         unplaced++;
+         return;
+      }
+      Resize(static_cast<size_t>(refid) + 1);
+      ((flag & 0x4) ? unmapped : mapped)[static_cast<size_t>(refid)]++;
+   }
+
+   void Add(const RAMRefCounts &other)
+   {
+      Resize(other.mapped.size());
+      for (size_t i = 0; i < other.mapped.size(); i++) {
+         mapped[i] += other.mapped[i];
+         unmapped[i] += other.unmapped[i];
+      }
+      unplaced += other.unplaced;
+   }
+
+   /// Grows both vectors to at least \p n references; never shrinks them.
+   void Resize(size_t n)
+   {
+      if (n > mapped.size()) {
+         mapped.resize(n);
+         unmapped.resize(n);
+      }
+   }
+};
+
 /**
  * \class RAMNTupleRecord
  * \brief Alignment record stored in the ROOT Experimental RNTuple format.
@@ -111,7 +148,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 2;
+   static constexpr uint32_t kFormatVersion = 3;
 
    // Alignment data fields
    std::string qname;             // Query template NAME
@@ -146,6 +183,9 @@ public:
 
    /// The SAM header, one line per entry, without the newline.
    static std::vector<std::string> fgHeaderLines;
+
+   /// Records per reference, so `idxstats` needs no scan.
+   static RAMRefCounts fgRefCounts;
 
 public:
    RAMNTupleRecord();
@@ -219,6 +259,10 @@ public:
    static void SetQualBlockEnds(std::vector<uint64_t> ends) { fgQualBlockEnds = std::move(ends); }
    static const std::vector<std::string> &GetHeaderLines() { return fgHeaderLines; }
    static void SetHeaderLines(std::vector<std::string> lines) { fgHeaderLines = std::move(lines); }
+   /// Counts by refid; read from a file, one entry for every reference.
+   static const RAMRefCounts &GetRefCounts() { return fgRefCounts; }
+   static void SetRefCounts(RAMRefCounts counts) { fgRefCounts = std::move(counts); }
+   static void NoteRefCount(int32_t refid, uint16_t flag) { fgRefCounts.Note(refid, flag); }
 
    // File I/O
    /// Opens the RNTuple and loads METADATA; nullptr, with the reason printed,

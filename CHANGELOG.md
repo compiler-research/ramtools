@@ -15,6 +15,10 @@ the README for what that means before 1.0.
   longer and a full dump about 30% longer; region counts are unchanged. It is
   off by default, and files written with it need this release or later to read
   their qualities ([#90], [#99]).
+- `ramstats idxstats` prints the records per reference as `samtools idxstats`
+  does. The converters count them while writing and store the counts in
+  METADATA, so it reads no record: 0.2 s and 5 MB for any file size. The format
+  version becomes 3, and files written before must be converted again ([#102]).
 
 ### Changed
 
@@ -178,3 +182,4 @@ it stay readable by every later release.
 [#98]: https://github.com/compiler-research/ramtools/pull/98
 [#99]: https://github.com/compiler-research/ramtools/pull/99
 [#101]: https://github.com/compiler-research/ramtools/pull/101
+[#102]: https://github.com/compiler-research/ramtools/pull/102

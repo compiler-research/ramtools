@@ -4,10 +4,12 @@
 #include "rntuple/RAMNTupleRecord.h"
 #include "generate_sam_benchmark.h"
 #include <ROOT/RNTupleReader.hxx>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <string>
 #include <filesystem>
+#include <vector>
 
 class ChromosomeSplitTest : public ::testing::Test {
 protected:
@@ -140,4 +142,33 @@ TEST_F(ChromosomeSplitTest, SplitFilesKeepTheLongestSpan)
    EXPECT_EQ(ramntupleview("test_split_chr1.root", "chr1:200000-201000"), 1) << "the spanning read reaches the region";
 
    std::remove(spanSam);
+}
+
+// Each file counts only its own records, as samtools idxstats would on that
+// file; the other references are listed with none.
+TEST_F(ChromosomeSplitTest, SplitFilesCountTheirOwnRecords)
+{
+   const char *countSam = "test_split_counts.sam";
+   {
+      std::ofstream sam(countSam);
+      sam << "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:1000\n@SQ\tSN:chr2\tLN:1000\n";
+      sam << "a\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\t*\n";
+      sam << "b\t256\tchr1\t200\t60\t4M\t*\t0\t0\tACGT\t*\n";
+      sam << "c\t4\tchr1\t200\t0\t*\t*\t0\t0\tACGT\t*\n";
+      sam << "d\t0\tchr2\t100\t60\t4M\t*\t0\t0\tACGT\t*\n";
+      sam << "e\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\t*\n";
+   }
+   samtoramntuple_split_by_chromosome(countSam, /*output_prefix=*/"test_split", /*compression_algorithm=*/505,
+                                      /*quality_policy=*/1);
+
+   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_split_chr1.root"), nullptr);
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, (std::vector<uint64_t>{2, 0}));
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unmapped, (std::vector<uint64_t>{1, 0}));
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unplaced, 0U) << "-split writes no file for unplaced records";
+
+   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_split_chr2.root"), nullptr);
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, (std::vector<uint64_t>{0, 1}));
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unmapped, (std::vector<uint64_t>{0, 0}));
+
+   std::remove(countSam);
 }
