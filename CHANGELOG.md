@@ -21,10 +21,10 @@ the README for what that means before 1.0.
   version becomes 3, and files written before must be converted again ([#102]).
 - `ramstats flagstat` prints what `samtools flagstat` prints, in its default,
   TSV (`-O tsv`) and JSON (`-O json`) formats. It reads only the FLAG,
-  reference, mate reference and MAPQ columns: on 2 million records of chromosome
-  11 it takes about 0.5 s of CPU and 12 MB, against 2.2 s and 1 MB for
-  `samtools flagstat` on the same records as BAM. The file format is unchanged
-  ([#108]).
+  reference, mate reference and MAPQ columns. On chr20 of NA12878 at 30x
+  (17.7 million records) it takes 1.3 s of CPU and 20 MB on one thread, against
+  9.4 s for `samtools flagstat` on the BAM and 3.9 s on the CRAM 3.1. The file
+  format is unchanged ([#108]).
 
 ### Changed
 
