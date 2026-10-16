@@ -10,22 +10,21 @@ permissions:
   checks: write
   pull-requests: write
 
+# A workflow_run event has no pull_request, so key on the reviewed branch;
+# otherwise every PR shares one group and one post cancels another's.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
+# This run belongs to develop, not to the PR, so failing it on comments only
+# marks develop red and notifies everyone; the comments are the feedback.
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
       - name: Post review comments
-        id: post-review
         uses: ZedThree/clang-tidy-review/post@v0.21.0
         with:
           max_comments: 10
-
-       # If there are any comments, fail the check
-      - if: steps.post-review.outputs.total_comments > 0
-        run: exit 1
 
