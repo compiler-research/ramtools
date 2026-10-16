@@ -1,6 +1,6 @@
 #ifndef RAMCORE_RAMNTUPLEVIEW_H
 #define RAMCORE_RAMNTUPLEVIEW_H
-#include <Rtypes.h>
+#include <RtypesCore.h>
 #include <functional>
 #include <string>
 
