@@ -10,22 +10,14 @@
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
-#include <iostream>
 #include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
 
 using namespace ROOT;
-
-std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnameRefs = nullptr;
-std::unique_ptr<RAMNTupleRefs> RAMNTupleRecord::fgRnextRefs = nullptr;
-uint32_t RAMNTupleRecord::fgMaxRefSpan = 0;
-RAMCoordinateOrder RAMNTupleRecord::fgOrder{};
-std::vector<uint64_t> RAMNTupleRecord::fgQualBlockEnds{};
-std::vector<std::string> RAMNTupleRecord::fgHeaderLines{};
-RAMRefCounts RAMNTupleRecord::fgRefCounts{};
 
 static constexpr std::array<char, 16> kCodeToSeq{'=', 'A', 'C', 'M', 'G', 'R', 'S', 'V',
                                                  'T', 'W', 'Y', 'H', 'K', 'D', 'B', 'N'};
@@ -150,43 +142,6 @@ void RAMNTupleRefs::Print() const
 RAMNTupleRecord::RAMNTupleRecord()
    : flag(0), refid(-1), pos(0), mapq(0), refnext(-1), pnext(0), tlen(0), compression_flags(kPhred33)
 {
-   EnsureTables();
-}
-
-void RAMNTupleRecord::EnsureTables()
-{
-   if (!fgRnameRefs)
-      fgRnameRefs = std::make_unique<RAMNTupleRefs>();
-   if (!fgRnextRefs)
-      fgRnextRefs = std::make_unique<RAMNTupleRefs>();
-}
-
-// Resets the state of the file being written. Only the converters may call
-// this: RNTuple constructs a record whenever a view or a writer model is
-// created, so the constructor must not.
-void RAMNTupleRecord::InitializeRefs()
-{
-   EnsureTables();
-   fgRnameRefs->Clear();
-   fgRnextRefs->Clear();
-   fgMaxRefSpan = 0;
-   fgOrder = RAMCoordinateOrder{};
-   fgQualBlockEnds.clear();
-   fgHeaderLines.clear();
-   fgRefCounts = RAMRefCounts{};
-}
-
-void RAMNTupleRecord::WriteAllRefs(TFile &file)
-{
-   RAMFileMetadata meta;
-   meta.header_lines = fgHeaderLines;
-   meta.rname_refs = fgRnameRefs->GetRefs();
-   meta.rnext_refs = fgRnextRefs->GetRefs();
-   meta.max_ref_span = fgMaxRefSpan;
-   meta.coordinate_sorted = fgOrder.sorted;
-   meta.qual_block_ends = fgQualBlockEnds;
-   meta.counts = fgRefCounts;
-   WriteMetadata(file, meta);
 }
 
 // RAMFile::Open() reads these fields back.
@@ -218,26 +173,6 @@ void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
 
    auto metaWriter = RNTupleWriter::Append(std::move(metaModel), "METADATA", file, writeOptions);
    metaWriter->Fill();
-}
-
-void RAMNTupleRecord::SetRNAME(const std::string &rname)
-{
-   refid = fgRnameRefs->GetRefId(rname);
-}
-
-void RAMNTupleRecord::SetRNEXT(const std::string &rnext)
-{
-   refnext = fgRnextRefs->GetRefId(rnext);
-}
-
-const std::string &RAMNTupleRecord::GetRNAME() const
-{
-   return fgRnameRefs->GetRefName(refid);
-}
-
-const std::string &RAMNTupleRecord::GetRNEXT() const
-{
-   return fgRnextRefs->GetRefName(refnext);
 }
 
 uint32_t RAMNTupleRecord::GetRefSpan() const
@@ -307,18 +242,6 @@ int32_t RAMNTupleRecord::GetCIGAROP(size_t idx) const
       return 0;
    }
    return cigar[idx] & 0xf;
-}
-
-void RAMNTupleRecord::Print(const char *) const
-{
-   std::cout << GetQNAME() << "\t" << GetFLAG() << "\t" << GetRNAME() << "\t" << GetPOS() << "\t"
-             << static_cast<int>(GetMAPQ()) << "\t" << GetCIGAR() << "\t" << GetRNEXT() << "\t" << GetPNEXT() << "\t"
-             << GetTLEN() << "\t" << GetSEQ() << "\t" << GetQUAL();
-
-   for (const auto &tag : tags) {
-      std::cout << "\t" << tag;
-   }
-   std::cout << std::endl;
 }
 
 bool RAMNTupleRecord::IsValid() const

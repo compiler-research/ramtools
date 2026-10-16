@@ -13,6 +13,7 @@
 #include <htslib/hts.h>
 #include <htslib/sam.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -164,7 +165,8 @@ std::vector<std::string> GetTags(const bam1_t *b)
    return tags;
 }
 
-void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uint32_t quality_policy)
+void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uint32_t quality_policy,
+                RAMNTupleRefs &rnames, RAMNTupleRefs &rnexts)
 {
    const char *rname = (b->core.tid < 0) ? "*" : sam_hdr_tid2name(hdr, b->core.tid);
 
@@ -175,11 +177,11 @@ void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uin
    rec->SetBit(quality_policy);
    rec->SetQNAME(bam_get_qname(b));
    rec->SetFLAG(b->core.flag);
-   rec->SetREFID(rname);
+   rec->refid = rnames.GetRefId(rname);
    rec->SetPOS(static_cast<int32_t>(b->core.pos + 1));
    rec->SetMAPQ(b->core.qual);
    rec->SetCIGAR(GetCigar(b));
-   rec->SetREFNEXT(rnext);
+   rec->refnext = rnexts.GetRefId(rnext);
    rec->SetPNEXT(static_cast<int32_t>(b->core.mpos + 1));
    rec->SetTLEN(static_cast<int32_t>(b->core.isize));
    rec->SetSEQ(GetSeq(b));
@@ -222,11 +224,16 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
       return;
    }
 
-   RAMNTupleRecord::InitializeRefs();
+   // The state of the file being written: filled in as the records are written,
+   // stored in METADATA at the end.
+   RAMNTupleRefs rnames;
+   RAMNTupleRefs rnexts;
+   RAMFileMetadata meta;
+   RAMCoordinateOrder order;
 
    const int nRef = sam_hdr_nref(hdr);
    for (int i = 0; i < nRef; ++i)
-      RAMNTupleRecord::GetRnameRefs()->GetRefId(sam_hdr_tid2name(hdr, i));
+      rnames.GetRefId(sam_hdr_tid2name(hdr, i));
 
    auto model = RAMNTupleRecord::MakeModel();
    ROOT::RNTupleWriteOptions opts;
@@ -242,10 +249,10 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    while (sam_read1(bamIn, hdr, rec) >= 0) {
       RAMNTupleRecord &record = out.Record();
-      FillRecord(&record, rec, hdr, quality_policy);
-      RAMNTupleRecord::NoteRefSpan(record.GetRefSpan());
-      RAMNTupleRecord::NotePlacement(record.GetREFID(), record.GetPOS() - 1);
-      RAMNTupleRecord::NoteRefCount(record.GetREFID(), record.GetFLAG());
+      FillRecord(&record, rec, hdr, quality_policy, rnames, rnexts);
+      meta.max_ref_span = std::max(meta.max_ref_span, record.GetRefSpan());
+      order.Note(record.refid, record.pos);
+      meta.counts.Note(record.refid, record.flag);
       out.Add();
 
       ++count;
@@ -255,25 +262,26 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    bam_destroy1(rec);
    out.Finish();
-   RAMNTupleRecord::SetQualBlockEnds(out.TakeBlockEnds());
+   meta.qual_block_ends = out.TakeBlockEnds();
    writer.reset();
 
    // Region queries can only seek on a sorted file; the file records which it is.
-   if (!RAMNTupleRecord::IsCoordinateSorted())
+   meta.coordinate_sorted = order.sorted;
+   if (!meta.coordinate_sorted)
       std::cerr << bamfile << " is not in coordinate order; region queries will read it in full.\n";
 
-   std::vector<std::string> headers;
    const char *text = sam_hdr_str(hdr);
    if (text != nullptr) {
       std::istringstream ss(text);
       std::string line;
       while (std::getline(ss, line)) {
          if (line.size() >= 3)
-            headers.push_back(line);
+            meta.header_lines.push_back(line);
       }
    }
-   RAMNTupleRecord::SetHeaderLines(std::move(headers));
-   RAMNTupleRecord::WriteAllRefs(*rootFile);
+   meta.rname_refs = rnames.GetRefs();
+   meta.rnext_refs = rnexts.GetRefs();
+   RAMNTupleRecord::WriteMetadata(*rootFile, meta);
 
    rootFile->Close();
    sam_hdr_destroy(hdr);
@@ -281,8 +289,8 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    std::cout << "\nRAM file created: " << treefile << "\n"
              << "Number of entries: " << count << "\n";
-   RAMNTupleRecord::GetRnameRefs()->Print();
-   RAMNTupleRecord::GetRnextRefs()->Print();
+   rnames.Print();
+   rnexts.Print();
 
    stopwatch.Print();
 }

@@ -107,11 +107,12 @@ that object to `ramntuplescan`, `QualityBlockReader` and the name lookups;
 nothing about an open file is static, so several can be open in one process.
 The test `TwoOpenFilesKeepTheirOwnState` checks that.
 
-The converters still keep the state of the file being written in static
-members of `RAMNTupleRecord` (#104 moves it out). `InitializeRefs()` resets
-it, and only the converters may call it. RNTuple constructs a record whenever
-a view or a writer model is created, so the constructor must never touch that
-state.
+A converter keeps the state of the file it writes in its own objects: two
+`RAMNTupleRefs` tables, for the ids it stores in `refid` and `refnext`, and a
+`RAMFileMetadata` it fills while it writes the records and passes to
+`RAMNTupleRecord::WriteMetadata()` at the end. A record holds ids only, and
+`RAMNTupleRecord` has no static members, so conversions can run side by side.
+The test `TwoConversionsAtOnceKeepTheirOwnState` checks that.
 
 A new METADATA field goes into `RAMFileMetadata`, is written in
 `RAMNTupleRecord::WriteMetadata()` and read in `RAMFile::Open()`.
