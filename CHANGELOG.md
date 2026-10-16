@@ -19,6 +19,12 @@ the README for what that means before 1.0.
   does. The converters count them while writing and store the counts in
   METADATA, so it reads no record: 0.2 s and 5 MB for any file size. The format
   version becomes 3, and files written before must be converted again ([#102]).
+- `ramstats flagstat` prints what `samtools flagstat` prints, in its default,
+  TSV (`-O tsv`) and JSON (`-O json`) formats. It reads only the FLAG,
+  reference, mate reference and MAPQ columns: on 2 million records of chromosome
+  11 it takes about 0.5 s of CPU and 12 MB, against 2.2 s and 1 MB for
+  `samtools flagstat` on the same records as BAM. The file format is unchanged
+  ([#108]).
 
 ### Changed
 
@@ -202,3 +208,4 @@ it stay readable by every later release.
 [#102]: https://github.com/compiler-research/ramtools/pull/102
 [#105]: https://github.com/compiler-research/ramtools/pull/105
 [#107]: https://github.com/compiler-research/ramtools/pull/107
+[#108]: https://github.com/compiler-research/ramtools/pull/108
