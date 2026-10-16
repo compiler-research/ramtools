@@ -189,9 +189,10 @@ formats of samtools, which MultiQC reads.
 ./build/tools/ramstats flagstat reads.ram
 ```
 
-It reads only the FLAG, reference, mate reference and MAPQ columns. On 2
-million records that takes about 0.5 s of CPU, against 2.2 s for
-`samtools flagstat` on the same records as BAM.
+It reads only the FLAG, reference, mate reference and MAPQ columns. On chr20 of
+NA12878 at 30x (17.7 million records, 1000 Genomes high coverage), it takes
+1.3 s of CPU on one thread. `samtools flagstat` takes 9.4 s on the BAM and
+3.9 s on the CRAM 3.1, from which it also decodes only the fields it needs.
 
 ## Checking a RAM file against samtools
 
