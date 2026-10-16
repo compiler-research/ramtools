@@ -29,8 +29,9 @@ const uint32_t kFqzcomp = RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBl
 // Writes the reads; \p ends, when given, replaces the block ends, as in a damaged file.
 void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, const std::vector<uint64_t> &ends = {})
 {
-   RAMNTupleRecord::InitializeRefs();
    std::unique_ptr<TFile> file(TFile::Open(kFile, "RECREATE"));
+   RAMFileMetadata meta;
+   meta.rname_refs = {"chr1"};
    {
       auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
       QualityBlockWriter out(
@@ -41,14 +42,14 @@ void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, c
          rec.SetBit(policy);
          rec.SetQNAME("r");
          rec.SetFLAG(read.flag);
-         rec.SetRNAME("chr1");
+         rec.refid = 0;
          rec.SetQUAL(read.qual);
          out.Add();
       }
       out.Finish();
-      RAMNTupleRecord::SetQualBlockEnds(ends.empty() ? out.TakeBlockEnds() : ends);
+      meta.qual_block_ends = ends.empty() ? out.TakeBlockEnds() : ends;
    }
-   RAMNTupleRecord::WriteAllRefs(*file);
+   RAMNTupleRecord::WriteMetadata(*file, meta);
    file->Close();
 }
 
@@ -83,7 +84,9 @@ TEST_F(QualityBlocksTest, EveryQualityComesBackInAnyOrder)
       {0, "JJJJJJJJJJJJ"},
    };
    Write(reads, /*block=*/3, kFqzcomp);
-   EXPECT_EQ(RAMNTupleRecord::GetQualBlockEnds(), (std::vector<uint64_t>{2, 5, 8, 9}));
+   const auto written = RAMFile::Open(kFile);
+   ASSERT_NE(written, nullptr);
+   EXPECT_EQ(written->GetMetadata().qual_block_ends, (std::vector<uint64_t>{2, 5, 8, 9}));
 
    std::vector<std::size_t> forward;
    std::vector<std::size_t> backward;

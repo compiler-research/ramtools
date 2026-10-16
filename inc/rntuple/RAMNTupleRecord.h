@@ -142,10 +142,11 @@ struct RAMFileMetadata {
  * integrates naturally with the columnar storage back-end. Quality strings can
  * be stored as Phred+33, Illumina-binned, or dropped.
  *
- * Static managers (`fgRnameRefs`, `fgRnextRefs`) provide the shared
- * reference-name tables.
+ * A record holds reference ids, not names. The names are in its file's
+ * METADATA: a converter fills them from its own RAMNTupleRefs tables, and a
+ * reader looks them up in RAMFile.
  *
- * \sa RAMNTupleRefs
+ * \sa RAMNTupleRefs, RAMFile
  */
 class RAMNTupleRecord {
 public:
@@ -180,39 +181,15 @@ public:
 
    uint32_t compression_flags;
 
-   // The state of the file being written; a file being read keeps its own in RAMFile.
-   static std::unique_ptr<RAMNTupleRefs> fgRnameRefs;
-   static std::unique_ptr<RAMNTupleRefs> fgRnextRefs;
-
-   /// Longest reference span of any alignment in the file.
-   static uint32_t fgMaxRefSpan;
-
-   /// Order of the records written so far.
-   static RAMCoordinateOrder fgOrder;
-
-   /// Last row of each quality block.
-   static std::vector<uint64_t> fgQualBlockEnds;
-
-   /// The SAM header, one line per entry, without the newline.
-   static std::vector<std::string> fgHeaderLines;
-
-   /// Records per reference, so `idxstats` needs no scan.
-   static RAMRefCounts fgRefCounts;
-
-public:
    RAMNTupleRecord();
    ~RAMNTupleRecord() = default;
 
    // Setters (SAM format, 1-based positions)
    void SetQNAME(const std::string &qname_) { qname = qname_; }
    void SetFLAG(uint16_t f) { flag = f; }
-   void SetRNAME(const std::string &rname);
-   void SetREFID(const std::string &rname) { SetRNAME(rname); }
    void SetPOS(int32_t pos_) { pos = pos_ - 1; } // SAM is 1-based, we are 0-based
    void SetMAPQ(uint8_t mapq_) { mapq = mapq_; }
    void SetCIGAR(const std::string &cigar_str);
-   void SetRNEXT(const std::string &rnext);
-   void SetREFNEXT(const std::string &rnext) { SetRNEXT(rnext); }
    void SetPNEXT(int32_t pnext_) { pnext = pnext_ - 1; } // SAM is 1-based, we are 0-based
    void SetTLEN(int32_t tlen_) { tlen = tlen_; }
    void SetSEQ(const std::string &seq_str);
@@ -225,12 +202,10 @@ public:
    // Getters (SAM format, 1-based positions)
    const std::string &GetQNAME() const { return qname; }
    uint16_t GetFLAG() const { return flag; }
-   const std::string &GetRNAME() const;
    int32_t GetREFID() const { return refid; }
    int32_t GetPOS() const { return pos + 1; } // Convert back to 1-based for SAM
    uint8_t GetMAPQ() const { return mapq; }
    std::string GetCIGAR() const;
-   const std::string &GetRNEXT() const;
    int32_t GetREFNEXT() const { return refnext; }
    int32_t GetPNEXT() const { return pnext + 1; } // Convert back to 1-based for SAM
    int32_t GetTLEN() const { return tlen; }
@@ -247,38 +222,16 @@ public:
    int32_t GetCIGAROPLEN(size_t idx) const;
    int32_t GetCIGAROP(size_t idx) const;
 
-   void Print(const char *option = "") const;
    bool IsValid() const;
    void SetBit(uint32_t bit) { compression_flags |= bit; }
    bool TestBit(uint32_t bit) const { return compression_flags & bit; }
 
-   // Static managers
-   static void InitializeRefs();
-   static uint32_t GetMaxRefSpan() { return fgMaxRefSpan; }
-   static void NoteRefSpan(uint32_t span)
-   {
-      if (span > fgMaxRefSpan)
-         fgMaxRefSpan = span;
-   }
-   static bool IsCoordinateSorted() { return fgOrder.sorted; }
-   static void SetCoordinateSorted(bool sorted) { fgOrder.sorted = sorted; }
-   static void NotePlacement(int32_t refid, int32_t pos) { fgOrder.Note(refid, pos); }
    /// Reference bases covered by this record's CIGAR (0 when it has none).
    uint32_t GetRefSpan() const;
-   static RAMNTupleRefs *GetRnameRefs() { return fgRnameRefs.get(); }
-   static RAMNTupleRefs *GetRnextRefs() { return fgRnextRefs.get(); }
-   static const std::vector<uint64_t> &GetQualBlockEnds() { return fgQualBlockEnds; }
-   static void SetQualBlockEnds(std::vector<uint64_t> ends) { fgQualBlockEnds = std::move(ends); }
-   static const std::vector<std::string> &GetHeaderLines() { return fgHeaderLines; }
-   static void SetHeaderLines(std::vector<std::string> lines) { fgHeaderLines = std::move(lines); }
-   static const RAMRefCounts &GetRefCounts() { return fgRefCounts; }
-   static void SetRefCounts(RAMRefCounts counts) { fgRefCounts = std::move(counts); }
-   static void NoteRefCount(int32_t refid, uint16_t flag) { fgRefCounts.Note(refid, flag); }
 
    // File I/O
-   /// Writes METADATA from the state of the file being written into \p file.
-   static void WriteAllRefs(TFile &file);
-   /// Writes METADATA, with the format version, into \p file.
+   /// Writes METADATA, with the format version, into \p file. A converter
+   /// gathers \p meta while it writes the records and calls this once at the end.
    static void WriteMetadata(TFile &file, const RAMFileMetadata &meta);
 
    // RNTuple model creation
@@ -286,10 +239,6 @@ public:
 
    /// Replaces the quality mode.
    void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
-
-private:
-   /// Creates the shared tables on first use without touching their contents.
-   static void EnsureTables();
 };
 
 // CIGAR operation codes (from BAM format)

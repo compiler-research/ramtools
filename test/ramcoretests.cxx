@@ -5,6 +5,7 @@
 #include <ROOT/RNTupleWriter.hxx>
 #include <Rtypes.h>
 #include <TFile.h>
+#include <TROOT.h>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <initializer_list>
 #include <iostream>
 #include <limits>
@@ -434,6 +436,60 @@ TEST_F(ramcoreTest, EachConversionStartsWithItsOwnReferences)
    std::remove(secondFile);
 }
 
+// Each conversion keeps the state of the file it writes, so two can run at once.
+TEST_F(ramcoreTest, TwoConversionsAtOnceKeepTheirOwnState)
+{
+   const char *sortedSam = "test_at_once_sorted.sam";
+   const char *sortedFile = "test_at_once_sorted.root";
+   const char *unsortedSam = "test_at_once_unsorted.sam";
+   const char *unsortedFile = "test_at_once_unsorted.root";
+   const int n = 20000;
+   {
+      std::ofstream sam(sortedSam);
+      sam << "@SQ\tSN:chrA\tLN:1000000\n";
+      for (int i = 0; i < n; i++)
+         sam << "s" << i << "\t0\tchrA\t" << i + 1 << "\t60\t4M\t*\t0\t0\tACGT\t*\n";
+   }
+   {
+      std::ofstream sam(unsortedSam);
+      sam << "@SQ\tSN:chrX\tLN:1000000\n@SQ\tSN:chrY\tLN:1000000\n";
+      for (int i = 0; i < n; i++)
+         sam << "u" << i << "\t4\t" << (i % 2 ? "chrY" : "chrX") << "\t" << n - i
+             << "\t0\t8M\tchrX\t1\t0\tACGTACGT\t*\n";
+   }
+
+   ROOT::EnableThreadSafety();
+   auto convert = [](const char *sam, const char *file) {
+      return samtoramntuple(sam, file, /*compression_algorithm=*/505, /*quality_policy=*/0, /*threads=*/2);
+   };
+   auto sorted = std::async(std::launch::async, convert, sortedSam, sortedFile);
+   auto unsorted = std::async(std::launch::async, convert, unsortedSam, unsortedFile);
+   ASSERT_TRUE(sorted.get());
+   ASSERT_TRUE(unsorted.get());
+
+   const auto s = RAMFile::Open(sortedFile);
+   const auto u = RAMFile::Open(unsortedFile);
+   ASSERT_NE(s, nullptr);
+   ASSERT_NE(u, nullptr);
+   EXPECT_EQ(s->GetMetadata().rname_refs, std::vector<std::string>{"chrA"});
+   EXPECT_EQ(u->GetMetadata().rname_refs, (std::vector<std::string>{"chrX", "chrY"}));
+   EXPECT_EQ(s->GetMetadata().rnext_refs, (std::vector<std::string>{"=", "chrA"}));
+   EXPECT_EQ(u->GetMetadata().rnext_refs, (std::vector<std::string>{"=", "chrX", "chrY"}));
+   EXPECT_TRUE(s->GetMetadata().coordinate_sorted);
+   EXPECT_FALSE(u->GetMetadata().coordinate_sorted);
+   EXPECT_EQ(s->GetMetadata().max_ref_span, 4U);
+   EXPECT_EQ(u->GetMetadata().max_ref_span, 8U);
+   EXPECT_EQ(s->GetMetadata().header_lines, std::vector<std::string>{"@SQ\tSN:chrA\tLN:1000000"});
+   EXPECT_EQ(u->GetMetadata().header_lines.size(), 2U);
+   EXPECT_EQ(s->GetMetadata().counts.mapped, std::vector<uint64_t>{n});
+   EXPECT_EQ(u->GetMetadata().counts.unmapped, (std::vector<uint64_t>{n / 2, n / 2}));
+
+   std::remove(sortedSam);
+   std::remove(sortedFile);
+   std::remove(unsortedSam);
+   std::remove(unsortedFile);
+}
+
 // Until 1.0 a reader opens only files of its own format version, and says why
 // it refuses the others rather than reading them wrongly.
 TEST_F(ramcoreTest, FilesOfAnotherFormatVersionAreRefused)
@@ -581,16 +637,22 @@ TEST_F(ramcoreTest, UnplacedRecordBeforePlacedOnesMeansUnsorted)
    std::remove(rntupleFile);
 }
 
+// A converter's table: "*" is no reference, "=" gets an id like any name.
+TEST_F(ramcoreTest, RefTableMapsNamesToIds)
+{
+   RAMNTupleRefs refs;
+   EXPECT_EQ(refs.GetRefId("chr1"), 0);
+   EXPECT_EQ(refs.GetRefId("="), 1);
+   EXPECT_EQ(refs.GetRefId("chr1"), 0);
+   EXPECT_EQ(refs.GetRefId("*"), -1);
+   EXPECT_EQ(refs.GetRefName(1), "=");
+   EXPECT_EQ(refs.GetRefName(-1), "*");
+   EXPECT_EQ(refs.GetRefs(), (std::vector<std::string>{"chr1", "="}));
+}
+
 TEST_F(ramcoreTest, RecordGetters)
 {
    RAMNTupleRecord record;
-
-   record.SetRNEXT("chr1");
-   EXPECT_EQ(record.GetRNEXT(), "chr1");
-   record.SetRNEXT("=");
-   EXPECT_EQ(record.GetRNEXT(), "=");
-   record.SetRNEXT("*");
-   EXPECT_EQ(record.GetRNEXT(), "*");
 
    // all 9 CIGAR operations (M=0, I=1, D=2, N=3, S=4, H=5, P=6, ==7, X=8)
    record.SetCIGAR("1M1I1D1N1S1H1P1=1X");

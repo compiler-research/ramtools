@@ -38,6 +38,10 @@ the README for what that means before 1.0.
   and METADATA in the object it returns instead of in static members, so
   several files can be open in one process. `ramntuplescan()` and
   `QualityBlockReader` take that object ([#105]).
+- Library: the converters keep the state of the file they write, the
+  reference tables and the METADATA values, in their own objects instead of in
+  static members of `RAMNTupleRecord`, so several conversions can run in one
+  process at once. Before, two at once mixed their reference names ([#107]).
 
 ### Removed
 
@@ -46,6 +50,13 @@ the README for what that means before 1.0.
   `RAMNTupleUtils::DecodeSequence` ([#101]).
 - `RAMNTupleRecord::OpenRAMFile()` and `ReadAllRefs()`; open files with
   `RAMFile::Open()` ([#105]).
+- `RAMNTupleRecord`'s static writer state and the calls on it:
+  `InitializeRefs()`, `WriteAllRefs()`, `GetRnameRefs()`, `GetRnextRefs()` and
+  the static getters and setters of METADATA values. A converter now fills a
+  `RAMFileMetadata` and calls `WriteMetadata()`. Also removed are the record's
+  `SetRNAME()`, `SetRNEXT()`, `SetREFID(name)`, `SetREFNEXT(name)`,
+  `GetRNAME()`, `GetRNEXT()` and `Print()`. A record holds ids, and
+  `RAMFile::GetRname()` and `GetRnext()` give their names ([#107]).
 
 ## [0.1.0] - 2026-10-14
 
@@ -190,3 +201,4 @@ it stay readable by every later release.
 [#101]: https://github.com/compiler-research/ramtools/pull/101
 [#102]: https://github.com/compiler-research/ramtools/pull/102
 [#105]: https://github.com/compiler-research/ramtools/pull/105
+[#107]: https://github.com/compiler-research/ramtools/pull/107
