@@ -1,4 +1,5 @@
 #include "ramcore/QualityBlocks.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/REntry.hxx>
@@ -112,18 +113,19 @@ std::vector<uint64_t> QualityBlockWriter::TakeBlockEnds()
    return std::exchange(m_blockEnds, {});
 }
 
-QualityBlockReader::QualityBlockReader(ROOT::RNTupleReader &reader)
-   : m_flagsView(reader.GetView<uint32_t>("record.compression_flags")),
+QualityBlockReader::QualityBlockReader(RAMFile &file)
+   : m_flagsView(file.GetReader().GetView<uint32_t>("record.compression_flags")),
+     m_ends(file.GetMetadata().qual_block_ends),
      m_readAhead(std::min<std::size_t>(kQualityReadAhead, std::max(1U, std::thread::hardware_concurrency())))
 {
+   ROOT::RNTupleReader &reader = file.GetReader();
    if (reader.GetDescriptor().FindFieldId(RAMNTupleRecord::kQualBlockField) != ROOT::kInvalidDescriptorId)
       m_view.emplace(reader.GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField));
 
    // Ends that do not rise, or that run past the last row, would send a row to
    // a block that does not hold it.
-   const auto &ends = RAMNTupleRecord::GetQualBlockEnds();
-   for (std::size_t i = 0; i < ends.size(); i++) {
-      if ((i > 0 && ends[i] <= ends[i - 1]) || ends[i] >= reader.GetNEntries())
+   for (std::size_t i = 0; i < m_ends.size(); i++) {
+      if ((i > 0 && m_ends[i] <= m_ends[i - 1]) || m_ends[i] >= reader.GetNEntries())
          throw std::runtime_error("the quality block ends in the file are damaged");
    }
 }
@@ -133,11 +135,10 @@ std::string QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize
    if (!rec.TestBit(RAMNTupleRecord::kQualInBlock))
       return rec.GetQUAL();
 
-   const auto &ends = RAMNTupleRecord::GetQualBlockEnds();
-   const auto it = std::lower_bound(ends.begin(), ends.end(), static_cast<uint64_t>(row));
-   if (it == ends.end() || !m_view)
+   const auto it = std::lower_bound(m_ends.begin(), m_ends.end(), static_cast<uint64_t>(row));
+   if (it == m_ends.end() || !m_view)
       throw std::runtime_error("record " + std::to_string(row) + " has no quality block");
-   const auto block = static_cast<std::size_t>(it - ends.begin());
+   const auto block = static_cast<std::size_t>(it - m_ends.begin());
    if (block != m_block)
       Load(block);
 
@@ -147,16 +148,15 @@ std::string QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize
 
 QualityBlockReader::Packed QualityBlockReader::Read(std::size_t block)
 {
-   const auto &ends = RAMNTupleRecord::GetQualBlockEnds();
-   const uint64_t first = block == 0 ? 0 : ends[block - 1] + 1;
+   const uint64_t first = block == 0 ? 0 : m_ends[block - 1] + 1;
    Packed p;
-   p.slots.assign(static_cast<std::size_t>(ends[block] - first + 1), 0);
+   p.slots.assign(static_cast<std::size_t>(m_ends[block] - first + 1), 0);
    for (std::size_t i = 0; i < p.slots.size(); i++) {
       if (m_flagsView(first + i) & RAMNTupleRecord::kQualInBlock)
          p.slots[i] = p.records++;
    }
    if (p.records > 0) {
-      const std::vector<std::uint8_t> &bytes = (*m_view)(ends[block]);
+      const std::vector<std::uint8_t> &bytes = (*m_view)(m_ends[block]);
       p.bytes.assign(bytes.begin(), bytes.end());
    }
    return p;
@@ -189,7 +189,6 @@ QualityBlockReader::Block QualityBlockReader::Decode(Packed packed)
 
 void QualityBlockReader::Load(std::size_t block)
 {
-   const auto &ends = RAMNTupleRecord::GetQualBlockEnds();
    // Read ahead one block more for each consecutive block, so random lookups start nothing.
    m_run = (m_block != kNoBlock && block == m_block + 1) ? m_run + 1 : 0;
 
@@ -201,10 +200,10 @@ void QualityBlockReader::Load(std::size_t block)
       m_current = Decode(Read(block));
    }
    m_block = block;
-   m_firstRow = block == 0 ? 0 : ends[block - 1] + 1;
+   m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
 
    const std::size_t depth = std::min(m_run, m_readAhead);
-   for (std::size_t next = block + 1; next < ends.size() && next <= block + depth; next++) {
+   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
       if (m_ahead.count(next) == 0)
          m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next)));
    }

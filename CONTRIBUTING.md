@@ -98,17 +98,23 @@ Every pull request runs four checks:
   what they do and what the caller must ensure. That is what the documentation
   is generated from, so keep it accurate when you change behaviour.
 
-## One rule about the shared state
+## Per-file state
 
-`RAMNTupleRecord` keeps the reference-name tables, the longest span, the sort
-flag, the quality block ends, the SAM header and the records per reference as
-static members that describe the file currently open or being written. `InitializeRefs()` resets
-them, and only the converters and `OpenRAMFile()` may call it. RNTuple
-constructs a record whenever a view or a writer model is created, so the
-constructor must never touch that state; a reset there once made an unsorted
-file look sorted and dropped records from queries. If you add per-file state,
-reset it in `InitializeRefs()` and extend the test
-`ConstructingARecordKeepsTheOpenFileState`.
+A file being read keeps what its METADATA holds, the reference names, the
+longest span, the sort flag, the quality block ends, the SAM header and the
+records per reference, in the `RAMFile` that `RAMFile::Open()` returns. Pass
+that object to `ramntuplescan`, `QualityBlockReader` and the name lookups;
+nothing about an open file is static, so several can be open in one process.
+The test `TwoOpenFilesKeepTheirOwnState` checks that.
+
+The converters still keep the state of the file being written in static
+members of `RAMNTupleRecord` (#104 moves it out). `InitializeRefs()` resets
+it, and only the converters may call it. RNTuple constructs a record whenever
+a view or a writer model is created, so the constructor must never touch that
+state.
+
+A new METADATA field goes into `RAMFileMetadata`, is written in
+`RAMNTupleRecord::WriteMetadata()` and read in `RAMFile::Open()`.
 
 ## Changing the file format
 

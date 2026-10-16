@@ -3,6 +3,7 @@
 #include "generate_sam_benchmark.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <gtest/gtest.h>
@@ -271,8 +272,9 @@ TEST_F(BamToNTupleTest, RecordsAreCountedPerReference)
    bamtoramntuple(/*bamfile=*/"test_rich.bam", /*treefile=*/"test_rich.ram", /*split=*/false, /*cache=*/true,
                   /*compression_algorithm=*/505, /*quality_policy=*/0U);
 
-   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_rich.ram"), nullptr);
-   const RAMRefCounts &counts = RAMNTupleRecord::GetRefCounts();
+   const auto file = RAMFile::Open("test_rich.ram");
+   ASSERT_NE(file, nullptr);
+   const RAMRefCounts &counts = file->GetMetadata().counts;
    EXPECT_EQ(counts.mapped, (std::vector<uint64_t>{1004, 0}));
    EXPECT_EQ(counts.unmapped, (std::vector<uint64_t>{0, 0}));
    EXPECT_EQ(counts.unplaced, 1U);

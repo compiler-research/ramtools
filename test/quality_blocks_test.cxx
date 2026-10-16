@@ -1,4 +1,5 @@
 #include "ramcore/QualityBlocks.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/REntry.hxx>
@@ -53,10 +54,10 @@ void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, c
 
 void ExpectQualities(const std::vector<Read> &reads, const std::vector<std::size_t> &order)
 {
-   auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-   ASSERT_NE(reader, nullptr);
-   auto view = reader->GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*reader);
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*file);
    for (const std::size_t row : order)
       EXPECT_EQ(quals.Get(view(row), row), reads[row].qual) << "row " << row;
 }
@@ -93,8 +94,8 @@ TEST_F(QualityBlocksTest, EveryQualityComesBackInAnyOrder)
    ExpectQualities(reads, forward);
    ExpectQualities(reads, backward);
 
-   auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-   auto view = reader->GetView<RAMNTupleRecord>("record");
+   auto file = RAMFile::Open(kFile);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
    for (std::size_t row = 0; row < reads.size(); row++) {
       const bool inBlock = reads[row].qual != "*" && reads[row].qual != "AB C";
       EXPECT_EQ(view(row).TestBit(RAMNTupleRecord::kQualInBlock), inBlock) << "row " << row;
@@ -111,10 +112,10 @@ TEST_F(QualityBlocksTest, ABlockWithoutQualitiesNeedsNoData)
 TEST_F(QualityBlocksTest, LossyPoliciesStayInTheRecord)
 {
    Write({{0, "IIII"}}, /*block=*/3, RAMNTupleRecord::kDrop | RAMNTupleRecord::kQualInBlock);
-   auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-   ASSERT_NE(reader, nullptr);
-   auto view = reader->GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*reader);
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*file);
    EXPECT_FALSE(view(0).TestBit(RAMNTupleRecord::kQualInBlock));
    EXPECT_EQ(quals.Get(view(0), 0), "*");
 }
@@ -125,10 +126,10 @@ TEST_F(QualityBlocksTest, IlluminaBinnedQualitiesStayInTheRecord)
 {
    Write({{0, "FFFFFFFF"}, {0, "#+5?FFII"}}, /*block=*/3,
          RAMNTupleRecord::kIlluminaBinning | RAMNTupleRecord::kQualInBlock);
-   auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-   ASSERT_NE(reader, nullptr);
-   auto view = reader->GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*reader);
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*file);
    for (std::size_t row = 0; row < 2; row++) {
       EXPECT_FALSE(view(row).TestBit(RAMNTupleRecord::kQualInBlock)) << "row " << row;
       EXPECT_EQ(quals.Get(view(row), row), view(row).GetQUAL()) << "row " << row;
@@ -143,9 +144,9 @@ TEST_F(QualityBlocksTest, DamagedBlockEndsAreReported)
    const std::vector<Read> reads = {{0, "IIII"}, {0, "HHHH"}, {0, "GGGG"}};
    for (const auto &ends : {std::vector<uint64_t>{1, 0}, std::vector<uint64_t>{1, 3}}) {
       Write(reads, /*block=*/2, kFqzcomp, ends);
-      auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-      ASSERT_NE(reader, nullptr);
-      EXPECT_THROW(QualityBlockReader quals(*reader), std::runtime_error) << ends[0] << "," << ends[1];
+      auto file = RAMFile::Open(kFile);
+      ASSERT_NE(file, nullptr);
+      EXPECT_THROW(QualityBlockReader quals(*file), std::runtime_error) << ends[0] << "," << ends[1];
    }
 }
 
@@ -155,10 +156,10 @@ TEST_F(QualityBlocksTest, QualitiesStayInTheRecordUnlessAsked)
 {
    const std::vector<Read> reads = {{0, "IIII"}, {0x10, "#+5?"}};
    Write(reads, /*block=*/3, RAMNTupleRecord::kPhred33);
-   auto reader = RAMNTupleRecord::OpenRAMFile(kFile);
-   ASSERT_NE(reader, nullptr);
-   auto view = reader->GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*reader);
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*file);
    for (std::size_t row = 0; row < reads.size(); row++) {
       EXPECT_FALSE(view(row).TestBit(RAMNTupleRecord::kQualInBlock)) << "row " << row;
       EXPECT_EQ(view(row).qual, reads[row].qual) << "row " << row;

@@ -4,6 +4,7 @@
 
 #include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/RNTupleReader.hxx>
@@ -55,10 +56,9 @@ struct SamWriter {
    }
 };
 
-// The header of the file OpenRAMFile() loaded.
-void WriteHeader(SamWriter &out)
+void WriteHeader(const RAMFile &file, SamWriter &out)
 {
-   for (const auto &line : RAMNTupleRecord::GetHeaderLines()) {
+   for (const auto &line : file.GetMetadata().header_lines) {
       out.Str(line);
       out.EndLine();
    }
@@ -127,13 +127,13 @@ public:
    }
 };
 
-void WriteRecord(const RAMNTupleRecord &rec, const std::string &qual, SamWriter &out)
+void WriteRecord(const RAMFile &file, const RAMNTupleRecord &rec, const std::string &qual, SamWriter &out)
 {
    out.Str(rec.GetQNAME());
    out.Tab();
    out.Int(rec.GetFLAG());
    out.Tab();
-   out.Str(rec.GetRNAME());
+   out.Str(file.GetRname(rec.GetREFID()));
    out.Tab();
    out.Int(rec.GetPOS());
    out.Tab();
@@ -141,7 +141,7 @@ void WriteRecord(const RAMNTupleRecord &rec, const std::string &qual, SamWriter 
    out.Tab();
    out.Str(rec.GetCIGAR());
    out.Tab();
-   out.Str(rec.GetRNEXT());
+   out.Str(file.GetRnext(rec.GetREFNEXT()));
    out.Tab();
    out.Int(rec.GetPNEXT());
    out.Tab();
@@ -251,39 +251,39 @@ int main(int argc, char *argv[])
    }
    SamWriter writer(owned ? owned.get() : stdout);
 
-   auto reader = RAMNTupleRecord::OpenRAMFile(file);
-   if (!reader) {
+   auto ram = RAMFile::Open(file);
+   if (!ram) {
       std::cerr << "ramdump: cannot open " << file << "\n";
       return 1;
    }
 
    if (headerOnly) {
-      WriteHeader(writer);
+      WriteHeader(*ram, writer);
       return 0;
    }
 
    if (withHeader && !countOnly)
-      WriteHeader(writer);
+      WriteHeader(*ram, writer);
 
    // Counting with no FLAG filter never has to decode a record.
    if (countOnly && requireFlags == 0 && excludeFlags == 0) {
-      writer.Int(ramntuplescan(*reader, region.c_str(), nullptr));
+      writer.Int(ramntuplescan(*ram, region.c_str(), nullptr));
       writer.EndLine();
       return 0;
    }
 
-   RecordReader records(*reader);
-   QualityBlockReader quals(*reader);
+   RecordReader records(ram->GetReader());
+   QualityBlockReader quals(*ram);
    Long64_t kept = 0;
 
-   ramntuplescan(*reader, region.c_str(), [&](Long64_t row) {
+   ramntuplescan(*ram, region.c_str(), [&](Long64_t row) {
       const auto &rec = records(row);
       const uint16_t flag = rec.GetFLAG();
       if ((flag & requireFlags) != requireFlags || (flag & excludeFlags))
          return;
       kept++;
       if (!countOnly)
-         WriteRecord(rec, quals.Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
+         WriteRecord(*ram, rec, quals.Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
    });
 
    if (countOnly) {
