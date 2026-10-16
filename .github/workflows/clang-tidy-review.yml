@@ -5,6 +5,7 @@ on:
     paths:
       - '**.h'
       - '**.cxx'
+      - '.github/workflows/clang-tidy-review.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -21,52 +22,33 @@ jobs:
       - name: Checkout PR branch
         uses: actions/checkout@v5
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v2.0.7
-        with:
-          version: '20.1.4'
-
-      - name: Install lit
-        run: pip install --disable-pip-version-check --no-input lit
-
+      # clang-tidy takes the include paths from build/compile_commands.json,
+      # so the configure must succeed: it uses the container's gcc, as the
+      # build job does, because ROOT's CMake config needs OpenMP. A failed
+      # configure fails the job instead of reviewing without any headers.
       - name: Run clang-tidy
         uses: ZedThree/clang-tidy-review@v0.21.0
         id: review
         with:
           build_dir: build
-          apt_packages: cmake,libxml2,libxml2-dev,libtinfo-dev,zlib1g-dev,libzstd-dev,libvdt-dev,libtbb-dev,libhts-dev,libomp-dev,wget
+          apt_packages: cmake,libxml2,libxml2-dev,libtinfo-dev,zlib1g-dev,libzstd-dev,libvdt-dev,libtbb-dev,libhts-dev,pkg-config,wget
           split_workflow: true
           config_file: .clang-tidy
           install_commands: |
             wget -q -O root.tar.gz "https://github.com/root-project/root/releases/download/v6-38-06/root_v6.38.06.Linux-ubuntu24.04-x86_64-gcc13.3.tar.gz" &&
             tar -xzf root.tar.gz -C /opt/ &&
             rm root.tar.gz
-          clang_tidy_args: >
-            --extra-arg=-I/github/workspace/inc
-            --extra-arg=-I/opt/root/include
-            --extra-arg=-I/github/workspace/build/test/googletest-prefix/src/googletest/googletest/include
-            --extra-arg=-I/github/workspace/build/benchmark/googlebenchmark-prefix/src/googlebenchmark/include
           cmake_command: >
             bash -x -c '
             source /opt/root/bin/thisroot.sh &&
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_C_COMPILER="$GITHUB_WORKSPACE/llvm/bin/clang"
-            -DCMAKE_CXX_COMPILER="$GITHUB_WORKSPACE/llvm/bin/clang++"
-            -DLLVM_DIR="$GITHUB_WORKSPACE/llvm"
             -DBUILD_SHARED_LIBS=ON
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
             -DRAMTOOLS_BUILD_TESTS=ON
             -DRAMTOOLS_BUILD_TOOLS=ON
             -DRAMTOOLS_BUILD_BENCHMARKS=ON &&
-            cd build &&
-            cmake --build . --target googletest googlebenchmark --parallel $(nproc --all) || true'
+            cmake --build build --target googletest googlebenchmark --parallel $(nproc --all)'
 
       - name: Upload artifacts
         if: always()
         uses: ZedThree/clang-tidy-review/upload@v0.21.0
-
