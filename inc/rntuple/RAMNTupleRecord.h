@@ -120,6 +120,20 @@ struct RAMRefCounts {
    }
 };
 
+/// What a RAM file's METADATA holds, one value per file.
+struct RAMFileMetadata {
+   std::vector<std::string> header_lines; ///< The SAM header, a line per entry, without the newline.
+   std::vector<std::string> rname_refs;   ///< Reference names by refid.
+   std::vector<std::string> rnext_refs;   ///< Mate reference names by refnext, "=" among them.
+   /// Longest reference span of any record, so a region query knows how far
+   /// before the region a read may start.
+   uint32_t max_ref_span = 0;
+   /// Region queries seek only in a sorted file.
+   bool coordinate_sorted = true;
+   std::vector<uint64_t> qual_block_ends; ///< Last row of each quality block.
+   RAMRefCounts counts;                   ///< One entry per reference.
+};
+
 /**
  * \class RAMNTupleRecord
  * \brief Alignment record stored in the ROOT Experimental RNTuple format.
@@ -166,16 +180,14 @@ public:
 
    uint32_t compression_flags;
 
-   // Static reference managers
+   // The state of the file being written; a file being read keeps its own in RAMFile.
    static std::unique_ptr<RAMNTupleRefs> fgRnameRefs;
    static std::unique_ptr<RAMNTupleRefs> fgRnextRefs;
 
-   /// Longest reference span of any alignment in the file, so a region query
-   /// knows how far before the region a read may start. 0 means unrecorded.
+   /// Longest reference span of any alignment in the file.
    static uint32_t fgMaxRefSpan;
 
-   /// Order of the open file; region queries seek only when sorted. Files
-   /// without the field are read as sorted.
+   /// Order of the records written so far.
    static RAMCoordinateOrder fgOrder;
 
    /// Last row of each quality block.
@@ -259,21 +271,15 @@ public:
    static void SetQualBlockEnds(std::vector<uint64_t> ends) { fgQualBlockEnds = std::move(ends); }
    static const std::vector<std::string> &GetHeaderLines() { return fgHeaderLines; }
    static void SetHeaderLines(std::vector<std::string> lines) { fgHeaderLines = std::move(lines); }
-   /// Counts by refid; read from a file, one entry for every reference.
    static const RAMRefCounts &GetRefCounts() { return fgRefCounts; }
    static void SetRefCounts(RAMRefCounts counts) { fgRefCounts = std::move(counts); }
    static void NoteRefCount(int32_t refid, uint16_t flag) { fgRefCounts.Note(refid, flag); }
 
    // File I/O
-   /// Opens the RNTuple and loads METADATA; nullptr, with the reason printed,
-   /// for a file that is not a RAM file or has another format version.
-   static std::unique_ptr<ROOT::RNTupleReader>
-   OpenRAMFile(const std::string &filename, const std::string &ntupleName = "RAM");
-   /// Writes METADATA, the format version and the shared state, into \p file.
+   /// Writes METADATA from the state of the file being written into \p file.
    static void WriteAllRefs(TFile &file);
-   /// Loads METADATA into the shared state; false, with the reason printed,
-   /// when the file has none or another format version.
-   static bool ReadAllRefs(const std::string &filename);
+   /// Writes METADATA, with the format version, into \p file.
+   static void WriteMetadata(TFile &file, const RAMFileMetadata &meta);
 
    // RNTuple model creation
    static std::unique_ptr<ROOT::RNTupleModel> MakeModel();
@@ -284,12 +290,6 @@ public:
 private:
    /// Creates the shared tables on first use without touching their contents.
    static void EnsureTables();
-   static void WriteRefs(TFile &file, const RAMNTupleRefs *refs, const std::string &refname);
-   static void ReadRefs(const std::string &filename, std::unique_ptr<RAMNTupleRefs> &refs, const std::string &refname);
-   static void WriteRnameRefs(TFile &file) { WriteRefs(file, fgRnameRefs.get(), "RnameRefs"); }
-   static void WriteRnextRefs(TFile &file) { WriteRefs(file, fgRnextRefs.get(), "RnextRefs"); }
-   static void ReadRnameRefs(const std::string &filename = "") { ReadRefs(filename, fgRnameRefs, "RnameRefs"); }
-   static void ReadRnextRefs(const std::string &filename = "") { ReadRefs(filename, fgRnextRefs, "RnextRefs"); }
 };
 
 // CIGAR operation codes (from BAM format)

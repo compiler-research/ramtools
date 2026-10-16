@@ -3,8 +3,6 @@
 // Complete implementation of RAM format using RNTuple
 
 #include "rntuple/RAMNTupleRecord.h"
-#include <ROOT/RNTupleReader.hxx>
-#include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleWriteOptions.hxx>
 #include <TError.h>
 #include <TFile.h>
@@ -163,9 +161,9 @@ void RAMNTupleRecord::EnsureTables()
       fgRnextRefs = std::make_unique<RAMNTupleRefs>();
 }
 
-// Resets the per-file state. Only the writers and OpenRAMFile() may call this:
-// RNTuple constructs a record whenever a view or a writer model is created,
-// so the constructor must not.
+// Resets the state of the file being written. Only the converters may call
+// this: RNTuple constructs a record whenever a view or a writer model is
+// created, so the constructor must not.
 void RAMNTupleRecord::InitializeRefs()
 {
    EnsureTables();
@@ -178,35 +176,22 @@ void RAMNTupleRecord::InitializeRefs()
    fgRefCounts = RAMRefCounts{};
 }
 
-// RNTupleReader reports a missing file or RNTuple only by throwing. Checking
-// with TFile first costs more than it saves: opening a TFile starts ROOT's
-// interpreter, about 0.35 s and 125 MB on every open.
-static std::unique_ptr<RNTupleReader> TryOpen(const std::string &ntupleName, const std::string &filename)
-{
-   try {
-      return RNTupleReader::Open(ntupleName, filename);
-   } catch (const std::exception &) {
-      return nullptr;
-   }
-}
-
-std::unique_ptr<RNTupleReader> RAMNTupleRecord::OpenRAMFile(const std::string &filename, const std::string &ntupleName)
-{
-   InitializeRefs();
-
-   auto reader = TryOpen(ntupleName, filename);
-   if (!reader) {
-      ::Error("RAMNTupleRecord::OpenRAMFile", "%s has no RNTuple %s", filename.c_str(), ntupleName.c_str());
-      return nullptr;
-   }
-   if (!ReadAllRefs(filename))
-      return nullptr;
-   return reader;
-}
-
 void RAMNTupleRecord::WriteAllRefs(TFile &file)
 {
-   // Write refs as separate RNTuple in the same file
+   RAMFileMetadata meta;
+   meta.header_lines = fgHeaderLines;
+   meta.rname_refs = fgRnameRefs->GetRefs();
+   meta.rnext_refs = fgRnextRefs->GetRefs();
+   meta.max_ref_span = fgMaxRefSpan;
+   meta.coordinate_sorted = fgOrder.sorted;
+   meta.qual_block_ends = fgQualBlockEnds;
+   meta.counts = fgRefCounts;
+   WriteMetadata(file, meta);
+}
+
+// RAMFile::Open() reads these fields back.
+void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
+{
    if (!file.IsOpen())
       return;
    file.cd();
@@ -215,15 +200,15 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    // rather than in a TList: reading a TList starts ROOT's interpreter.
    auto metaModel = RNTupleModel::Create();
    *metaModel->MakeField<uint32_t>("format_version") = kFormatVersion;
-   *metaModel->MakeField<std::vector<std::string>>("header_lines") = fgHeaderLines;
-   *metaModel->MakeField<std::vector<std::string>>("rname_refs") = fgRnameRefs->GetRefs();
-   *metaModel->MakeField<std::vector<std::string>>("rnext_refs") = fgRnextRefs->GetRefs();
-   *metaModel->MakeField<uint32_t>("max_ref_span") = fgMaxRefSpan;
-   *metaModel->MakeField<bool>("coordinate_sorted") = fgOrder.sorted;
-   *metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends") = fgQualBlockEnds;
+   *metaModel->MakeField<std::vector<std::string>>("header_lines") = meta.header_lines;
+   *metaModel->MakeField<std::vector<std::string>>("rname_refs") = meta.rname_refs;
+   *metaModel->MakeField<std::vector<std::string>>("rnext_refs") = meta.rnext_refs;
+   *metaModel->MakeField<uint32_t>("max_ref_span") = meta.max_ref_span;
+   *metaModel->MakeField<bool>("coordinate_sorted") = meta.coordinate_sorted;
+   *metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends") = meta.qual_block_ends;
    // An entry for every reference, also those without records.
-   RAMRefCounts counts = fgRefCounts;
-   counts.Resize(fgRnameRefs->Size());
+   RAMRefCounts counts = meta.counts;
+   counts.Resize(meta.rname_refs.size());
    *metaModel->MakeField<std::vector<uint64_t>>("ref_mapped") = counts.mapped;
    *metaModel->MakeField<std::vector<uint64_t>>("ref_unmapped") = counts.unmapped;
    *metaModel->MakeField<uint64_t>("unplaced") = counts.unplaced;
@@ -233,40 +218,6 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
 
    auto metaWriter = RNTupleWriter::Append(std::move(metaModel), "METADATA", file, writeOptions);
    metaWriter->Fill();
-}
-
-bool RAMNTupleRecord::ReadAllRefs(const std::string &filename)
-{
-   auto reader = TryOpen("METADATA", filename);
-   if (!reader || reader->GetNEntries() == 0) {
-      ::Error("RAMNTupleRecord::OpenRAMFile", "%s has no METADATA; convert the input again with this RAMTools",
-              filename.c_str());
-      return false;
-   }
-   if (reader->GetDescriptor().FindFieldId("format_version") == ROOT::kInvalidDescriptorId) {
-      ::Error("RAMNTupleRecord::OpenRAMFile",
-              "%s was written by RAMTools 0.1.0 or earlier; convert the input again with this RAMTools",
-              filename.c_str());
-      return false;
-   }
-   const uint32_t version = reader->GetView<uint32_t>("format_version")(0);
-   if (version != kFormatVersion) {
-      ::Error("RAMNTupleRecord::OpenRAMFile",
-              "%s has RAM format version %u and this RAMTools reads version %u; convert the input again with it",
-              filename.c_str(), version, kFormatVersion);
-      return false;
-   }
-
-   fgHeaderLines = reader->GetView<std::vector<std::string>>("header_lines")(0);
-   fgRnameRefs->SetRefs(reader->GetView<std::vector<std::string>>("rname_refs")(0));
-   fgRnextRefs->SetRefs(reader->GetView<std::vector<std::string>>("rnext_refs")(0));
-   fgMaxRefSpan = reader->GetView<uint32_t>("max_ref_span")(0);
-   fgOrder.sorted = reader->GetView<bool>("coordinate_sorted")(0);
-   fgQualBlockEnds = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
-   fgRefCounts.mapped = reader->GetView<std::vector<uint64_t>>("ref_mapped")(0);
-   fgRefCounts.unmapped = reader->GetView<std::vector<uint64_t>>("ref_unmapped")(0);
-   fgRefCounts.unplaced = reader->GetView<uint64_t>("unplaced")(0);
-   return true;
 }
 
 void RAMNTupleRecord::SetRNAME(const std::string &rname)

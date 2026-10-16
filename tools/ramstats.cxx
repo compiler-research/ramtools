@@ -2,6 +2,7 @@
 // `ramstats idxstats file.ram` prints what `samtools idxstats` prints for the
 // same reads, from counts the converter stored, without reading a record.
 
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <cstddef>
@@ -66,16 +67,17 @@ int main(int argc, char *argv[])
       return 1;
    }
 
-   auto reader = RAMNTupleRecord::OpenRAMFile(args[1]);
-   if (!reader) {
+   const auto file = RAMFile::Open(args[1]);
+   if (!file) {
       std::cerr << "ramstats: cannot open " << args[1] << "\n";
       return 1;
    }
 
    // References without an @SQ line, which samtools would not read, get length 0.
-   const auto lengths = SequenceLengths(RAMNTupleRecord::GetHeaderLines());
-   const RAMRefCounts &counts = RAMNTupleRecord::GetRefCounts();
-   const std::vector<std::string> names = RAMNTupleRecord::GetRnameRefs()->GetRefs();
+   const RAMFileMetadata &meta = file->GetMetadata();
+   const auto lengths = SequenceLengths(meta.header_lines);
+   const RAMRefCounts &counts = meta.counts;
+   const std::vector<std::string> &names = meta.rname_refs;
    std::string out{};
    for (size_t i = 0; i < names.size(); i++) {
       const auto length = lengths.find(names[i]);

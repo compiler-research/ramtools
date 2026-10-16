@@ -50,6 +50,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         inc/ramcore/RAMNTupleView.h
     SOURCES
         src/rntuple/RAMNTupleRecord.cxx
+        src/rntuple/RAMFile.cxx
         src/ramcore/SamParser.cxx
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx

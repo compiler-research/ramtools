@@ -4,6 +4,7 @@
 // Quality scores compressed with fqzcomp in blocks of records. The last record
 // of a block carries it in "qualblock"; METADATA lists the row each block ends on.
 
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/REntry.hxx>
@@ -65,10 +66,10 @@ private:
 };
 
 /// Returns QUAL as SAM text, decoding one block at a time and decoding ahead on
-/// other threads during a scan. Needs the metadata loaded by OpenRAMFile().
+/// other threads during a scan.
 class QualityBlockReader {
 public:
-   explicit QualityBlockReader(ROOT::RNTupleReader &reader);
+   explicit QualityBlockReader(RAMFile &file);
 
    std::string Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row);
 
@@ -93,6 +94,7 @@ private:
 
    ROOT::RNTupleView<uint32_t> m_flagsView;
    std::optional<ROOT::RNTupleView<std::vector<std::uint8_t>>> m_view;
+   std::vector<uint64_t> m_ends; ///< Last row of each block.
    std::size_t m_readAhead;
    std::size_t m_block = kNoBlock;
    std::size_t m_run = 0; ///< Consecutive blocks read so far.

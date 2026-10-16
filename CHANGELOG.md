@@ -34,12 +34,18 @@ the README for what that means before 1.0.
   records of chromosome 11, `-H` goes from 0.86 s and 50 MB to 0.35 s and 6 MB,
   a 1 kb region with `-h` from 0.86 s and 90 MB to 0.40 s and 47 MB, and the
   whole file with `-h` from 6.2 s and 96 MB to 5.3 s and 55 MB ([#101]).
+- Library: `RAMFile::Open()` opens a RAM file and keeps its reference names
+  and METADATA in the object it returns instead of in static members, so
+  several files can be open in one process. `ramntuplescan()` and
+  `QualityBlockReader` take that object ([#105]).
 
 ### Removed
 
 - Reading files written by 0.1.0 and earlier, and with them SEQ in the 4-bit
   packing: `kSeqRaw`, `RAMNTupleUtils::EncodeSequence` and
   `RAMNTupleUtils::DecodeSequence` ([#101]).
+- `RAMNTupleRecord::OpenRAMFile()` and `ReadAllRefs()`; open files with
+  `RAMFile::Open()` ([#105]).
 
 ## [0.1.0] - 2026-10-14
 
@@ -183,3 +189,4 @@ it stay readable by every later release.
 [#99]: https://github.com/compiler-research/ramtools/pull/99
 [#101]: https://github.com/compiler-research/ramtools/pull/101
 [#102]: https://github.com/compiler-research/ramtools/pull/102
+[#105]: https://github.com/compiler-research/ramtools/pull/105

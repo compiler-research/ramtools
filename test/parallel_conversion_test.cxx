@@ -2,6 +2,7 @@
 #include "ramcore/QualityBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
@@ -66,28 +67,32 @@ struct Dump {
    uint32_t max_span = 0;
    std::vector<std::string> rname_refs;
    RAMRefCounts counts;
+   std::vector<uint64_t> qual_block_ends;
 };
 
 Dump ReadBack(const char *file)
 {
    Dump d;
-   auto reader = RAMNTupleRecord::OpenRAMFile(file);
-   EXPECT_NE(reader, nullptr) << file;
-   if (!reader)
+   auto ram = RAMFile::Open(file);
+   EXPECT_NE(ram, nullptr) << file;
+   if (!ram)
       return d;
-   d.header = RAMNTupleRecord::GetHeaderLines();
-   d.sorted = RAMNTupleRecord::IsCoordinateSorted();
-   d.max_span = RAMNTupleRecord::GetMaxRefSpan();
-   d.rname_refs = RAMNTupleRecord::GetRnameRefs()->GetRefs();
-   d.counts = RAMNTupleRecord::GetRefCounts();
-   auto view = reader->GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*reader);
-   for (auto i : reader->GetEntryRange()) {
+   const RAMFileMetadata &meta = ram->GetMetadata();
+   d.header = meta.header_lines;
+   d.sorted = meta.coordinate_sorted;
+   d.max_span = meta.max_ref_span;
+   d.rname_refs = meta.rname_refs;
+   d.counts = meta.counts;
+   d.qual_block_ends = meta.qual_block_ends;
+   ROOT::RNTupleReader &reader = ram->GetReader();
+   auto view = reader.GetView<RAMNTupleRecord>("record");
+   QualityBlockReader quals(*ram);
+   for (auto i : reader.GetEntryRange()) {
       const RAMNTupleRecord &r = view(i);
-      std::string line = r.GetQNAME() + "\t" + std::to_string(r.GetFLAG()) + "\t" + r.GetRNAME() + "\t" +
+      std::string line = r.GetQNAME() + "\t" + std::to_string(r.GetFLAG()) + "\t" + ram->GetRname(r.GetREFID()) + "\t" +
                          std::to_string(r.GetPOS()) + "\t" + std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" +
-                         r.GetRNEXT() + "\t" + std::to_string(r.GetPNEXT()) + "\t" + std::to_string(r.GetTLEN()) +
-                         "\t" + r.GetSEQ() + "\t" + quals.Get(r, i);
+                         ram->GetRnext(r.GetREFNEXT()) + "\t" + std::to_string(r.GetPNEXT()) + "\t" +
+                         std::to_string(r.GetTLEN()) + "\t" + r.GetSEQ() + "\t" + quals.Get(r, i);
       for (const auto &t : r.GetTags())
          line += "\t" + t;
       d.lines.push_back(line);
@@ -130,7 +135,7 @@ TEST_F(ParallelConversionTest, FqzcompOnSeveralThreadsKeepsEveryQuality)
                   /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock, /*threads=*/3,
                   kTinyBlock);
    const Dump fqz = ReadBack(kPar);
-   EXPECT_GT(RAMNTupleRecord::GetQualBlockEnds().size(), 10U) << "many input blocks, so many quality blocks";
+   EXPECT_GT(fqz.qual_block_ends.size(), 10U) << "many input blocks, so many quality blocks";
 
    ASSERT_EQ(fqz.lines.size(), 200U);
    EXPECT_EQ(fqz.lines, plain.lines) << "every quality comes back from its block, on its row";

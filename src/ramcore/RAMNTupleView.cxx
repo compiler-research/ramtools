@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -16,7 +17,7 @@
 #include <TStopwatch.h>
 #include <TString.h>
 
-#include "rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMFile.h"
 
 namespace {
 
@@ -50,15 +51,6 @@ int computeRefSpan(const std::vector<uint32_t> &cigarOps)
    // A placed record with no CIGAR still occupies the base it sits on; htslib's
    // bam_endpos says the same, so region queries agree with samtools.
    return span > 0 ? span : 1;
-}
-
-int resolveRefId(const char *name)
-{
-   auto refs = RAMNTupleRecord::GetRnameRefs();
-   if (!refs)
-      return -1;
-
-   return refs->FindRefId(name);
 }
 
 bool parseRegion(const std::string &region, TString &rname, Int_t &start, Int_t &end)
@@ -127,8 +119,9 @@ static Long64_t firstRowAtOrAfter(ROOT::RNTupleView<int32_t> &refidView, ROOT::R
 }
 
 // NOLINTNEXTLINE(misc-use-internal-linkage)
-Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std::function<void(Long64_t)> &on_row)
+Long64_t ramntuplescan(RAMFile &file, const char *query, const std::function<void(Long64_t)> &on_row)
 {
+   ROOT::RNTupleReader &reader = file.GetReader();
    const std::string region = query ? query : "";
    const auto total = static_cast<Long64_t>(reader.GetNEntries());
 
@@ -147,13 +140,13 @@ Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std
 
    // Try the whole string as a reference name before reading its last colon as a
    // coordinate separator, the same order samtools uses.
-   int refid = resolveRefId(region.c_str());
+   int refid = file.FindRefId(region);
    if (refid < 0) {
       if (!parseRegion(region, rname, rs, re)) {
          std::cerr << "Invalid region format. Use rname[:start[-end]]\n";
          return 0;
       }
-      refid = resolveRefId(rname.Data());
+      refid = file.FindRefId(rname.Data());
       if (refid < 0) {
          std::cerr << "Reference '" << rname.Data() << "' not found\n";
          return 0;
@@ -165,12 +158,12 @@ Long64_t ramntuplescan(ROOT::RNTupleReader &reader, const char *query, const std
    auto cigarView = reader.GetView<std::vector<uint32_t>>("record.cigar");
 
    // Back off by the longest span so a read that starts before the region and
-   // reaches into it is not stepped over; a span of 0 means the file predates
-   // that field and the scan starts at the reference's first record.
-   const bool sorted = RAMNTupleRecord::IsCoordinateSorted();
+   // reaches into it is not stepped over; a span of 0 means the file has no
+   // placed record with a CIGAR and the scan starts at the reference's first record.
+   const bool sorted = file.GetMetadata().coordinate_sorted;
    Long64_t start = 0;
    if (sorted) {
-      const Int_t maxSpan = static_cast<Int_t>(RAMNTupleRecord::GetMaxRefSpan());
+      const auto maxSpan = static_cast<Int_t>(file.GetMetadata().max_ref_span);
       const Int_t seekPos = (maxSpan > 0 && rs > maxSpan) ? rs - maxSpan : 0;
       start = firstRowAtOrAfter(refidView, posView, total, refid, seekPos);
    }
@@ -211,13 +204,13 @@ Long64_t ramntupleview(const char *file, const char *query, const RAMNTupleViewO
    TStopwatch stopwatch;
    stopwatch.Start();
 
-   auto reader = RAMNTupleRecord::OpenRAMFile(file);
-   if (!reader) {
+   auto ram = RAMFile::Open(file);
+   if (!ram) {
       std::cerr << "ramntupleview: failed to open file " << file << std::endl;
       return 0;
    }
 
-   const Long64_t count = ramntuplescan(*reader, query, nullptr);
+   const Long64_t count = ramntuplescan(*ram, query, nullptr);
 
    stopwatch.Print();
    std::cout << "Found " << count << " records in region " << (query ? query : "") << std::endl;

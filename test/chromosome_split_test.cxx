@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include "generate_sam_benchmark.h"
 #include <ROOT/RNTupleReader.hxx>
@@ -69,14 +70,14 @@ TEST_F(ChromosomeSplitTest, CorrectChromosomeAssignment)
          size_t end = filename.find(".root");
          std::string expectedChr = filename.substr(pos + 11, end - pos - 11);
 
-         auto reader = ROOT::RNTupleReader::Open("RAM", filename);
-         ASSERT_NE(reader, nullptr);
+         auto file = RAMFile::Open(filename);
+         ASSERT_NE(file, nullptr);
 
-         auto viewRecord = reader->GetView<RAMNTupleRecord>("record");
+         auto viewRecord = file->GetReader().GetView<RAMNTupleRecord>("record");
 
-         for (auto i : reader->GetEntryRange()) {
+         for (auto i : file->GetReader().GetEntryRange()) {
             const auto &record = viewRecord(i);
-            std::string actualChr = record.GetRNAME();
+            std::string actualChr = file->GetRname(record.GetREFID());
             EXPECT_EQ(expectedChr, actualChr) << "Wrong chromosome in " << filename << " at entry " << i;
          }
       }
@@ -136,9 +137,9 @@ TEST_F(ChromosomeSplitTest, SplitFilesKeepTheLongestSpan)
    }
    samtoramntuple_split_by_chromosome(spanSam, "test_split", 505, 1);
 
-   auto reader = RAMNTupleRecord::OpenRAMFile("test_split_chr1.root");
-   ASSERT_NE(reader, nullptr);
-   EXPECT_GE(RAMNTupleRecord::GetMaxRefSpan(), 200010U);
+   const auto file = RAMFile::Open("test_split_chr1.root");
+   ASSERT_NE(file, nullptr);
+   EXPECT_GE(file->GetMetadata().max_ref_span, 200010U);
    EXPECT_EQ(ramntupleview("test_split_chr1.root", "chr1:200000-201000"), 1) << "the spanning read reaches the region";
 
    std::remove(spanSam);
@@ -161,14 +162,16 @@ TEST_F(ChromosomeSplitTest, SplitFilesCountTheirOwnRecords)
    samtoramntuple_split_by_chromosome(countSam, /*output_prefix=*/"test_split", /*compression_algorithm=*/505,
                                       /*quality_policy=*/1);
 
-   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_split_chr1.root"), nullptr);
-   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, (std::vector<uint64_t>{2, 0}));
-   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unmapped, (std::vector<uint64_t>{1, 0}));
-   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unplaced, 0U) << "-split writes no file for unplaced records";
+   const auto chr1 = RAMFile::Open("test_split_chr1.root");
+   ASSERT_NE(chr1, nullptr);
+   EXPECT_EQ(chr1->GetMetadata().counts.mapped, (std::vector<uint64_t>{2, 0}));
+   EXPECT_EQ(chr1->GetMetadata().counts.unmapped, (std::vector<uint64_t>{1, 0}));
+   EXPECT_EQ(chr1->GetMetadata().counts.unplaced, 0U) << "-split writes no file for unplaced records";
 
-   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_split_chr2.root"), nullptr);
-   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, (std::vector<uint64_t>{0, 1}));
-   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().unmapped, (std::vector<uint64_t>{0, 0}));
+   const auto chr2 = RAMFile::Open("test_split_chr2.root");
+   ASSERT_NE(chr2, nullptr);
+   EXPECT_EQ(chr2->GetMetadata().counts.mapped, (std::vector<uint64_t>{0, 1}));
+   EXPECT_EQ(chr2->GetMetadata().counts.unmapped, (std::vector<uint64_t>{0, 0}));
 
    std::remove(countSam);
 }
