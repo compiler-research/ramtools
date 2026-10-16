@@ -27,6 +27,7 @@ uint32_t RAMNTupleRecord::fgMaxRefSpan = 0;
 RAMCoordinateOrder RAMNTupleRecord::fgOrder{};
 std::vector<uint64_t> RAMNTupleRecord::fgQualBlockEnds{};
 std::vector<std::string> RAMNTupleRecord::fgHeaderLines{};
+RAMRefCounts RAMNTupleRecord::fgRefCounts{};
 
 static constexpr std::array<char, 16> kCodeToSeq{'=', 'A', 'C', 'M', 'G', 'R', 'S', 'V',
                                                  'T', 'W', 'Y', 'H', 'K', 'D', 'B', 'N'};
@@ -168,10 +169,13 @@ void RAMNTupleRecord::EnsureTables()
 void RAMNTupleRecord::InitializeRefs()
 {
    EnsureTables();
+   fgRnameRefs->Clear();
+   fgRnextRefs->Clear();
    fgMaxRefSpan = 0;
    fgOrder = RAMCoordinateOrder{};
    fgQualBlockEnds.clear();
    fgHeaderLines.clear();
+   fgRefCounts = RAMRefCounts{};
 }
 
 // RNTupleReader reports a missing file or RNTuple only by throwing. Checking
@@ -217,6 +221,12 @@ void RAMNTupleRecord::WriteAllRefs(TFile &file)
    *metaModel->MakeField<uint32_t>("max_ref_span") = fgMaxRefSpan;
    *metaModel->MakeField<bool>("coordinate_sorted") = fgOrder.sorted;
    *metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends") = fgQualBlockEnds;
+   // An entry for every reference, also those without records.
+   RAMRefCounts counts = fgRefCounts;
+   counts.Resize(fgRnameRefs->Size());
+   *metaModel->MakeField<std::vector<uint64_t>>("ref_mapped") = counts.mapped;
+   *metaModel->MakeField<std::vector<uint64_t>>("ref_unmapped") = counts.unmapped;
+   *metaModel->MakeField<uint64_t>("unplaced") = counts.unplaced;
 
    RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);
@@ -253,6 +263,9 @@ bool RAMNTupleRecord::ReadAllRefs(const std::string &filename)
    fgMaxRefSpan = reader->GetView<uint32_t>("max_ref_span")(0);
    fgOrder.sorted = reader->GetView<bool>("coordinate_sorted")(0);
    fgQualBlockEnds = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
+   fgRefCounts.mapped = reader->GetView<std::vector<uint64_t>>("ref_mapped")(0);
+   fgRefCounts.unmapped = reader->GetView<std::vector<uint64_t>>("ref_unmapped")(0);
+   fgRefCounts.unplaced = reader->GetView<uint64_t>("unplaced")(0);
    return true;
 }
 

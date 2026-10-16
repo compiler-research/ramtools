@@ -101,8 +101,8 @@ Every pull request runs four checks:
 ## One rule about the shared state
 
 `RAMNTupleRecord` keeps the reference-name tables, the longest span, the sort
-flag, the quality block ends and the SAM header as static members that
-describe the file currently open or being written. `InitializeRefs()` resets
+flag, the quality block ends, the SAM header and the records per reference as
+static members that describe the file currently open or being written. `InitializeRefs()` resets
 them, and only the converters and `OpenRAMFile()` may call it. RNTuple
 constructs a record whenever a view or a writer model is created, so the
 constructor must never touch that state; a reset there once made an unsorted

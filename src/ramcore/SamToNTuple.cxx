@@ -80,6 +80,7 @@ struct ChromosomeWriter {
    int64_t rows = 0;
    int32_t last_pos = -1;
    bool sorted = true;
+   RAMRefCounts counts;
 };
 
 } // namespace
@@ -137,6 +138,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       rec.SetREFNEXT(sam_record.rnext);
 
       RAMNTupleRecord::NoteRefSpan(rec.GetRefSpan());
+      cw.counts.Note(rec.refid, rec.flag);
       cw.out->Add();
       cw.rows++;
 
@@ -163,6 +165,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       cw.writer.reset();
 
       RAMNTupleRecord::SetCoordinateSorted(cw.sorted);
+      RAMNTupleRecord::SetRefCounts(std::move(cw.counts));
       if (!cw.sorted)
          fprintf(stderr, "%s: %s is not in coordinate order; region queries will read it in full.\n", datafile,
                  chr.c_str());
@@ -185,6 +188,7 @@ struct BlockOrder {
    int32_t first_refid = -1;
    int32_t first_pos = -1;
    uint32_t max_span = 0;
+   RAMRefCounts counts;
 
    void Note(int32_t refid, int32_t pos)
    {
@@ -200,9 +204,11 @@ struct BlockOrder {
 struct FileOrder {
    RAMCoordinateOrder check;
    uint32_t max_span = 0;
+   RAMRefCounts counts;
 
    void Add(const BlockOrder &b)
    {
+      counts.Add(b.counts);
       if (!b.check.sorted)
          check.sorted = false;
       if (b.has_placed) {
@@ -445,6 +451,7 @@ BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_
 
       order.max_span = std::max(order.max_span, rec.GetRefSpan());
       order.Note(rec.refid, rec.pos);
+      order.counts.Note(rec.refid, rec.flag);
       out.Add();
       records++;
    }
@@ -633,6 +640,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    RAMNTupleRecord::SetCoordinateSorted(progress.order.check.sorted);
    RAMNTupleRecord::NoteRefSpan(progress.order.max_span);
    RAMNTupleRecord::SetQualBlockEnds(std::move(progress.qual_block_ends));
+   RAMNTupleRecord::SetRefCounts(std::move(progress.order.counts));
    if (!progress.order.check.sorted)
       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);
    RAMNTupleRecord::WriteAllRefs(*rootFile);

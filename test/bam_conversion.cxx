@@ -3,6 +3,7 @@
 #include "generate_sam_benchmark.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
+#include "rntuple/RAMNTupleRecord.h"
 
 #include <gtest/gtest.h>
 
@@ -18,6 +19,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 const RAMNTupleViewOpts opts = {true, false, ""};
@@ -258,6 +260,22 @@ TEST_F(BamToNTupleTest, RichBAMCoversAllTagTypes)
    auto reader = ROOT::RNTupleReader::Open("RAM", "test_rich.ram");
    ASSERT_NE(reader, nullptr);
    EXPECT_EQ(reader->GetNEntries(), 1005);
+}
+
+// As samtools idxstats counts them: every record of the rich BAM is on chr1
+// except read_unmapped, which has no reference.
+TEST_F(BamToNTupleTest, RecordsAreCountedPerReference)
+{
+   GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
+
+   bamtoramntuple(/*bamfile=*/"test_rich.bam", /*treefile=*/"test_rich.ram", /*split=*/false, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0U);
+
+   ASSERT_NE(RAMNTupleRecord::OpenRAMFile("test_rich.ram"), nullptr);
+   const RAMRefCounts &counts = RAMNTupleRecord::GetRefCounts();
+   EXPECT_EQ(counts.mapped, (std::vector<uint64_t>{1004, 0}));
+   EXPECT_EQ(counts.unmapped, (std::vector<uint64_t>{0, 0}));
+   EXPECT_EQ(counts.unplaced, 1U);
 }
 
 TEST_F(BamToNTupleTest, InvalidFileReturnsGracefully)

@@ -17,6 +17,7 @@ The tools:
 | `bamtoramntuple` | converts a BAM file to RAM |
 | `ramdump` | writes a RAM file, or a region of it, out as SAM; takes the `samtools view` options |
 | `ramntupleview` | counts the records in a region and reports the query time |
+| `ramstats` | `idxstats`: the records per reference, as `samtools idxstats` prints them |
 
 ## Installation
 
@@ -164,6 +165,19 @@ of these FLAG bits) and `-o FILE`. For example, primary alignments only:
 ./build/tools/ramntupleview reads.ram chr1:10150-10300
 ```
 
+## Records per reference
+
+`ramstats idxstats` prints what `samtools idxstats` prints: a line per
+reference with its name, length, mapped and unmapped records, then `*` and the
+records with no reference.
+
+```bash
+./build/tools/ramstats idxstats reads.ram
+```
+
+The converters store these counts in the file, so it reads no record and takes
+the same time for any file. Unlike samtools, it does not need a sorted input.
+
 ## Checking a RAM file against samtools
 
 A RAM file holds everything the input did, so it can be written back out and
@@ -173,10 +187,11 @@ compared:
 ./build/tools/ramdump -h reads.ram > roundtrip.sam
 samtools view -c reads.bam chr1:10150-10300
 ./build/tools/ramdump -c reads.ram chr1:10150-10300
+diff <(samtools idxstats reads.bam) <(./build/tools/ramstats idxstats reads.ram)
 ```
 
-The two counts agree, and for a SAM input `roundtrip.sam` is the input byte for
-byte.
+The two counts agree, the `diff` prints nothing, and for a SAM input
+`roundtrip.sam` is the input byte for byte.
 
 ## Benchmarks
 

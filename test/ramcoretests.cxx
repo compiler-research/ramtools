@@ -393,18 +393,44 @@ TEST_F(ramcoreTest, ConstructingARecordKeepsTheOpenFileState)
       EXPECT_EQ(blocks, std::vector<uint64_t>{1}) << "both records are in one quality block";
       const std::vector<std::string> header = {"@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:1000000"};
       EXPECT_EQ(RAMNTupleRecord::GetHeaderLines(), header);
+      EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, std::vector<uint64_t>{2});
       auto view = reader->GetView<RAMNTupleRecord>("record");
       const RAMNTupleRecord another;
       EXPECT_EQ(RAMNTupleRecord::GetMaxRefSpan(), span);
       EXPECT_TRUE(RAMNTupleRecord::IsCoordinateSorted());
       EXPECT_EQ(RAMNTupleRecord::GetQualBlockEnds(), blocks);
       EXPECT_EQ(RAMNTupleRecord::GetHeaderLines(), header);
+      EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, std::vector<uint64_t>{2});
    }
 
    std::remove(unsortedSam);
    std::remove(unsortedFile);
    std::remove(sortedSam);
    std::remove(sortedFile);
+}
+
+// A second conversion in the same process used to keep the first file's
+// reference names, and wrote references the second file does not have.
+TEST_F(ramcoreTest, EachConversionStartsWithItsOwnReferences)
+{
+   const char *firstSam = "test_refs_first.sam";
+   const char *firstFile = "test_refs_first.root";
+   const char *secondSam = "test_refs_second.sam";
+   const char *secondFile = "test_refs_second.root";
+   std::ofstream(firstSam) << "@SQ\tSN:chrA\tLN:1000\na\t0\tchrA\t10\t60\t4M\t*\t0\t0\tACGT\t*\n";
+   std::ofstream(secondSam)
+      << "@SQ\tSN:chr1\tLN:1000\n@SQ\tSN:chr2\tLN:1000\nb\t0\tchr2\t10\t60\t4M\t*\t0\t0\tACGT\t*\n";
+   samtoramntuple(firstSam, firstFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   samtoramntuple(secondSam, secondFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
+
+   ASSERT_NE(RAMNTupleRecord::OpenRAMFile(secondFile), nullptr);
+   EXPECT_EQ(RAMNTupleRecord::GetRnameRefs()->GetRefs(), (std::vector<std::string>{"chr1", "chr2"}));
+   EXPECT_EQ(RAMNTupleRecord::GetRefCounts().mapped, (std::vector<uint64_t>{0, 1}));
+
+   std::remove(firstSam);
+   std::remove(firstFile);
+   std::remove(secondSam);
+   std::remove(secondFile);
 }
 
 // Until 1.0 a reader opens only files of its own format version, and says why
