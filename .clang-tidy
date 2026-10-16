@@ -14,6 +14,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-unchecked-optional-access,
+  -llvm-header-guard,
   -misc-const-correctness,
   -misc-unused-parameters,
   -misc-non-private-member-variables-in-classes,
