@@ -17,7 +17,8 @@
 // then RG, then NM. The order also says which typed tags the record has.
 
 /// The typed tags, in the order of RAMNTupleRecord's tag_ members.
-inline constexpr std::array<const char *, 6> kRAMTypedTags = {"NM", "AS", "XS", "MQ", "RG", "PG"};
+inline constexpr std::array<const char *, 10> kRAMTypedTags = {"NM", "AS", "XS", "MQ", "RG",
+                                                               "PG", "MD", "MC", "SA", "XA"};
 /// Marks a text tag in a tag order.
 inline constexpr const char *kRAMTextTag = "**";
 
@@ -76,6 +77,8 @@ public:
 private:
    /// Per order, the index into kRAMTypedTags of each tag, or -1 for text.
    std::vector<std::vector<int8_t>> m_orders;
+   /// "\tNM:i:" and the rest, by index into kRAMTypedTags.
+   std::array<std::string, kRAMTypedTags.size()> m_prefixes;
    std::vector<std::string> m_rg;
    std::vector<std::string> m_pg;
 };

@@ -644,13 +644,15 @@ TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
 {
    const std::vector<std::vector<std::string>> inputs = {
       {"MC:Z:150M", "PG:Z:MarkDuplicates", "MQ:i:60", "AS:i:148", "XS:i:0", "MD:Z:150", "NM:i:0", "RG:Z:lane1"},
-      {"RG:Z:lane2", "AS:i:-3", "pa:f:0.5"}, // no NM; an unknown tag
+      // no NM; an unknown tag
+      {"RG:Z:lane2", "SA:Z:chr2,500,+,100M50S,60,0;", "AS:i:-3", "pa:f:0.5", "XA:Z:chr1,+100,150M,0;"},
       {},
       {"NM:i:007", "AS:i:+5", "XS:i:4294967295", "MQ:i:-0"},                 // not written back the same as numbers
-      {"NM:Z:x", "RG:i:5"},                                                  // known tags with another type
+      {"NM:Z:x", "RG:i:5", "MD:i:5", "XA:A:Q"},                              // known tags with another type
       {"NM:i:1", "NM:i:2", "RG:Z:", "RG:Z:lane1"},                           // second copies; an empty value
       {"NM", "NM:i", "NM-i:1", "NM:i-1"},                                    // not "TG:T:value"
       {"NM:i:", "AS:i:5x", "XS:i:99999999999999999999", "MQ:i:-2147483649"}, // not an int32
+      {"MD:Z:1", "MD:Z:2", "SA:Z:"},                                         // the same for a string tag
    };
    RAMTagTables tables;
    RAMTagWriter writer(tables);
@@ -661,17 +663,30 @@ TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
       records.push_back(rec);
    }
 
-   EXPECT_EQ(records[0].tags, (std::vector<std::string>{"MC:Z:150M", "MD:Z:150"}));
+   EXPECT_TRUE(records[0].tags.empty());
    EXPECT_EQ(records[0].tag_mq, 60);
    EXPECT_EQ(records[0].tag_as, 148);
+   EXPECT_EQ(records[0].tag_md, "150");
+   EXPECT_EQ(records[0].tag_mc, "150M");
    EXPECT_EQ(records[1].tags, std::vector<std::string>{"pa:f:0.5"});
    EXPECT_EQ(records[1].tag_as, -3);
+   EXPECT_EQ(records[1].tag_sa, "chr2,500,+,100M50S,60,0;");
+   EXPECT_EQ(records[1].tag_xa, "chr1,+100,150M,0;");
    EXPECT_EQ(records[3].tags, inputs[3]);
    EXPECT_EQ(records[4].tags, inputs[4]);
    EXPECT_EQ(records[5].tags, (std::vector<std::string>{"NM:i:2", "RG:Z:lane1"}));
    EXPECT_EQ(records[5].tag_nm, 1);
    EXPECT_EQ(records[6].tags, inputs[6]);
    EXPECT_EQ(records[7].tags, inputs[7]);
+   EXPECT_EQ(records[8].tags, std::vector<std::string>{"MD:Z:2"});
+   EXPECT_EQ(records[8].tag_md, "1");
+
+   // A record the converter fills again keeps nothing of the one before.
+   RAMNTupleRecord reused;
+   writer.Split(inputs[0], reused);
+   writer.Split(inputs[2], reused);
+   EXPECT_EQ(reused.tag_mq, 0);
+   EXPECT_EQ(reused.tag_md, "");
 
    RAMFileMetadata meta;
    tables.Store(meta);

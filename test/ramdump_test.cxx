@@ -126,10 +126,11 @@ TEST_F(RamdumpTest, TagsComeBackAsTheyWere)
    std::string records{};
    records += "t1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\tMC:Z:4M\tPG:Z:MarkDuplicates\tMQ:i:60\tAS:i:4\t"
               "XS:i:0\tMD:Z:4\tNM:i:0\tRG:Z:lane1\n";
-   records += "t2\t0\tchr1\t110\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:lane2\tAS:i:-3\tpa:f:0.5\n";
+   records += "t2\t0\tchr1\t110\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:lane2\tSA:Z:chr2,500,+,2M2S,60,0;\tAS:i:-3\t"
+              "pa:f:0.5\tXA:Z:chr1,+300,4M,0;\n";
    records += "t3\t0\tchr1\t120\t60\t4M\t*\t0\t0\tACGT\tIIII\n";
-   records += "t4\t0\tchr1\t130\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:007\tXS:i:4294967295\tNM:Z:x\tRG:i:5\n";
-   records += "t5\t0\tchr1\t140\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:1\tNM:i:2\tRG:Z:\tRG:Z:lane1\n";
+   records += "t4\t0\tchr1\t130\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:007\tXS:i:4294967295\tNM:Z:x\tRG:i:5\tMD:i:4\n";
+   records += "t5\t0\tchr1\t140\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:1\tNM:i:2\tRG:Z:\tRG:Z:lane1\tMD:Z:4\tMD:Z:3A0\n";
    std::ofstream(sam) << Header() << records;
    ASSERT_EQ(Quiet(std::string(SAMTORAMNTUPLE_BIN) + " " + sam + " " + ram + " -threads 2"), 0);
    EXPECT_EQ(Output(Command("-h", ram, "")), Header() + records);

@@ -48,12 +48,13 @@ the README for what that means before 1.0.
   reference tables and the METADATA values, in their own objects instead of in
   static members of `RAMNTupleRecord`, so several conversions can run in one
   process at once. Before, two at once mixed their reference names ([#107]).
-- The tags NM, AS, XS, MQ, RG and PG are stored in columns of their own instead
-  of as text, RG and PG as ids into a dictionary in METADATA. The other tags
-  stay text, and `ramdump -h` still reproduces the input byte for byte. On chr20
-  of NA12878 at 30x the file is 7.3% smaller (622.5 to 576.8 MB), conversion
-  takes 5 to 13% less CPU, and dumps take the same time. The format version
-  becomes 4, and files written before must be converted again ([#111]).
+- The tags NM, AS, XS, MQ, RG, PG, MD, MC, SA and XA are stored in columns of
+  their own instead of as text, RG and PG as ids into a dictionary in METADATA.
+  The other tags stay text, and `ramdump -h` still reproduces the input byte for
+  byte. On chr20 of NA12878 at 30x the file is 9.5% smaller (622.5 to
+  563.1 MB), conversion takes 5 to 13% less CPU, and `ramdump -h` 8% less. The
+  format version becomes 5, and files written before must be converted again
+  ([#111], [#112]).
 
 ### Removed
 
@@ -220,3 +221,4 @@ it stay readable by every later release.
 [#107]: https://github.com/compiler-research/ramtools/pull/107
 [#108]: https://github.com/compiler-research/ramtools/pull/108
 [#111]: https://github.com/compiler-research/ramtools/pull/111
+[#112]: https://github.com/compiler-research/ramtools/pull/112

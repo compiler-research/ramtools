@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -18,8 +19,10 @@ namespace {
 
 constexpr int kRG = 4;
 constexpr int kPG = 5;
+constexpr int kMD = 6;
 
-// The members kRAMTypedTags names, by its index; the integer ones come first.
+// The members kRAMTypedTags names, by its index: the integer tags, then RG and
+// PG, then the string tags.
 int32_t *IntTag(RAMNTupleRecord &rec, int i)
 {
    const std::array<int32_t *, 4> members = {&rec.tag_nm, &rec.tag_as, &rec.tag_xs, &rec.tag_mq};
@@ -30,6 +33,18 @@ int32_t IntTag(const RAMNTupleRecord &rec, int i)
 {
    const std::array<int32_t, 4> members = {rec.tag_nm, rec.tag_as, rec.tag_xs, rec.tag_mq};
    return members.at(static_cast<std::size_t>(i));
+}
+
+std::string *StringTag(RAMNTupleRecord &rec, int i)
+{
+   const std::array<std::string *, 4> members = {&rec.tag_md, &rec.tag_mc, &rec.tag_sa, &rec.tag_xa};
+   return members.at(static_cast<std::size_t>(i - kMD));
+}
+
+const std::string &StringTag(const RAMNTupleRecord &rec, int i)
+{
+   const std::array<const std::string *, 4> members = {&rec.tag_md, &rec.tag_mc, &rec.tag_sa, &rec.tag_xa};
+   return *members.at(static_cast<std::size_t>(i - kMD));
 }
 
 // The index into kRAMTypedTags of the tag named \p name, or -1.
@@ -117,6 +132,8 @@ void RAMTagWriter::Split(const std::vector<std::string> &tags, RAMNTupleRecord &
 {
    rec.tag_nm = rec.tag_as = rec.tag_xs = rec.tag_mq = 0;
    rec.tag_rg = rec.tag_pg = 0;
+   for (std::string *value : {&rec.tag_md, &rec.tag_mc, &rec.tag_sa, &rec.tag_xa})
+      value->clear();
    rec.tags.clear();
    m_order.clear();
    std::array<bool, kRAMTypedTags.size()> present{};
@@ -125,6 +142,8 @@ void RAMTagWriter::Split(const std::vector<std::string> &tags, RAMNTupleRecord &
       bool typed = i >= 0 && !present.at(static_cast<std::size_t>(i));
       if (typed && i < kRG) {
          typed = CanonicalInt(tag, *IntTag(rec, i));
+      } else if (typed && i >= kMD) {
+         StringTag(rec, i)->assign(tag, 5);
       } else if (typed) {
          m_value.assign(tag, 5);
          if (i == kRG)
@@ -151,6 +170,8 @@ RAMTagReader::RAMTagReader(const RAMFileMetadata &meta) : m_rg(meta.tag_rg), m_p
          tokens.push_back(static_cast<int8_t>(NameIndex(std::string_view(&order[at], 2))));
       m_orders.push_back(std::move(tokens));
    }
+   for (std::size_t i = 0; i < kRAMTypedTags.size(); i++)
+      m_prefixes.at(i) = std::string("\t") + kRAMTypedTags.at(i) + (static_cast<int>(i) < kRG ? ":i:" : ":Z:");
 }
 
 void RAMTagReader::Append(const RAMNTupleRecord &rec, std::string &out) const
@@ -165,13 +186,12 @@ void RAMTagReader::Append(const RAMNTupleRecord &rec, std::string &out) const
             }
             continue;
          }
-         out += '\t';
-         out += kRAMTypedTags.at(static_cast<std::size_t>(i));
+         out += m_prefixes.at(static_cast<std::size_t>(i));
          if (i < kRG) {
-            out += ":i:";
             out += std::to_string(IntTag(rec, i));
+         } else if (i >= kMD) {
+            out += StringTag(rec, i);
          } else {
-            out += ":Z:";
             out += Value(i == kRG ? m_rg : m_pg, i == kRG ? rec.tag_rg : rec.tag_pg);
          }
       }
