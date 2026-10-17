@@ -646,9 +646,11 @@ TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
       {"MC:Z:150M", "PG:Z:MarkDuplicates", "MQ:i:60", "AS:i:148", "XS:i:0", "MD:Z:150", "NM:i:0", "RG:Z:lane1"},
       {"RG:Z:lane2", "AS:i:-3", "pa:f:0.5"}, // no NM; an unknown tag
       {},
-      {"NM:i:007", "AS:i:+5", "XS:i:4294967295", "MQ:i:-0"}, // not written back the same as numbers
-      {"NM:Z:x", "RG:i:5"},                                  // known tags with another type
-      {"NM:i:1", "NM:i:2", "RG:Z:", "RG:Z:lane1"},           // second copies; an empty value
+      {"NM:i:007", "AS:i:+5", "XS:i:4294967295", "MQ:i:-0"},                 // not written back the same as numbers
+      {"NM:Z:x", "RG:i:5"},                                                  // known tags with another type
+      {"NM:i:1", "NM:i:2", "RG:Z:", "RG:Z:lane1"},                           // second copies; an empty value
+      {"NM", "NM:i", "NM-i:1", "NM:i-1"},                                    // not "TG:T:value"
+      {"NM:i:", "AS:i:5x", "XS:i:99999999999999999999", "MQ:i:-2147483649"}, // not an int32
    };
    RAMTagTables tables;
    RAMTagWriter writer(tables);
@@ -668,6 +670,8 @@ TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
    EXPECT_EQ(records[4].tags, inputs[4]);
    EXPECT_EQ(records[5].tags, (std::vector<std::string>{"NM:i:2", "RG:Z:lane1"}));
    EXPECT_EQ(records[5].tag_nm, 1);
+   EXPECT_EQ(records[6].tags, inputs[6]);
+   EXPECT_EQ(records[7].tags, inputs[7]);
 
    RAMFileMetadata meta;
    tables.Store(meta);
@@ -682,6 +686,28 @@ TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
       reader.Append(records[i], out);
       EXPECT_EQ(out, expected) << "record " << i;
    }
+}
+
+// Ids METADATA has no entry for, as in a damaged file: an RG or PG value comes
+// out empty, and every text tag still comes out.
+TEST_F(ramcoreTest, TagsOfADamagedRecordStillComeOut)
+{
+   RAMFileMetadata meta;
+   meta.tag_orders = {"RGPG**"};
+   meta.tag_rg = {"lane1"};
+   const RAMTagReader reader(meta);
+
+   RAMNTupleRecord rec;
+   rec.tag_rg = 7;
+   std::string out{};
+   reader.Append(rec, out);
+   EXPECT_EQ(out, "\tRG:Z:\tPG:Z:");
+
+   rec.tag_order = 3;
+   rec.tags = {"XA:Z:chr1,+100,150M,0;", "pa:f:0.5"};
+   out.clear();
+   reader.Append(rec, out);
+   EXPECT_EQ(out, "\tXA:Z:chr1,+100,150M,0;\tpa:f:0.5");
 }
 
 // A converter's table: "*" is no reference, "=" gets an id like any name.

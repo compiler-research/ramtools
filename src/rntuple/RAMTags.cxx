@@ -32,16 +32,25 @@ int32_t IntTag(const RAMNTupleRecord &rec, int i)
    return members.at(static_cast<std::size_t>(i));
 }
 
+// The index into kRAMTypedTags of the tag named \p name, or -1.
+int NameIndex(std::string_view name) noexcept
+{
+   int i = 0;
+   for (const char *typed : kRAMTypedTags) {
+      if (name == typed)
+         return i;
+      i++;
+   }
+   return -1;
+}
+
 // The index into kRAMTypedTags of a "TG:T:value" tag that has a column, or -1.
 int TypedIndex(const std::string &tag)
 {
    if (tag.size() < 5 || tag[2] != ':' || tag[4] != ':')
       return -1;
-   for (std::size_t i = 0; i < kRAMTypedTags.size(); i++) {
-      if (tag.compare(0, 2, kRAMTypedTags.at(i)) == 0)
-         return tag[3] == (static_cast<int>(i) < kRG ? 'i' : 'Z') ? static_cast<int>(i) : -1;
-   }
-   return -1;
+   const int i = NameIndex(std::string_view(tag.data(), 2));
+   return i >= 0 && tag[3] == (i < kRG ? 'i' : 'Z') ? i : -1;
 }
 
 // The value of "TG:i:value", when writing it back as a number gives the same
@@ -138,14 +147,8 @@ RAMTagReader::RAMTagReader(const RAMFileMetadata &meta) : m_rg(meta.tag_rg), m_p
 {
    for (const std::string &order : meta.tag_orders) {
       std::vector<int8_t> tokens;
-      for (std::size_t at = 0; at + 1 < order.size(); at += 2) {
-         int8_t token = -1;
-         for (std::size_t i = 0; i < kRAMTypedTags.size(); i++) {
-            if (order.compare(at, 2, kRAMTypedTags.at(i)) == 0)
-               token = static_cast<int8_t>(i);
-         }
-         tokens.push_back(token);
-      }
+      for (std::size_t at = 0; at + 1 < order.size(); at += 2)
+         tokens.push_back(static_cast<int8_t>(NameIndex(std::string_view(&order[at], 2))));
       m_orders.push_back(std::move(tokens));
    }
 }

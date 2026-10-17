@@ -274,18 +274,16 @@ TEST_F(BamToNTupleTest, TagsOfEveryTypeComeBackAsSamtoolsPrintsThem)
    const auto file = RAMFile::Open("test_rich.ram");
    ASSERT_NE(file, nullptr);
    auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   std::string tags{};
    for (auto row : file->GetReader().GetEntryRange()) {
       const RAMNTupleRecord &rec = view(row);
-      if (rec.GetQNAME() != "read_tags")
-         continue;
-      std::string tags{};
-      file->AppendTags(rec, tags);
-      EXPECT_EQ(tags, "\tXc:i:-5\tXC:i:200\tXs:i:-1000\tXS:i:50000\tXi:i:-100000\tXI:i:3000000\tXf:f:3.14"
-                      "\tXA:A:Q\tXZ:Z:hello\tXH:H:1AE301");
-      EXPECT_EQ(rec.tag_xs, 50000);
-      return;
+      if (rec.GetQNAME() == "read_tags") {
+         file->AppendTags(rec, tags);
+         EXPECT_EQ(rec.tag_xs, 50000);
+      }
    }
-   FAIL() << "no record read_tags";
+   EXPECT_EQ(tags, "\tXc:i:-5\tXC:i:200\tXs:i:-1000\tXS:i:50000\tXi:i:-100000\tXI:i:3000000\tXf:f:3.14"
+                   "\tXA:A:Q\tXZ:Z:hello\tXH:H:1AE301");
 }
 
 // As samtools idxstats counts them: every record of the rich BAM is on chr1
