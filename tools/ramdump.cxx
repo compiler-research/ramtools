@@ -87,6 +87,10 @@ class RecordReader {
    ROOT::RNTupleView<int32_t> m_tagMq;
    ROOT::RNTupleView<uint32_t> m_tagRg;
    ROOT::RNTupleView<uint32_t> m_tagPg;
+   ROOT::RNTupleView<std::string> m_tagMd;
+   ROOT::RNTupleView<std::string> m_tagMc;
+   ROOT::RNTupleView<std::string> m_tagSa;
+   ROOT::RNTupleView<std::string> m_tagXa;
    ROOT::RNTupleView<uint32_t> m_tagOrder;
    ROOT::RNTupleView<std::vector<std::string>> m_tags;
    ROOT::RNTupleView<uint32_t> m_compressionFlags;
@@ -110,6 +114,10 @@ public:
         m_tagMq(reader.GetView("record.tag_mq", &m_record.tag_mq)),
         m_tagRg(reader.GetView("record.tag_rg", &m_record.tag_rg)),
         m_tagPg(reader.GetView("record.tag_pg", &m_record.tag_pg)),
+        m_tagMd(reader.GetView("record.tag_md", &m_record.tag_md)),
+        m_tagMc(reader.GetView("record.tag_mc", &m_record.tag_mc)),
+        m_tagSa(reader.GetView("record.tag_sa", &m_record.tag_sa)),
+        m_tagXa(reader.GetView("record.tag_xa", &m_record.tag_xa)),
         m_tagOrder(reader.GetView("record.tag_order", &m_record.tag_order)),
         m_tags(reader.GetView("record.tags", &m_record.tags)),
         m_compressionFlags(reader.GetView("record.compression_flags", &m_record.compression_flags))
@@ -141,6 +149,10 @@ public:
       m_tagMq(row);
       m_tagRg(row);
       m_tagPg(row);
+      m_tagMd(row);
+      m_tagMc(row);
+      m_tagSa(row);
+      m_tagXa(row);
       m_tagOrder(row);
       m_tags(row);
       m_compressionFlags(row);

@@ -166,7 +166,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 4;
+   static constexpr uint32_t kFormatVersion = 5;
 
    // Alignment data fields
    std::string qname;             // Query template NAME
@@ -189,6 +189,10 @@ public:
    int32_t tag_mq = 0;
    uint32_t tag_rg = 0; // Id into METADATA's tag_rg
    uint32_t tag_pg = 0; // Id into METADATA's tag_pg
+   std::string tag_md;
+   std::string tag_mc;
+   std::string tag_sa;
+   std::string tag_xa;
    uint32_t tag_order = 0;
    std::vector<std::string> tags; // The other optional tags, as SAM text
 
