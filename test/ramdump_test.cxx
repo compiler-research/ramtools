@@ -138,6 +138,30 @@ TEST_F(RamdumpTest, TagsComeBackAsTheyWere)
    std::remove(ram);
 }
 
+// PNEXT and TLEN are stored against pos and the CIGAR; every kind of mate
+// comes back as it was, a TLEN no aligner would write among them.
+TEST_F(RamdumpTest, MateFieldsComeBackAsTheyWere)
+{
+   const char *sam = "ramdump_test_mates.sam";
+   const char *ram = "ramdump_test_mates.root";
+   std::string records{};
+   records += "m1\t99\tchr1\t100\t60\t4M\t=\t300\t204\tACGT\tIIII\n";
+   records += "m1\t147\tchr1\t300\t60\t4M\t=\t100\t-204\tACGT\tIIII\n";
+   records += "m2\t99\tchr1\t400\t60\t2S2M\t=\t500\t103\tACGT\tIIII\n";
+   records += "m3\t99\tchr1\t600\t60\t4M\tchr1\t700\t104\tACGT\tIIII\n";
+   records += "m4\t65\tchr1\t800\t60\t4M\tchr2\t10\t0\tACGT\tIIII\n";
+   records += "m5\t73\tchr1\t900\t60\t4M\t=\t900\t0\tACGT\tIIII\n";
+   records += "m5\t133\tchr1\t900\t0\t*\t=\t900\t0\tACGT\tIIII\n";
+   records += "m6\t0\tchr2\t50\t60\t4M\t*\t0\t0\tACGT\tIIII\n";
+   records += "m7\t99\tchr2\t100\t60\t4M\t=\t200\t-5000\tACGT\tIIII\n";
+   records += "m8\t4\t*\t0\t0\t*\t*\t0\t0\tACGT\tIIII\n";
+   std::ofstream(sam) << Header() << records;
+   ASSERT_EQ(Quiet(std::string(SAMTORAMNTUPLE_BIN) + " " + sam + " " + ram + " -threads 2"), 0);
+   EXPECT_EQ(Output(Command("-h", ram, "")), Header() + records);
+   std::remove(sam);
+   std::remove(ram);
+}
+
 TEST_F(RamdumpTest, HeaderOnly)
 {
    EXPECT_EQ(Dump("-H"), Header());

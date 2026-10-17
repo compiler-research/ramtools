@@ -60,8 +60,7 @@ void FillRecordFields(const ramcore::SamRecord &sam_record, RAMNTupleRecord &rec
    rec.SetPOS(sam_record.pos);
    rec.SetMAPQ(sam_record.mapq);
    rec.SetCIGAR(sam_record.cigar);
-   rec.SetPNEXT(sam_record.pnext);
-   rec.SetTLEN(sam_record.tlen);
+   rec.SetMate(sam_record.pnext, sam_record.tlen, RAMMateOnSameRef(sam_record.rname, sam_record.rnext));
    rec.SetSEQ(sam_record.seq);
    rec.SetQUAL(sam_record.qual);
    tags.Split(sam_record.optional_fields, rec);

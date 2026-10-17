@@ -31,6 +31,12 @@ public:
    [[nodiscard]] const std::string &GetRnext(int32_t refnext) const { return Name(m_meta.rnext_refs, refnext); }
    /// The refid of \p rname; -1 when the file has no such reference.
    [[nodiscard]] int32_t FindRefId(const std::string &rname) const;
+   /// Whether \p rec's mate is on \p rec's reference, which GetPNEXT() and
+   /// GetTLEN() of the record need.
+   [[nodiscard]] bool MateOnSameRef(const RAMNTupleRecord &rec) const
+   {
+      return RAMMateOnSameRef(GetRname(rec.refid), GetRnext(rec.refnext));
+   }
    /// Appends \p rec's optional tags to \p out as SAM text, each after a tab,
    /// in the order the input had them.
    void AppendTags(const RAMNTupleRecord &rec, std::string &out) const { m_tags.Append(rec, out); }

@@ -139,9 +139,45 @@ void RAMNTupleRefs::Print() const
 }
 // RAMNTupleRecord Implementation
 
-RAMNTupleRecord::RAMNTupleRecord()
-   : flag(0), refid(-1), pos(0), mapq(0), refnext(-1), pnext(0), tlen(0), compression_flags(kPhred33)
+RAMNTupleRecord::RAMNTupleRecord() : flag(0), refid(-1), pos(0), mapq(0), refnext(-1), compression_flags(kPhred33) {}
+
+// pnext_delta and tlen_delta are differences modulo 2^32, so every int32 comes
+// back exactly.
+static int32_t Wrap(int64_t value)
 {
+   return static_cast<int32_t>(static_cast<uint32_t>(value));
+}
+
+void RAMNTupleRecord::SetMate(int32_t pnext, int32_t tlen, bool sameRef)
+{
+   const int32_t pnext0 = pnext - 1; // SAM is 1-based, we are 0-based
+   pnext_delta = sameRef ? Wrap(int64_t{pnext0} - pos) : pnext0;
+   tlen_delta = Wrap(int64_t{tlen} - PredictTLEN(pnext0, sameRef));
+}
+
+int32_t RAMNTupleRecord::GetPNEXT(bool sameRef) const
+{
+   return (sameRef ? Wrap(int64_t{pnext_delta} + pos) : pnext_delta) + 1;
+}
+
+int32_t RAMNTupleRecord::GetTLEN(bool sameRef) const
+{
+   return Wrap(int64_t{tlen_delta} + PredictTLEN(GetPNEXT(sameRef) - 1, sameRef));
+}
+
+int32_t RAMNTupleRecord::PredictTLEN(int32_t pnext0, bool sameRef) const
+{
+   const int64_t span = GetRefSpan();
+   if (!sameRef || (flag & 0x4) || (flag & 0x8) || span == 0)
+      return 0;
+   const int64_t own5 = (flag & 0x10) ? pos + span - 1 : pos;
+   const int64_t mate5 = (flag & 0x20) ? pnext0 + span - 1 : pnext0;
+   const int64_t distance = mate5 - own5;
+   if (distance > 0)
+      return Wrap(distance + 1);
+   if (distance < 0)
+      return Wrap(distance - 1);
+   return 0;
 }
 
 // RAMFile::Open() reads these fields back.

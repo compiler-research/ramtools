@@ -725,6 +725,52 @@ TEST_F(ramcoreTest, TagsOfADamagedRecordStillComeOut)
    EXPECT_EQ(out, "\tXA:Z:chr1,+100,150M,0;\tpa:f:0.5");
 }
 
+// PNEXT and TLEN come back exactly, however far TLEN is from what pos, the
+// strands and the CIGAR predict.
+TEST_F(ramcoreTest, MateFieldsComeBackExactly)
+{
+   struct Mate {
+      uint16_t flag;
+      int32_t pos; // 1-based, as in SAM
+      const char *cigar;
+      int32_t pnext;
+      int32_t tlen;
+      bool sameRef;
+   };
+   const std::vector<Mate> mates = {
+      {0x63, 1001, "150M", 1301, 450, true},          // forward, the mate reverse
+      {0x93, 1301, "150M", 1001, -450, true},         // that mate
+      {0x63, 1001, "150M", 1301, 448, true},          // the mate's span is 148
+      {0x63, 1001, "150M", 852, 1, true},             // the same 5' end: Picard says 1
+      {0x41, 1001, "150M", 5001, 0, false},           // the mate on another reference
+      {0x49, 1001, "150M", 1001, 0, true},            // the mate unmapped
+      {0x85, 1001, "*", 1001, 0, true},               // unmapped, placed at its mate
+      {0, 1, "4M", 0, 0, false},                      // no mate
+      {0x63, 1, "4M", 2147483647, -2147483647, true}, // the extremes
+      {0x93, 2147483647, "4M", 1, 2147483647, true},
+   };
+   for (std::size_t i = 0; i < mates.size(); i++) {
+      const Mate &m = mates[i];
+      RAMNTupleRecord rec;
+      rec.SetFLAG(m.flag);
+      rec.SetPOS(m.pos);
+      rec.SetCIGAR(m.cigar);
+      rec.SetMate(m.pnext, m.tlen, m.sameRef);
+      EXPECT_EQ(rec.GetPNEXT(m.sameRef), m.pnext) << "mate " << i;
+      EXPECT_EQ(rec.GetTLEN(m.sameRef), m.tlen) << "mate " << i;
+      if (i < 3) {
+         EXPECT_EQ(rec.pnext_delta, m.flag & 0x10 ? -300 : 300);
+         EXPECT_EQ(rec.tlen_delta, i < 2 ? 0 : -2) << "mate " << i;
+      }
+   }
+
+   EXPECT_TRUE(RAMMateOnSameRef("chr1", "="));
+   EXPECT_TRUE(RAMMateOnSameRef("chr1", "chr1"));
+   EXPECT_FALSE(RAMMateOnSameRef("chr1", "chr2"));
+   EXPECT_FALSE(RAMMateOnSameRef("chr1", "*"));
+   EXPECT_FALSE(RAMMateOnSameRef("*", "="));
+}
+
 // A converter's table: "*" is no reference, "=" gets an id like any name.
 TEST_F(ramcoreTest, RefTableMapsNamesToIds)
 {
