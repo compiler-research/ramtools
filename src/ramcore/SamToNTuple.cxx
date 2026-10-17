@@ -2,6 +2,7 @@
 #include "ramcore/QualityBlocks.h"
 #include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMTags.h"
 
 #include <ROOT/REntry.hxx>
 #include <ROOT/RNTupleModel.hxx>
@@ -50,7 +51,8 @@ void HandleHeaderLine(std::vector<std::string> &headers, RAMNTupleRefs &rnames, 
 }
 
 // Everything but the two reference ids, which the caller resolves.
-void FillRecordFields(const ramcore::SamRecord &sam_record, RAMNTupleRecord &rec, uint32_t quality_policy)
+void FillRecordFields(const ramcore::SamRecord &sam_record, RAMNTupleRecord &rec, uint32_t quality_policy,
+                      RAMTagWriter &tags)
 {
    rec.SetBit(quality_policy);
    rec.SetQNAME(sam_record.qname);
@@ -62,10 +64,7 @@ void FillRecordFields(const ramcore::SamRecord &sam_record, RAMNTupleRecord &rec
    rec.SetTLEN(sam_record.tlen);
    rec.SetSEQ(sam_record.seq);
    rec.SetQUAL(sam_record.qual);
-
-   rec.ResetNOPT();
-   for (const auto &opt : sam_record.optional_fields)
-      rec.SetOPT(opt);
+   tags.Split(sam_record.optional_fields, rec);
 }
 
 } // namespace
@@ -93,6 +92,8 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    // Shared by every output file: the ids are those of the whole input.
    RAMNTupleRefs rnames;
    RAMNTupleRefs rnexts;
+   RAMTagTables tagTables;
+   RAMTagWriter tags(tagTables);
    uint32_t max_span = 0;
 
    // The parser splits a header line at its first tab.
@@ -135,7 +136,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
       ChromosomeWriter &cw = open_writer(sam_record.rname);
       RAMNTupleRecord &rec = cw.out->Record();
 
-      FillRecordFields(sam_record, rec, quality_policy);
+      FillRecordFields(sam_record, rec, quality_policy, tags);
       rec.refid = rnames.GetRefId(sam_record.rname);
       rec.refnext = rnexts.GetRefId(sam_record.rnext);
 
@@ -163,6 +164,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    meta.header_lines = std::move(headers);
    meta.rname_refs = rnames.GetRefs();
    meta.rnext_refs = rnexts.GetRefs();
+   tagTables.Store(meta);
    meta.max_ref_span = max_span;
    for (auto &[chr, cw] : writers) {
       cw.out->Finish();
@@ -415,15 +417,16 @@ public:
    ~CloseQueueOnExit() { m_queue.Abort(); }
 };
 
-// The tables every worker resolves reference names in; RAMNTupleRefs locks.
+// The tables every worker fills; each locks.
 struct SharedRefs {
    RAMNTupleRefs rnames;
    RAMNTupleRefs rnexts;
+   RAMTagTables tags;
 };
 
 BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_policy, SharedRefs &refs,
-                        RefCache &rname_cache, RefCache &rnext_cache, ramcore::SamRecord &sam_record, size_t &records,
-                        std::vector<std::string> &late_headers)
+                        RefCache &rname_cache, RefCache &rnext_cache, RAMTagWriter &tags,
+                        ramcore::SamRecord &sam_record, size_t &records, std::vector<std::string> &late_headers)
 {
    BlockOrder order;
 
@@ -455,7 +458,7 @@ BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_
          continue;
 
       RAMNTupleRecord &rec = out.Record();
-      FillRecordFields(sam_record, rec, quality_policy);
+      FillRecordFields(sam_record, rec, quality_policy, tags);
       rec.refid = rname_cache.Lookup(refs.rnames, sam_record.rname);
       rec.refnext = rnext_cache.Lookup(refs.rnexts, sam_record.rnext);
 
@@ -476,14 +479,15 @@ void WorkerMain(BlockQueue &queue, Progress &progress, SharedRefs &refs,
    QualityBlockWriter out(ctx->CreateEntry(), ctx->CreateEntry(), [&ctx](ROOT::REntry &e) { ctx->Fill(e); });
    RefCache rname_cache;
    RefCache rnext_cache;
+   RAMTagWriter tags(refs.tags);
    ramcore::SamRecord sam_record;
 
    Block block;
    while (queue.Pop(block)) {
       size_t records = 0;
       std::vector<std::string> late_headers;
-      const BlockOrder order =
-         ProcessBlock(block, out, quality_policy, refs, rname_cache, rnext_cache, sam_record, records, late_headers);
+      const BlockOrder order = ProcessBlock(block, out, quality_policy, refs, rname_cache, rnext_cache, tags,
+                                            sam_record, records, late_headers);
       // The records are copied into the fill context and `out` now: free the
       // text before compressing and waiting for this block's turn.
       std::vector<char>().swap(block.data);
@@ -648,6 +652,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    meta.header_lines = std::move(headers);
    meta.rname_refs = refs.rnames.GetRefs();
    meta.rnext_refs = refs.rnexts.GetRefs();
+   refs.tags.Store(meta);
    meta.max_ref_span = progress.order.max_span;
    meta.coordinate_sorted = progress.order.check.sorted;
    meta.qual_block_ends = std::move(progress.qual_block_ends);

@@ -123,3 +123,18 @@ Any change to what a RAM file holds, in the records or in METADATA, bumps
 `RAMNTupleRecord::kFormatVersion`. Until 1.0 a reader opens only files of its
 own version, so there is no code for reading older layouts: a file written
 before the change is refused with a message to convert it again.
+
+## Tags
+
+The standard tags in `kRAMTypedTags` (`inc/rntuple/RAMTags.h`) have columns of
+their own in the record; every other tag stays SAM text in `tags`. The
+converters split a record's tags with `RAMTagWriter`, and readers write them
+back with `RAMFile::AppendTags()`, which keeps the input's order, so
+`ramdump -h` still reproduces the input byte for byte. A typed tag goes into
+its column only when writing the column back gives the same text; anything
+else, `NM:i:007` or `NM:Z:x`, stays text.
+
+A new typed tag needs a member in `RAMNTupleRecord`, an entry in
+`kRAMTypedTags`, its handling in `RAMTagWriter::Split()` and
+`RAMTagReader::Append()`, and a view in `RecordReader` (`tools/ramdump.cxx`),
+which reads the record field by field and does not see new members by itself.

@@ -62,6 +62,9 @@ bool ReadMetadata(const std::string &path, RAMFileMetadata &meta)
    meta.counts.mapped = reader->GetView<std::vector<uint64_t>>("ref_mapped")(0);
    meta.counts.unmapped = reader->GetView<std::vector<uint64_t>>("ref_unmapped")(0);
    meta.counts.unplaced = reader->GetView<uint64_t>("unplaced")(0);
+   meta.tag_orders = reader->GetView<std::vector<std::string>>("tag_orders")(0);
+   meta.tag_rg = reader->GetView<std::vector<std::string>>("tag_rg")(0);
+   meta.tag_pg = reader->GetView<std::vector<std::string>>("tag_pg")(0);
    return true;
 }
 
@@ -81,7 +84,7 @@ std::unique_ptr<RAMFile> RAMFile::Open(const std::string &path)
 }
 
 RAMFile::RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta)
-   : m_reader(std::move(reader)), m_meta(std::move(meta))
+   : m_reader(std::move(reader)), m_meta(std::move(meta)), m_tags(m_meta)
 {
    for (std::size_t i = 0; i < m_meta.rname_refs.size(); i++)
       m_rnameIds.emplace(m_meta.rname_refs[i], static_cast<int32_t>(i));

@@ -132,6 +132,9 @@ struct RAMFileMetadata {
    bool coordinate_sorted = true;
    std::vector<uint64_t> qual_block_ends; ///< Last row of each quality block.
    RAMRefCounts counts;                   ///< One entry per reference.
+   std::vector<std::string> tag_orders;   ///< The orders tag_order points into; see RAMTags.h.
+   std::vector<std::string> tag_rg;       ///< RG values by tag_rg.
+   std::vector<std::string> tag_pg;       ///< PG values by tag_pg.
 };
 
 /**
@@ -163,7 +166,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 3;
+   static constexpr uint32_t kFormatVersion = 4;
 
    // Alignment data fields
    std::string qname;             // Query template NAME
@@ -177,7 +180,17 @@ public:
    int32_t tlen;                  // Observed Template LENgth
    std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"
    std::string qual;              // Quality scores (encoded)
-   std::vector<std::string> tags; // Optional SAM tags
+
+   // Standard tags in columns of their own; RAMTagWriter fills them and
+   // RAMTagReader writes them back. tag_order says which the record has.
+   int32_t tag_nm = 0;
+   int32_t tag_as = 0;
+   int32_t tag_xs = 0;
+   int32_t tag_mq = 0;
+   uint32_t tag_rg = 0; // Id into METADATA's tag_rg
+   uint32_t tag_pg = 0; // Id into METADATA's tag_pg
+   uint32_t tag_order = 0;
+   std::vector<std::string> tags; // The other optional tags, as SAM text
 
    uint32_t compression_flags;
 
@@ -194,10 +207,6 @@ public:
    void SetTLEN(int32_t tlen_) { tlen = tlen_; }
    void SetSEQ(const std::string &seq_str);
    void SetQUAL(const std::string &qual_str);
-   void AddTag(const std::string &tag) { tags.push_back(tag); }
-   void SetOPT(const std::string &tag) { AddTag(tag); }
-   void ClearTags() { tags.clear(); }
-   void ResetNOPT() { ClearTags(); }
 
    // Getters (SAM format, 1-based positions)
    const std::string &GetQNAME() const { return qname; }
@@ -211,9 +220,6 @@ public:
    int32_t GetTLEN() const { return tlen; }
    [[nodiscard]] const std::string &GetSEQ() const { return seq; }
    std::string GetQUAL() const;
-   const std::vector<std::string> &GetTags() const { return tags; }
-   int GetNOPT() const { return static_cast<int>(tags.size()); }
-   const std::string &GetOPT(int idx) const { return tags[idx]; }
 
    /// Number of bases; 0 for "*".
    int GetSEQLEN() const;

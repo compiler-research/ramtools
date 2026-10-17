@@ -117,6 +117,26 @@ TEST_F(RamdumpTest, DumpWithHeaderReproducesTheInput)
    EXPECT_EQ(Dump("-h"), Header() + Records());
 }
 
+// Standard tags are stored in columns of their own; the dump has to give back
+// every tag as it was, in its place, including those that stay text.
+TEST_F(RamdumpTest, TagsComeBackAsTheyWere)
+{
+   const char *sam = "ramdump_test_tags.sam";
+   const char *ram = "ramdump_test_tags.root";
+   std::string records{};
+   records += "t1\t0\tchr1\t100\t60\t4M\t*\t0\t0\tACGT\tIIII\tMC:Z:4M\tPG:Z:MarkDuplicates\tMQ:i:60\tAS:i:4\t"
+              "XS:i:0\tMD:Z:4\tNM:i:0\tRG:Z:lane1\n";
+   records += "t2\t0\tchr1\t110\t60\t4M\t*\t0\t0\tACGT\tIIII\tRG:Z:lane2\tAS:i:-3\tpa:f:0.5\n";
+   records += "t3\t0\tchr1\t120\t60\t4M\t*\t0\t0\tACGT\tIIII\n";
+   records += "t4\t0\tchr1\t130\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:007\tXS:i:4294967295\tNM:Z:x\tRG:i:5\n";
+   records += "t5\t0\tchr1\t140\t60\t4M\t*\t0\t0\tACGT\tIIII\tNM:i:1\tNM:i:2\tRG:Z:\tRG:Z:lane1\n";
+   std::ofstream(sam) << Header() << records;
+   ASSERT_EQ(Quiet(std::string(SAMTORAMNTUPLE_BIN) + " " + sam + " " + ram + " -threads 2"), 0);
+   EXPECT_EQ(Output(Command("-h", ram, "")), Header() + records);
+   std::remove(sam);
+   std::remove(ram);
+}
+
 TEST_F(RamdumpTest, HeaderOnly)
 {
    EXPECT_EQ(Dump("-H"), Header());
