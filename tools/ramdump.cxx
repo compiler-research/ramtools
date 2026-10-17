@@ -77,8 +77,8 @@ class RecordReader {
    ROOT::RNTupleView<uint8_t> m_mapq;
    ROOT::RNTupleView<std::vector<uint32_t>> m_cigar;
    ROOT::RNTupleView<int32_t> m_refnext;
-   ROOT::RNTupleView<int32_t> m_pnext;
-   ROOT::RNTupleView<int32_t> m_tlen;
+   ROOT::RNTupleView<int32_t> m_pnextDelta;
+   ROOT::RNTupleView<int32_t> m_tlenDelta;
    ROOT::RNTupleView<std::string> m_seq;
    ROOT::RNTupleView<std::string> m_qual;
    ROOT::RNTupleView<int32_t> m_tagNm;
@@ -104,8 +104,8 @@ public:
         m_mapq(reader.GetView("record.mapq", &m_record.mapq)),
         m_cigar(reader.GetView("record.cigar", &m_record.cigar)),
         m_refnext(reader.GetView("record.refnext", &m_record.refnext)),
-        m_pnext(reader.GetView("record.pnext", &m_record.pnext)),
-        m_tlen(reader.GetView("record.tlen", &m_record.tlen)),
+        m_pnextDelta(reader.GetView("record.pnext_delta", &m_record.pnext_delta)),
+        m_tlenDelta(reader.GetView("record.tlen_delta", &m_record.tlen_delta)),
         m_seq(reader.GetView("record.seq", &m_record.seq)),
         m_qual(reader.GetView("record.qual", &m_record.qual)),
         m_tagNm(reader.GetView("record.tag_nm", &m_record.tag_nm)),
@@ -139,8 +139,8 @@ public:
       m_mapq(row);
       m_cigar(row);
       m_refnext(row);
-      m_pnext(row);
-      m_tlen(row);
+      m_pnextDelta(row);
+      m_tlenDelta(row);
       m_seq(row);
       m_qual(row);
       m_tagNm(row);
@@ -176,9 +176,10 @@ void WriteRecord(const RAMFile &file, const RAMNTupleRecord &rec, const std::str
    out.Tab();
    out.Str(file.GetRnext(rec.GetREFNEXT()));
    out.Tab();
-   out.Int(rec.GetPNEXT());
+   const bool sameRef = file.MateOnSameRef(rec);
+   out.Int(rec.GetPNEXT(sameRef));
    out.Tab();
-   out.Int(rec.GetTLEN());
+   out.Int(rec.GetTLEN(sameRef));
    out.Tab();
    out.Str(rec.GetSEQ());
    out.Tab();

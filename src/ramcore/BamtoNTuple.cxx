@@ -183,8 +183,8 @@ void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uin
    rec->SetMAPQ(b->core.qual);
    rec->SetCIGAR(GetCigar(b));
    rec->refnext = rnexts.GetRefId(rnext);
-   rec->SetPNEXT(static_cast<int32_t>(b->core.mpos + 1));
-   rec->SetTLEN(static_cast<int32_t>(b->core.isize));
+   rec->SetMate(static_cast<int32_t>(b->core.mpos + 1), static_cast<int32_t>(b->core.isize),
+                RAMMateOnSameRef(rname, rnext));
    rec->SetSEQ(GetSeq(b));
    rec->SetQUAL(GetQual(b));
    tags.Split(GetTags(b), *rec);

@@ -138,3 +138,16 @@ A new typed tag needs a member in `RAMNTupleRecord`, an entry in
 `kRAMTypedTags`, its handling in `RAMTagWriter::Split()` and
 `RAMTagReader::Append()`, and a view in `RecordReader` (`tools/ramdump.cxx`),
 which reads the record field by field and does not see new members by itself.
+
+## PNEXT and TLEN
+
+A record does not store PNEXT and TLEN as SAM has them, because other columns
+already say most of what they hold. When the mate is on the record's own
+reference, `pnext_delta` is PNEXT minus POS; otherwise it is PNEXT.
+`tlen_delta` is TLEN minus `PredictTLEN()`, the distance between the 5' ends
+of the pair as BWA and Picard compute it, with the mate's span taken to be the
+record's own. Both are differences modulo 2^32, so every value comes back
+exactly; for most records `tlen_delta` is 0. Write them with `SetMate()` and
+read them with `GetPNEXT()` and `GetTLEN()`, which take
+`RAMFile::MateOnSameRef()`. A program that reads the columns directly, such as
+an RDataFrame, has to do the same.

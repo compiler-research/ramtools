@@ -13,6 +13,7 @@
 #include <ROOT/RNTupleView.hxx>
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <memory>
 #include <mutex>
@@ -166,7 +167,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 5;
+   static constexpr uint32_t kFormatVersion = 6;
 
    // Alignment data fields
    std::string qname;             // Query template NAME
@@ -176,8 +177,10 @@ public:
    uint8_t mapq;                  // MAPing Quality
    std::vector<uint32_t> cigar;   // CIGAR operations
    int32_t refnext;               // Reference ID of the mate/next read
-   int32_t pnext;                 // 0-based position of the mate/next read
-   int32_t tlen;                  // Observed Template LENgth
+   // PNEXT and TLEN, stored so that they compress; SetMate() fills them and
+   // GetPNEXT() and GetTLEN() give the SAM values back.
+   int32_t pnext_delta = 0;       // 0-based PNEXT - pos when the mate is on this reference, else 0-based PNEXT
+   int32_t tlen_delta = 0;        // TLEN - PredictTLEN()
    std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"
    std::string qual;              // Quality scores (encoded)
 
@@ -207,8 +210,10 @@ public:
    void SetPOS(int32_t pos_) { pos = pos_ - 1; } // SAM is 1-based, we are 0-based
    void SetMAPQ(uint8_t mapq_) { mapq = mapq_; }
    void SetCIGAR(const std::string &cigar_str);
-   void SetPNEXT(int32_t pnext_) { pnext = pnext_ - 1; } // SAM is 1-based, we are 0-based
-   void SetTLEN(int32_t tlen_) { tlen = tlen_; }
+   /// Sets PNEXT (1-based) and TLEN, after SetFLAG(), SetPOS() and SetCIGAR():
+   /// they are stored against pos, the strands and the CIGAR. \p sameRef is
+   /// RAMMateOnSameRef() of the record's RNAME and RNEXT.
+   void SetMate(int32_t pnext, int32_t tlen, bool sameRef);
    void SetSEQ(const std::string &seq_str);
    void SetQUAL(const std::string &qual_str);
 
@@ -220,8 +225,14 @@ public:
    uint8_t GetMAPQ() const { return mapq; }
    std::string GetCIGAR() const;
    int32_t GetREFNEXT() const { return refnext; }
-   int32_t GetPNEXT() const { return pnext + 1; } // Convert back to 1-based for SAM
-   int32_t GetTLEN() const { return tlen; }
+   /// PNEXT (1-based) and TLEN as SetMate() was given them; \p sameRef as
+   /// there, or RAMFile::MateOnSameRef().
+   [[nodiscard]] int32_t GetPNEXT(bool sameRef) const;
+   [[nodiscard]] int32_t GetTLEN(bool sameRef) const;
+   /// The TLEN of a pair whose mate has the same reference span as this
+   /// record: the distance between their 5' ends, as BWA and Picard compute
+   /// it. 0 when either is unmapped or the mate is on another reference.
+   [[nodiscard]] int32_t PredictTLEN(int32_t pnext0, bool sameRef) const;
    [[nodiscard]] const std::string &GetSEQ() const { return seq; }
    std::string GetQUAL() const;
 
@@ -250,6 +261,13 @@ public:
    /// Replaces the quality mode.
    void SetCompressionMode(uint32_t flags) { compression_flags = flags; }
 };
+
+/// Whether a record's mate is on the record's own reference: RNEXT is "=" or
+/// RNAME, and RNAME is not "*". Writers and readers decide it the same way.
+inline bool RAMMateOnSameRef(std::string_view rname, std::string_view rnext)
+{
+   return rname != "*" && (rnext == "=" || rnext == rname);
+}
 
 // CIGAR operation codes (from BAM format)
 #include "ramcore/CigarOps.h"

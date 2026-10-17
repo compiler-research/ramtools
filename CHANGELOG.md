@@ -55,6 +55,13 @@ the README for what that means before 1.0.
   563.1 MB), conversion takes 5 to 13% less CPU, and `ramdump -h` 8% less. The
   format version becomes 5, and files written before must be converted again
   ([#111], [#112]).
+- PNEXT and TLEN are stored as the difference from what POS, the strands and
+  the CIGAR predict, in the columns `pnext_delta` and `tlen_delta`, and still
+  come back exactly. On chr20 of NA12878 at 30x the file goes from 563.1 to
+  531.0 MB (-5.7%), and conversion and dumps take the same time. A program
+  that reads the columns directly gets the SAM values with
+  `RAMNTupleRecord::GetPNEXT()` and `GetTLEN()`; see CONTRIBUTING. The format
+  version becomes 6 ([#113]).
 
 ### Removed
 
@@ -74,6 +81,10 @@ the README for what that means before 1.0.
   `GetTags()`, `GetNOPT()` and `GetOPT()`. `tags` now holds only the tags
   without a column of their own. Converters split the tags with `RAMTagWriter`,
   and `RAMFile::AppendTags()` writes all of them back ([#111]).
+- `RAMNTupleRecord`'s `SetPNEXT()` and `SetTLEN()`, and `GetPNEXT()` and
+  `GetTLEN()` without arguments. Converters set both with `SetMate()`, and
+  readers pass `RAMFile::MateOnSameRef()` to `GetPNEXT()` and `GetTLEN()`
+  ([#113]).
 
 ## [0.1.0] - 2026-10-14
 
@@ -222,3 +233,4 @@ it stay readable by every later release.
 [#108]: https://github.com/compiler-research/ramtools/pull/108
 [#111]: https://github.com/compiler-research/ramtools/pull/111
 [#112]: https://github.com/compiler-research/ramtools/pull/112
+[#113]: https://github.com/compiler-research/ramtools/pull/113

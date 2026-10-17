@@ -286,6 +286,28 @@ TEST_F(BamToNTupleTest, TagsOfEveryTypeComeBackAsSamtoolsPrintsThem)
                    "\tXA:A:Q\tXZ:Z:hello\tXH:H:1AE301");
 }
 
+// A mate on the same reference and one on another come back as in the BAM.
+TEST_F(BamToNTupleTest, MateFieldsComeBackAsInTheBam)
+{
+   GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
+   bamtoramntuple(/*bamfile=*/"test_rich.bam", /*treefile=*/"test_rich.ram", /*split=*/false, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0U);
+
+   const auto file = RAMFile::Open("test_rich.ram");
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   std::string mates{};
+   for (auto row : file->GetReader().GetEntryRange()) {
+      const RAMNTupleRecord &rec = view(row);
+      if (rec.GetQNAME() == "read_samechrom" || rec.GetQNAME() == "read_diffchrom") {
+         const bool sameRef = file->MateOnSameRef(rec);
+         mates += rec.GetQNAME() + " " + file->GetRnext(rec.GetREFNEXT()) + " " +
+                  std::to_string(rec.GetPNEXT(sameRef)) + " " + std::to_string(rec.GetTLEN(sameRef)) + "\n";
+      }
+   }
+   EXPECT_EQ(mates, "read_diffchrom chr2 2001 0\nread_samechrom = 801 200\n");
+}
+
 // As samtools idxstats counts them: every record of the rich BAM is on chr1
 // except read_unmapped, which has no reference.
 TEST_F(BamToNTupleTest, RecordsAreCountedPerReference)
