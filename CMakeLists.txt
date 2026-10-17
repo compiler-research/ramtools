@@ -51,6 +51,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
     SOURCES
         src/rntuple/RAMNTupleRecord.cxx
         src/rntuple/RAMFile.cxx
+        src/rntuple/RAMTags.cxx
         src/ramcore/SamParser.cxx
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx

@@ -2,6 +2,7 @@
 #include "ramcore/QualityBlocks.h"
 
 #include "rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMTags.h"
 
 #include <ROOT/REntry.hxx>
 #include <ROOT/RNTupleModel.hxx>
@@ -166,7 +167,7 @@ std::vector<std::string> GetTags(const bam1_t *b)
 }
 
 void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uint32_t quality_policy,
-                RAMNTupleRefs &rnames, RAMNTupleRefs &rnexts)
+                RAMNTupleRefs &rnames, RAMNTupleRefs &rnexts, RAMTagWriter &tags)
 {
    const char *rname = (b->core.tid < 0) ? "*" : sam_hdr_tid2name(hdr, b->core.tid);
 
@@ -186,11 +187,7 @@ void FillRecord(RAMNTupleRecord *rec, const bam1_t *b, const sam_hdr_t *hdr, uin
    rec->SetTLEN(static_cast<int32_t>(b->core.isize));
    rec->SetSEQ(GetSeq(b));
    rec->SetQUAL(GetQual(b));
-
-   rec->ResetNOPT();
-   for (const auto &tag : GetTags(b)) {
-      rec->SetOPT(tag);
-   }
+   tags.Split(GetTags(b), *rec);
 }
 
 } // namespace
@@ -228,6 +225,8 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
    // stored in METADATA at the end.
    RAMNTupleRefs rnames;
    RAMNTupleRefs rnexts;
+   RAMTagTables tagTables;
+   RAMTagWriter tags(tagTables);
    RAMFileMetadata meta;
    RAMCoordinateOrder order;
 
@@ -249,7 +248,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    while (sam_read1(bamIn, hdr, rec) >= 0) {
       RAMNTupleRecord &record = out.Record();
-      FillRecord(&record, rec, hdr, quality_policy, rnames, rnexts);
+      FillRecord(&record, rec, hdr, quality_policy, rnames, rnexts, tags);
       meta.max_ref_span = std::max(meta.max_ref_span, record.GetRefSpan());
       order.Note(record.refid, record.pos);
       meta.counts.Note(record.refid, record.flag);
@@ -281,6 +280,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
    }
    meta.rname_refs = rnames.GetRefs();
    meta.rnext_refs = rnexts.GetRefs();
+   tagTables.Store(meta);
    RAMNTupleRecord::WriteMetadata(*rootFile, meta);
 
    rootFile->Close();

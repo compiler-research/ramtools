@@ -29,6 +29,7 @@
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMTags.h"
 namespace {
 
 const RAMNTupleViewOpts opts = {true, false, ""};
@@ -635,6 +636,78 @@ TEST_F(ramcoreTest, UnplacedRecordBeforePlacedOnesMeansUnsorted)
 
    std::remove(customSam);
    std::remove(rntupleFile);
+}
+
+// Standard tags go into columns, the rest stay text, and every record's tags
+// come back as they went in, whatever their order.
+TEST_F(ramcoreTest, TypedTagsComeBackInTheirOrder)
+{
+   const std::vector<std::vector<std::string>> inputs = {
+      {"MC:Z:150M", "PG:Z:MarkDuplicates", "MQ:i:60", "AS:i:148", "XS:i:0", "MD:Z:150", "NM:i:0", "RG:Z:lane1"},
+      {"RG:Z:lane2", "AS:i:-3", "pa:f:0.5"}, // no NM; an unknown tag
+      {},
+      {"NM:i:007", "AS:i:+5", "XS:i:4294967295", "MQ:i:-0"},                 // not written back the same as numbers
+      {"NM:Z:x", "RG:i:5"},                                                  // known tags with another type
+      {"NM:i:1", "NM:i:2", "RG:Z:", "RG:Z:lane1"},                           // second copies; an empty value
+      {"NM", "NM:i", "NM-i:1", "NM:i-1"},                                    // not "TG:T:value"
+      {"NM:i:", "AS:i:5x", "XS:i:99999999999999999999", "MQ:i:-2147483649"}, // not an int32
+   };
+   RAMTagTables tables;
+   RAMTagWriter writer(tables);
+   std::vector<RAMNTupleRecord> records;
+   for (const auto &tags : inputs) {
+      RAMNTupleRecord rec;
+      writer.Split(tags, rec);
+      records.push_back(rec);
+   }
+
+   EXPECT_EQ(records[0].tags, (std::vector<std::string>{"MC:Z:150M", "MD:Z:150"}));
+   EXPECT_EQ(records[0].tag_mq, 60);
+   EXPECT_EQ(records[0].tag_as, 148);
+   EXPECT_EQ(records[1].tags, std::vector<std::string>{"pa:f:0.5"});
+   EXPECT_EQ(records[1].tag_as, -3);
+   EXPECT_EQ(records[3].tags, inputs[3]);
+   EXPECT_EQ(records[4].tags, inputs[4]);
+   EXPECT_EQ(records[5].tags, (std::vector<std::string>{"NM:i:2", "RG:Z:lane1"}));
+   EXPECT_EQ(records[5].tag_nm, 1);
+   EXPECT_EQ(records[6].tags, inputs[6]);
+   EXPECT_EQ(records[7].tags, inputs[7]);
+
+   RAMFileMetadata meta;
+   tables.Store(meta);
+   EXPECT_EQ(meta.tag_rg, (std::vector<std::string>{"lane1", "lane2", ""}));
+   EXPECT_EQ(meta.tag_pg, std::vector<std::string>{"MarkDuplicates"});
+   const RAMTagReader reader(meta);
+   for (std::size_t i = 0; i < inputs.size(); i++) {
+      std::string expected{};
+      for (const auto &tag : inputs[i])
+         expected += "\t" + tag;
+      std::string out{};
+      reader.Append(records[i], out);
+      EXPECT_EQ(out, expected) << "record " << i;
+   }
+}
+
+// Ids METADATA has no entry for, as in a damaged file: an RG or PG value comes
+// out empty, and every text tag still comes out.
+TEST_F(ramcoreTest, TagsOfADamagedRecordStillComeOut)
+{
+   RAMFileMetadata meta;
+   meta.tag_orders = {"RGPG**"};
+   meta.tag_rg = {"lane1"};
+   const RAMTagReader reader(meta);
+
+   RAMNTupleRecord rec;
+   rec.tag_rg = 7;
+   std::string out{};
+   reader.Append(rec, out);
+   EXPECT_EQ(out, "\tRG:Z:\tPG:Z:");
+
+   rec.tag_order = 3;
+   rec.tags = {"XA:Z:chr1,+100,150M,0;", "pa:f:0.5"};
+   out.clear();
+   reader.Append(rec, out);
+   EXPECT_EQ(out, "\tXA:Z:chr1,+100,150M,0;\tpa:f:0.5");
 }
 
 // A converter's table: "*" is no reference, "=" gets an id like any name.

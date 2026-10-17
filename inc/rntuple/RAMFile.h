@@ -2,6 +2,7 @@
 #define RNTUPLE_RAMFILE_H
 
 #include "rntuple/RAMNTupleRecord.h"
+#include "rntuple/RAMTags.h"
 
 #include <ROOT/RNTupleReader.hxx>
 
@@ -30,12 +31,16 @@ public:
    [[nodiscard]] const std::string &GetRnext(int32_t refnext) const { return Name(m_meta.rnext_refs, refnext); }
    /// The refid of \p rname; -1 when the file has no such reference.
    [[nodiscard]] int32_t FindRefId(const std::string &rname) const;
+   /// Appends \p rec's optional tags to \p out as SAM text, each after a tab,
+   /// in the order the input had them.
+   void AppendTags(const RAMNTupleRecord &rec, std::string &out) const { m_tags.Append(rec, out); }
 
 private:
    static const std::string &Name(const std::vector<std::string> &names, int32_t id);
 
    std::unique_ptr<ROOT::RNTupleReader> m_reader;
    RAMFileMetadata m_meta;
+   RAMTagReader m_tags;
    std::unordered_map<std::string, int32_t> m_rnameIds;
 };
 

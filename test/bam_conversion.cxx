@@ -263,6 +263,29 @@ TEST_F(BamToNTupleTest, RichBAMCoversAllTagTypes)
    EXPECT_EQ(reader->GetNEntries(), 1005);
 }
 
+// Every aux type comes back as samtools view prints it. XS, an S here, goes
+// into its column; the rest stay text.
+TEST_F(BamToNTupleTest, TagsOfEveryTypeComeBackAsSamtoolsPrintsThem)
+{
+   GenerateRichBAMFile(/*bam_path=*/"test_rich.bam");
+   bamtoramntuple(/*bamfile=*/"test_rich.bam", /*treefile=*/"test_rich.ram", /*split=*/false, /*cache=*/true,
+                  /*compression_algorithm=*/505, /*quality_policy=*/0U);
+
+   const auto file = RAMFile::Open("test_rich.ram");
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   std::string tags{};
+   for (auto row : file->GetReader().GetEntryRange()) {
+      const RAMNTupleRecord &rec = view(row);
+      if (rec.GetQNAME() == "read_tags") {
+         file->AppendTags(rec, tags);
+         EXPECT_EQ(rec.tag_xs, 50000);
+      }
+   }
+   EXPECT_EQ(tags, "\tXc:i:-5\tXC:i:200\tXs:i:-1000\tXS:i:50000\tXi:i:-100000\tXI:i:3000000\tXf:f:3.14"
+                   "\tXA:A:Q\tXZ:Z:hello\tXH:H:1AE301");
+}
+
 // As samtools idxstats counts them: every record of the rich BAM is on chr1
 // except read_unmapped, which has no reference.
 TEST_F(BamToNTupleTest, RecordsAreCountedPerReference)

@@ -167,6 +167,9 @@ void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
    *metaModel->MakeField<std::vector<uint64_t>>("ref_mapped") = counts.mapped;
    *metaModel->MakeField<std::vector<uint64_t>>("ref_unmapped") = counts.unmapped;
    *metaModel->MakeField<uint64_t>("unplaced") = counts.unplaced;
+   *metaModel->MakeField<std::vector<std::string>>("tag_orders") = meta.tag_orders;
+   *metaModel->MakeField<std::vector<std::string>>("tag_rg") = meta.tag_rg;
+   *metaModel->MakeField<std::vector<std::string>>("tag_pg") = meta.tag_pg;
 
    RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(505);

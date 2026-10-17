@@ -81,6 +81,13 @@ class RecordReader {
    ROOT::RNTupleView<int32_t> m_tlen;
    ROOT::RNTupleView<std::string> m_seq;
    ROOT::RNTupleView<std::string> m_qual;
+   ROOT::RNTupleView<int32_t> m_tagNm;
+   ROOT::RNTupleView<int32_t> m_tagAs;
+   ROOT::RNTupleView<int32_t> m_tagXs;
+   ROOT::RNTupleView<int32_t> m_tagMq;
+   ROOT::RNTupleView<uint32_t> m_tagRg;
+   ROOT::RNTupleView<uint32_t> m_tagPg;
+   ROOT::RNTupleView<uint32_t> m_tagOrder;
    ROOT::RNTupleView<std::vector<std::string>> m_tags;
    ROOT::RNTupleView<uint32_t> m_compressionFlags;
 
@@ -97,6 +104,13 @@ public:
         m_tlen(reader.GetView("record.tlen", &m_record.tlen)),
         m_seq(reader.GetView("record.seq", &m_record.seq)),
         m_qual(reader.GetView("record.qual", &m_record.qual)),
+        m_tagNm(reader.GetView("record.tag_nm", &m_record.tag_nm)),
+        m_tagAs(reader.GetView("record.tag_as", &m_record.tag_as)),
+        m_tagXs(reader.GetView("record.tag_xs", &m_record.tag_xs)),
+        m_tagMq(reader.GetView("record.tag_mq", &m_record.tag_mq)),
+        m_tagRg(reader.GetView("record.tag_rg", &m_record.tag_rg)),
+        m_tagPg(reader.GetView("record.tag_pg", &m_record.tag_pg)),
+        m_tagOrder(reader.GetView("record.tag_order", &m_record.tag_order)),
         m_tags(reader.GetView("record.tags", &m_record.tags)),
         m_compressionFlags(reader.GetView("record.compression_flags", &m_record.compression_flags))
    {
@@ -121,6 +135,13 @@ public:
       m_tlen(row);
       m_seq(row);
       m_qual(row);
+      m_tagNm(row);
+      m_tagAs(row);
+      m_tagXs(row);
+      m_tagMq(row);
+      m_tagRg(row);
+      m_tagPg(row);
+      m_tagOrder(row);
       m_tags(row);
       m_compressionFlags(row);
       return m_record;
@@ -150,11 +171,7 @@ void WriteRecord(const RAMFile &file, const RAMNTupleRecord &rec, const std::str
    out.Str(rec.GetSEQ());
    out.Tab();
    out.Str(qual);
-
-   for (const auto &tag : rec.GetTags()) {
-      out.Tab();
-      out.Str(tag);
-   }
+   file.AppendTags(rec, out.buf);
    out.EndLine();
 }
 

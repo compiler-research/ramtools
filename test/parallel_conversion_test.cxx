@@ -93,8 +93,7 @@ Dump ReadBack(const char *file)
                          std::to_string(r.GetPOS()) + "\t" + std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" +
                          ram->GetRnext(r.GetREFNEXT()) + "\t" + std::to_string(r.GetPNEXT()) + "\t" +
                          std::to_string(r.GetTLEN()) + "\t" + r.GetSEQ() + "\t" + quals.Get(r, i);
-      for (const auto &t : r.GetTags())
-         line += "\t" + t;
+      ram->AppendTags(r, line);
       d.lines.push_back(line);
    }
    return d;

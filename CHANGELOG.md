@@ -48,6 +48,12 @@ the README for what that means before 1.0.
   reference tables and the METADATA values, in their own objects instead of in
   static members of `RAMNTupleRecord`, so several conversions can run in one
   process at once. Before, two at once mixed their reference names ([#107]).
+- The tags NM, AS, XS, MQ, RG and PG are stored in columns of their own instead
+  of as text, RG and PG as ids into a dictionary in METADATA. The other tags
+  stay text, and `ramdump -h` still reproduces the input byte for byte. On chr20
+  of NA12878 at 30x the file is 7.3% smaller (622.5 to 576.8 MB), conversion
+  takes 5 to 13% less CPU, and dumps take the same time. The format version
+  becomes 4, and files written before must be converted again ([#111]).
 
 ### Removed
 
@@ -63,6 +69,10 @@ the README for what that means before 1.0.
   `SetRNAME()`, `SetRNEXT()`, `SetREFID(name)`, `SetREFNEXT(name)`,
   `GetRNAME()`, `GetRNEXT()` and `Print()`. A record holds ids, and
   `RAMFile::GetRname()` and `GetRnext()` give their names ([#107]).
+- `RAMNTupleRecord`'s `AddTag()`, `SetOPT()`, `ClearTags()`, `ResetNOPT()`,
+  `GetTags()`, `GetNOPT()` and `GetOPT()`. `tags` now holds only the tags
+  without a column of their own. Converters split the tags with `RAMTagWriter`,
+  and `RAMFile::AppendTags()` writes all of them back ([#111]).
 
 ## [0.1.0] - 2026-10-14
 
@@ -209,3 +219,4 @@ it stay readable by every later release.
 [#105]: https://github.com/compiler-research/ramtools/pull/105
 [#107]: https://github.com/compiler-research/ramtools/pull/107
 [#108]: https://github.com/compiler-research/ramtools/pull/108
+[#111]: https://github.com/compiler-research/ramtools/pull/111
