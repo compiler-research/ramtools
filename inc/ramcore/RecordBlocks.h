@@ -3,8 +3,9 @@
 
 // Records in blocks. The last record of a block carries the block's names,
 // compressed with htscodecs' name tokeniser (tok3, CRAM 3.1's codec), in
-// "nameblock", and, when asked for, its qualities compressed with fqzcomp in
-// "qualblock". METADATA lists the row each block ends on.
+// "nameblock", and its lossless qualities in "qualblock", compressed with
+// htscodecs' rANS Nx16 as CRAM 3.1 compresses its quality series, or with
+// fqzcomp when asked for. METADATA lists the row each block ends on.
 
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
@@ -27,23 +28,24 @@
 #include <vector>
 
 /// Records per block, as many as a CRAM slice. A region query decodes every
-/// block it touches: about 3 ms for the names, and about 6 ms per thousand
-/// records for fqzcomp qualities. 10,000 keeps all but a percent of the
-/// qualities' gain with 25,000 at less than half the decode time; for names on
-/// NA12878 chr20 it gives 60.9 MB, against 62.9 MB with 5,000 and 58.9 MB with
-/// 100,000.
+/// block it touches: on NA12878 chr20 about 3 ms for the names, 2 ms for rANS
+/// qualities and 60 ms for fqzcomp ones. For names 10,000 gives 60.9 MB,
+/// against 62.9 MB with 5,000 and 58.9 MB with 100,000; for fqzcomp it keeps
+/// all but a percent of 25,000's gain at less than half the decode time.
 constexpr std::size_t kBlockRecords = 10000;
-/// Blocks decoded ahead during a scan. Four keep up with a full dump, and each
-/// decoder holds fqzcomp's 68 MB model, so more only costs memory.
+/// Blocks decoded ahead during a scan. Four keep up with a full dump of fqzcomp
+/// blocks, and each fqzcomp decoder holds a 68 MB model, so more only costs
+/// memory.
 constexpr std::size_t kQualityReadAhead = 4;
 /// Blocks of names decoded ahead during a scan. A block decodes in about 3 ms,
 /// and a dump writes its records in about 15, so two are plenty.
 constexpr std::size_t kNameReadAhead = 2;
 
 /// Holds one record back so the record that ends a block can carry it. Every
-/// record's name goes into its block. A quality goes into a block only when the
-/// record's policy asks for it with kQualInBlock and it is lossless SAM text in
-/// '!'..'~'; the rest stay in the record.
+/// record's name goes into its block. A quality goes into a block when it is
+/// lossless SAM text in '!'..'~'; the rest stay in the record. The block is
+/// compressed with fqzcomp when its records' policy has kFqzcomp, and with rANS
+/// otherwise.
 class BlockWriter {
 public:
    using FillFn = std::function<void(ROOT::REntry &)>;
@@ -74,6 +76,7 @@ private:
    std::string m_quals;
    std::vector<uint32_t> m_lengths;
    std::vector<uint32_t> m_flags;
+   bool m_fqzcomp = false; ///< A record of the block asked for fqzcomp.
    std::vector<uint64_t> m_blockEnds;
 };
 

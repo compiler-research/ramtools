@@ -132,7 +132,7 @@ struct RAMFileMetadata {
    /// Region queries seek only in a sorted file.
    bool coordinate_sorted = true;
    /// Last row of each block of records; that row carries the block's names
-   /// and fqzcomp qualities. See ramcore/RecordBlocks.h.
+   /// and qualities. See ramcore/RecordBlocks.h.
    std::vector<uint64_t> block_ends;
    RAMRefCounts counts;                   ///< One entry per reference.
    std::vector<std::string> tag_orders;   ///< The orders tag_order points into; see RAMTags.h.
@@ -161,8 +161,9 @@ public:
       kPhred33 = 1 << 14,         // Default Phred+33 quality score
       kIlluminaBinning = 1 << 15, // Illumina 8 bin compression
       kDrop = 1 << 16,            // Drop quality score
-      kQualInBlock = 1 << 18      // QUAL is in the fqzcomp block, not in `qual`; in a
-                                  // quality policy, asks for blocks (-fqzcomp)
+      kQualInBlock = 1 << 18,     // QUAL is in its block, not in `qual`
+      kFqzcomp = 1 << 19          // In a quality policy: compress the quality blocks
+                                  // with fqzcomp, not rANS (-fqzcomp); not kept in records
    };
 
    static constexpr const char *kQualBlockField = "qualblock";
@@ -170,7 +171,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 7;
+   static constexpr uint32_t kFormatVersion = 8;
 
    // Alignment data fields
    std::string qname;             //! Query template NAME; not a column: the names are in kNameBlockField
@@ -185,7 +186,7 @@ public:
    int32_t pnext_delta = 0;       // 0-based PNEXT - pos when the mate is on this reference, else 0-based PNEXT
    int32_t tlen_delta = 0;        // TLEN - PredictTLEN()
    std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"
-   std::string qual;              // Quality scores (encoded)
+   std::string qual;              // Quality scores (encoded); empty when kQualInBlock
 
    // Standard tags in columns of their own; RAMTagWriter fills them and
    // RAMTagReader writes them back. tag_order says which the record has.
@@ -238,6 +239,8 @@ public:
    /// it. 0 when either is unmapped or the mate is on another reference.
    [[nodiscard]] int32_t PredictTLEN(int32_t pnext0, bool sameRef) const;
    [[nodiscard]] const std::string &GetSEQ() const { return seq; }
+   /// Empty in a record read from a file whose quality is in a block
+   /// (kQualInBlock): read the qualities with QualityBlockReader.
    std::string GetQUAL() const;
 
    /// Number of bases; 0 for "*".

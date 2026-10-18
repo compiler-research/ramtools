@@ -12,9 +12,11 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -26,11 +28,20 @@ struct Read {
 };
 
 const char *const kFile = "record_blocks_test.root";
-// The policy samtoramntuple -fqzcomp passes: lossless, in blocks.
-const uint32_t kFqzcomp = RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock;
+// The policies samtoramntuple passes for lossless qualities, by default and
+// with -fqzcomp.
+const uint32_t kRansPolicy = RAMNTupleRecord::kPhred33;
+const uint32_t kFqzcompPolicy = RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kFqzcomp;
+// The first byte of a quality block, by codec.
+const uint8_t kRansCodec = 1;
+const uint8_t kFqzcompCodec = 2;
 
-// Writes the reads; \p ends, when given, replaces the block ends, as in a damaged file.
-void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, const std::vector<uint64_t> &ends = {})
+using Damage = std::function<void(std::vector<std::uint8_t> &)>;
+
+// Writes the reads; \p ends, when given, replaces the block ends, and \p damage
+// changes every quality block, as in a damaged file.
+void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, const std::vector<uint64_t> &ends = {},
+           const Damage &damage = nullptr)
 {
    std::unique_ptr<TFile> file(TFile::Open(kFile, "RECREATE"));
    RAMFileMetadata meta;
@@ -39,7 +50,13 @@ void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, c
       auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
       BlockWriter out(
          writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
-         [&writer](ROOT::REntry &e) { writer->Fill(e); }, block);
+         [&writer, &damage](ROOT::REntry &e) {
+            auto &blob = *e.GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
+            if (damage && !blob.empty())
+               damage(blob);
+            writer->Fill(e);
+         },
+         block);
       for (const auto &read : reads) {
          RAMNTupleRecord &rec = out.Record();
          rec.SetBit(policy);
@@ -66,6 +83,18 @@ void ExpectQualities(const std::vector<Read> &reads, const std::vector<std::size
       EXPECT_EQ(quals.Get(view(row), row), reads[row].qual) << "row " << row;
 }
 
+// The first byte of the quality block that row \p end carries, or 0 for none.
+uint8_t CodecAt(uint64_t end)
+{
+   auto file = RAMFile::Open(kFile);
+   EXPECT_NE(file, nullptr);
+   if (!file)
+      return 0;
+   auto blocks = file->GetReader().GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
+   const std::vector<std::uint8_t> &blob = blocks(end);
+   return blob.empty() ? 0 : blob.front();
+}
+
 class RecordBlocksTest : public ::testing::Test {
 protected:
    // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
@@ -86,52 +115,75 @@ TEST_F(RecordBlocksTest, EveryQualityComesBackInAnyOrder)
       {0, "*"},
       {0, "JJJJJJJJJJJJ"},
    };
-   Write(reads, /*block=*/3, kFqzcomp);
-   const auto written = RAMFile::Open(kFile);
-   ASSERT_NE(written, nullptr);
-   EXPECT_EQ(written->GetMetadata().block_ends, (std::vector<uint64_t>{2, 5, 8, 9}));
+   for (const uint32_t policy : {kRansPolicy, kFqzcompPolicy}) {
+      Write(reads, /*block=*/3, policy);
+      const auto written = RAMFile::Open(kFile);
+      ASSERT_NE(written, nullptr);
+      EXPECT_EQ(written->GetMetadata().block_ends, (std::vector<uint64_t>{2, 5, 8, 9}));
 
-   std::vector<std::size_t> forward;
-   std::vector<std::size_t> backward;
-   for (std::size_t i = 0; i < reads.size(); i++) {
-      forward.push_back(i);
-      backward.push_back(reads.size() - 1 - i);
-   }
-   ExpectQualities(reads, forward);
-   ExpectQualities(reads, backward);
+      std::vector<std::size_t> forward;
+      std::vector<std::size_t> backward;
+      for (std::size_t i = 0; i < reads.size(); i++) {
+         forward.push_back(i);
+         backward.push_back(reads.size() - 1 - i);
+      }
+      ExpectQualities(reads, forward);
+      ExpectQualities(reads, backward);
 
-   auto file = RAMFile::Open(kFile);
-   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-   for (std::size_t row = 0; row < reads.size(); row++) {
-      const bool inBlock = reads[row].qual != "*" && reads[row].qual != "AB C";
-      EXPECT_EQ(view(row).TestBit(RAMNTupleRecord::kQualInBlock), inBlock) << "row " << row;
+      auto file = RAMFile::Open(kFile);
+      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+      for (std::size_t row = 0; row < reads.size(); row++) {
+         const bool inBlock = reads[row].qual != "*" && reads[row].qual != "AB C";
+         EXPECT_EQ(view(row).TestBit(RAMNTupleRecord::kQualInBlock), inBlock) << "row " << row;
+         EXPECT_FALSE(view(row).TestBit(RAMNTupleRecord::kFqzcomp)) << "a request, not kept in the record";
+         if (inBlock)
+            EXPECT_TRUE(view(row).qual.empty()) << "row " << row;
+      }
    }
+}
+
+// Lossless qualities go into blocks by default, compressed with rANS; with
+// -fqzcomp the same blocks are fqzcomp's.
+TEST_F(RecordBlocksTest, EachBlockSaysItsCodec)
+{
+   const std::vector<Read> reads = {{0, "IIII"}, {0x10, "#+5?"}, {0, "FFFF"}};
+   Write(reads, /*block=*/2, kRansPolicy);
+   EXPECT_EQ(CodecAt(1), kRansCodec);
+   EXPECT_EQ(CodecAt(2), kRansCodec);
+   Write(reads, /*block=*/2, kFqzcompPolicy);
+   EXPECT_EQ(CodecAt(1), kFqzcompCodec);
+   EXPECT_EQ(CodecAt(2), kFqzcompCodec);
 }
 
 TEST_F(RecordBlocksTest, ABlockWithoutQualitiesNeedsNoData)
 {
    const std::vector<Read> reads = {{0, "*"}, {0, "*"}, {0, "*"}, {0, "HHHH"}};
-   Write(reads, /*block=*/3, kFqzcomp);
-   ExpectQualities(reads, {3, 0, 1, 2});
+   for (const uint32_t policy : {kRansPolicy, kFqzcompPolicy}) {
+      Write(reads, /*block=*/3, policy);
+      EXPECT_EQ(CodecAt(2), 0) << "no qualities, no block";
+      ExpectQualities(reads, {3, 0, 1, 2});
+   }
 }
 
 TEST_F(RecordBlocksTest, LossyPoliciesStayInTheRecord)
 {
-   Write({{0, "IIII"}}, /*block=*/3, RAMNTupleRecord::kDrop | RAMNTupleRecord::kQualInBlock);
-   auto file = RAMFile::Open(kFile);
-   ASSERT_NE(file, nullptr);
-   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*file);
-   EXPECT_FALSE(view(0).TestBit(RAMNTupleRecord::kQualInBlock));
-   EXPECT_EQ(quals.Get(view(0), 0), "*");
+   for (const uint32_t policy :
+        std::vector<uint32_t>{RAMNTupleRecord::kDrop, RAMNTupleRecord::kDrop | RAMNTupleRecord::kFqzcomp}) {
+      Write({{0, "IIII"}}, /*block=*/3, policy);
+      auto file = RAMFile::Open(kFile);
+      ASSERT_NE(file, nullptr);
+      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+      QualityBlockReader quals(*file);
+      EXPECT_FALSE(view(0).TestBit(RAMNTupleRecord::kQualInBlock));
+      EXPECT_EQ(quals.Get(view(0), 0), "*");
+   }
 }
 
 // Binned qualities from Q30 up encode to printable bytes ('F', Q37, becomes
 // byte 37, '%'), which must not be taken for SAM quality and put in a block.
 TEST_F(RecordBlocksTest, IlluminaBinnedQualitiesStayInTheRecord)
 {
-   Write({{0, "FFFFFFFF"}, {0, "#+5?FFII"}}, /*block=*/3,
-         RAMNTupleRecord::kIlluminaBinning | RAMNTupleRecord::kQualInBlock);
+   Write({{0, "FFFFFFFF"}, {0, "#+5?FFII"}}, /*block=*/3, RAMNTupleRecord::kIlluminaBinning);
    auto file = RAMFile::Open(kFile);
    ASSERT_NE(file, nullptr);
    auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
@@ -149,7 +201,7 @@ TEST_F(RecordBlocksTest, DamagedBlockEndsAreReported)
 {
    const std::vector<Read> reads = {{0, "IIII"}, {0, "HHHH"}, {0, "GGGG"}};
    for (const auto &ends : {std::vector<uint64_t>{1, 0}, std::vector<uint64_t>{1, 3}}) {
-      Write(reads, /*block=*/2, kFqzcomp, ends);
+      Write(reads, /*block=*/2, kRansPolicy, ends);
       auto file = RAMFile::Open(kFile);
       ASSERT_NE(file, nullptr);
       EXPECT_THROW(QualityBlockReader quals(*file), std::runtime_error) << ends[0] << "," << ends[1];
@@ -157,20 +209,28 @@ TEST_F(RecordBlocksTest, DamagedBlockEndsAreReported)
    }
 }
 
-// Without -fqzcomp the policy does not ask for blocks, and lossless qualities
-// stay in the record as before.
-TEST_F(RecordBlocksTest, QualitiesStayInTheRecordUnlessAsked)
+// A damaged quality block is reported when it is read: an unknown codec, a
+// block cut short, a lengths part longer than the block, and streams that do
+// not decode.
+TEST_F(RecordBlocksTest, DamagedQualityBlocksAreReported)
 {
-   const std::vector<Read> reads = {{0, "IIII"}, {0x10, "#+5?"}};
-   Write(reads, /*block=*/3, RAMNTupleRecord::kPhred33);
-   auto file = RAMFile::Open(kFile);
-   ASSERT_NE(file, nullptr);
-   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-   QualityBlockReader quals(*file);
-   for (std::size_t row = 0; row < reads.size(); row++) {
-      EXPECT_FALSE(view(row).TestBit(RAMNTupleRecord::kQualInBlock)) << "row " << row;
-      EXPECT_EQ(view(row).qual, reads[row].qual) << "row " << row;
-      EXPECT_EQ(quals.Get(view(row), row), reads[row].qual) << "row " << row;
+   const std::vector<Read> reads = {{0, "IIIIHHHGGF"}, {0x10, "#####ABCDE"}};
+   const std::vector<std::pair<uint32_t, Damage>> damages = {
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.at(0) = 9; }},
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.resize(1); }},
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.resize(4); }},
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.at(4) = 0x7f; }},
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.resize(b.size() - 1); }},
+      {kRansPolicy, [](std::vector<std::uint8_t> &b) { b.at(1) = 1; }},
+      {kFqzcompPolicy, [](std::vector<std::uint8_t> &b) { b.resize(3); }},
+   };
+   for (std::size_t i = 0; i < damages.size(); i++) {
+      Write(reads, /*block=*/2, damages[i].first, /*ends=*/{}, damages[i].second);
+      auto file = RAMFile::Open(kFile);
+      ASSERT_NE(file, nullptr);
+      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+      QualityBlockReader quals(*file);
+      EXPECT_THROW(quals.Get(view(0), 0), std::runtime_error) << "damage " << i;
    }
 }
 

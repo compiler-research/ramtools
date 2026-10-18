@@ -379,7 +379,7 @@ TEST_F(ramcoreTest, TwoOpenFilesKeepTheirOwnState)
       sam << "short\t0\tchr1\t300000\t60\t50M\t*\t0\t0\t" << std::string(50, 'C') << "\t*\n";
    }
    samtoramntuple(sortedSam, sortedFile, /*compression_algorithm=*/505,
-                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock);
+                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kFqzcomp);
    const auto sorted = RAMFile::Open(sortedFile);
    ASSERT_NE(sorted, nullptr);
 
@@ -1199,37 +1199,24 @@ TEST_F(ramcoreTest, QUALEncodingDecodingModes)
       sam << "read1\t0\tchr1\t100\t60\t10M\t*\t0\t0\t" << seq << "\t" << qual << "\n";
    }
 
-   // Lossless: stored as it is
-   samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   // Lossless, by default in a rANS block and with -fqzcomp in an fqzcomp one:
+   // the quality is in the block, not the record, and comes back unchanged
+   for (const uint32_t policy : std::vector<uint32_t>{0, RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kFqzcomp}) {
+      samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505, /*quality_policy=*/policy);
+      {
+         auto file = RAMFile::Open(ramFile);
+         ASSERT_NE(file, nullptr);
 
-   {
-      auto file = RAMFile::Open(ramFile);
-      ASSERT_NE(file, nullptr);
-      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-      EXPECT_FALSE(view(0).TestBit(RAMNTupleRecord::kQualInBlock)) << "blocks only with -fqzcomp";
-      EXPECT_EQ(view(0).GetQUAL(), qual) << "QUAL should remain unchanged without compression";
+         auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+         const auto &rec = view(0);
+         EXPECT_TRUE(rec.TestBit(RAMNTupleRecord::kQualInBlock)) << "policy " << policy;
+         EXPECT_TRUE(rec.qual.empty()) << "policy " << policy;
+
+         QualityBlockReader quals(*file);
+         EXPECT_EQ(quals.Get(rec, 0), qual) << "policy " << policy;
+      }
+      std::remove(ramFile);
    }
-
-   std::remove(ramFile);
-
-   // Lossless with -fqzcomp: the quality goes into an fqzcomp block and comes back unchanged
-   samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505,
-                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock);
-
-   {
-      auto file = RAMFile::Open(ramFile);
-      ASSERT_NE(file, nullptr);
-
-      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-      const auto &rec = view(0);
-      EXPECT_TRUE(rec.TestBit(RAMNTupleRecord::kQualInBlock));
-      EXPECT_TRUE(rec.qual.empty()) << "the quality is in the block, not the record";
-
-      QualityBlockReader quals(*file);
-      EXPECT_EQ(quals.Get(rec, 0), qual) << "QUAL should come back unchanged";
-   }
-
-   std::remove(ramFile);
 
    // Drop the quailty field , should stored as "*"
    samtoramntuple(samFile, ramFile, /*compression_algorithm=*/505,

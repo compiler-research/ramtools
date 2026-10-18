@@ -49,8 +49,8 @@ int main(int argc, char* argv[]) {
        std::cout << "  -split       Split by chromosome\n";
        std::cout << "  -illumina    Use Illumina quality binning\n";
        std::cout << "  -dropqual    Drop quality scores\n";
-       std::cout << "  -fqzcomp     Compress quality scores with fqzcomp, as CRAM 3.1 does: a smaller\n"
-                 << "               file, slower conversion and dumps\n";
+       std::cout << "  -fqzcomp     Compress quality scores with fqzcomp instead of rANS: may be\n"
+                 << "               smaller for unbinned qualities, three times the CPU to read\n";
        std::cout << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n";
        std::cout << "  -threads N   parse and compress on N threads (default 1)\n";
        return 1;
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
           std::cerr << "-fqzcomp compresses lossless qualities; drop -illumina or -dropqual\n";
           return 1;
        }
-       quality_mode |= RAMNTupleRecord::kQualInBlock;
+       quality_mode |= RAMNTupleRecord::kFqzcomp;
     }
     // Split mode has one parser; its threads compress pages only.
     if (threads > 1 && do_split)

@@ -51,8 +51,8 @@ int main(int argc, char *argv[])
                 << "Options:\n"
                 << "  -illumina    Use Illumina quality binning\n"
                 << "  -dropqual    Drop quality scores\n"
-                << "  -fqzcomp     Compress quality scores with fqzcomp, as CRAM 3.1 does: a smaller\n"
-                << "               file, slower conversion and dumps\n"
+                << "  -fqzcomp     Compress quality scores with fqzcomp instead of rANS: may be\n"
+                << "               smaller for unbinned qualities, three times the CPU to read\n"
                 << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n"
                 << "  -threads N   compress pages on N threads (default 1)\n";
       return 1;
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
          std::cerr << "-fqzcomp compresses lossless qualities; drop -illumina or -dropqual\n";
          return 1;
       }
-      quality_mode |= RAMNTupleRecord::kQualInBlock;
+      quality_mode |= RAMNTupleRecord::kFqzcomp;
    }
    // The writer compresses pages on ROOT's thread pool once implicit
    // multithreading is on; the BAM reader already uses htslib threads.
