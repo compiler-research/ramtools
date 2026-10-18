@@ -212,6 +212,11 @@ The two counts agree, the `diff`s print nothing, and for a SAM input
 
 ## Benchmarks
 
+The numbers in this section predate the current file format.
+[bench/README.md](bench/README.md) measures the current code on your
+own machine: it downloads chr20 of NA12878, builds two revisions, measures
+them against each other and against samtools, and writes a report.
+
 HG00154 from the 1000 Genomes Project: 196,040,370 records, 72.06 GB as SAM,
 coordinate sorted, GRCh37 reference names (`1`, not `chr1`). Run on an Intel
 i3-7020U laptop (2 cores, 4 threads, 12 GB of memory) with input and output on
