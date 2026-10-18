@@ -6,6 +6,7 @@
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <htscodecs/fqzcomp_qual.h>
+#include <htscodecs/rANS_static4x16.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <future>
+#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -33,10 +35,106 @@ constexpr int kFqzStrategy = 2;
 // The name tokeniser's level, of 1 to 9. On NA12878 chr20, level 9 with
 // arithmetic coding saves 2 MB more of 61 MB, but encodes 4.7 times slower.
 constexpr int kTok3Level = 3;
+// rANS Nx16 order 1 with RLE and PACK, as CRAM 3.1 compresses its quality
+// series. On NA12878 chr20: 72.4 MB, against 71.6 MB with fqzcomp, which
+// decodes 25 times slower, and 114.6 MB for the qualities as a zstd column.
+constexpr int kRansOrder = 1 | RANS_ORDER_RLE | RANS_ORDER_PACK;
+
+// The first byte of a quality block says how the rest is compressed. A rANS
+// block holds the size of its lengths part in four bytes, little endian, the
+// lengths as varints, then the qualities, each part compressed with kRansOrder.
+// An fqzcomp block is fqzcomp's own stream, which holds the lengths.
+constexpr char kQualRans = 1;
+constexpr char kQualFqzcomp = 2;
 
 bool IsSamQuality(const std::string &qual)
 {
    return std::all_of(qual.begin(), qual.end(), [](char c) { return c >= '!' && c <= '~'; });
+}
+
+// fqzcomp and the name tokeniser take char, rANS unsigned char.
+unsigned char *AsBytes(char *p)
+{
+   return static_cast<unsigned char *>(static_cast<void *>(p));
+}
+
+std::string Rans(std::string &in)
+{
+   unsigned int size = 0;
+   unsigned char *out = rans_compress_4x16(AsBytes(in.data()), static_cast<unsigned int>(in.size()), &size, kRansOrder);
+   if (!out)
+      throw std::runtime_error("rANS could not compress a quality block");
+   std::string bytes(size, '\0');
+   std::memcpy(bytes.data(), out, size);
+   free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+   return bytes;
+}
+
+std::string Unrans(char *in, std::size_t size)
+{
+   unsigned int n = 0;
+   unsigned char *out = rans_uncompress_4x16(AsBytes(in), static_cast<unsigned int>(size), &n);
+   if (!out)
+      throw std::runtime_error("rANS could not decode a quality block");
+   std::string bytes(n, '\0');
+   std::memcpy(bytes.data(), out, n);
+   free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+   return bytes;
+}
+
+// The block of \p lengths and \p quals, as kQualRans describes it.
+std::string RansBlock(const std::vector<uint32_t> &lengths, std::string &quals)
+{
+   std::string varints;
+   for (uint32_t n : lengths) {
+      for (; n >= 0x80; n >>= 7)
+         varints.push_back(static_cast<char>((n & 0x7f) | 0x80));
+      varints.push_back(static_cast<char>(n));
+   }
+   const std::string packedLengths = Rans(varints);
+   std::string block(1, kQualRans);
+   for (int shift = 0; shift < 32; shift += 8)
+      block.push_back(static_cast<char>((packedLengths.size() >> shift) & 0xff));
+   block += packedLengths;
+   block += Rans(quals);
+   return block;
+}
+
+// Fills \p lengths and \p quals from the block after its codec byte, for \p records qualities.
+void DecodeRansBlock(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::string &quals)
+{
+   constexpr std::size_t kHeader = 5;
+   if (bytes.size() < kHeader)
+      throw std::runtime_error("a quality block is damaged");
+   std::size_t lengthsSize = 0;
+   for (std::size_t i = 0; i < 4; i++)
+      lengthsSize |= static_cast<std::size_t>(static_cast<unsigned char>(bytes.at(1 + i))) << (8 * i);
+   if (lengthsSize >= bytes.size() - kHeader)
+      throw std::runtime_error("a quality block is damaged");
+
+   const std::string varints = Unrans(&bytes.at(kHeader), lengthsSize);
+   lengths.clear();
+   std::size_t total = 0;
+   uint32_t n = 0;
+   int shift = 0;
+   for (const char c : varints) {
+      const auto byte = static_cast<unsigned char>(c);
+      if (shift > 28)
+         throw std::runtime_error("a quality block is damaged");
+      n |= static_cast<uint32_t>(byte & 0x7f) << shift;
+      shift += 7;
+      if (byte < 0x80) {
+         if (n > static_cast<uint32_t>(std::numeric_limits<int>::max()))
+            throw std::runtime_error("a quality block is damaged");
+         lengths.push_back(static_cast<int>(n));
+         total += n;
+         n = 0;
+         shift = 0;
+      }
+   }
+   quals = Unrans(&bytes.at(kHeader + lengthsSize), bytes.size() - kHeader - lengthsSize);
+   if (shift != 0 || lengths.size() != records || quals.size() != total)
+      throw std::runtime_error("a quality block is damaged");
 }
 
 // Ends that do not rise, or that run past the last row, would send a row to a
@@ -70,14 +168,16 @@ void BlockWriter::Add()
    m_names += rec.qname;
    m_names += '\0';
 
-   // kQualInBlock comes in from the quality policy as a request (-fqzcomp) and
-   // goes out meaning the quality is in the block. fqzcomp takes no empty
-   // strings, so "*" stays in the record. So do the lossy policies: their
-   // bytes only read back through DecodeQuality, and binned qualities from
-   // Q30 up look like SAM quality text.
-   const bool wanted = rec.TestBit(RAMNTupleRecord::kQualInBlock);
+   // kFqzcomp comes in from the quality policy and picks the block's codec;
+   // kQualInBlock goes out meaning the quality is in the block. fqzcomp takes
+   // no empty strings, so "*" stays in the record. So do the lossy policies:
+   // their bytes only read back through DecodeQuality, and binned qualities
+   // from Q30 up look like SAM quality text.
+   if (rec.TestBit(RAMNTupleRecord::kFqzcomp))
+      m_fqzcomp = true;
+   rec.compression_flags &= ~static_cast<uint32_t>(RAMNTupleRecord::kFqzcomp);
    const bool lossless = !rec.TestBit(RAMNTupleRecord::kIlluminaBinning | RAMNTupleRecord::kDrop);
-   if (wanted && lossless && rec.qual != "*" && !rec.qual.empty() && IsSamQuality(rec.qual)) {
+   if (lossless && rec.qual != "*" && !rec.qual.empty() && IsSamQuality(rec.qual)) {
       for (const char c : rec.qual)
          m_quals.push_back(static_cast<char>(c - '!'));
       m_lengths.push_back(static_cast<uint32_t>(rec.qual.size()));
@@ -102,7 +202,7 @@ void BlockWriter::Finish()
    if (!m_pending)
       return;
    const std::size_t last = 1 - m_current;
-   if (!m_lengths.empty()) {
+   if (!m_lengths.empty() && m_fqzcomp) {
       fqz_slice slice{};
       slice.num_records = static_cast<int>(m_lengths.size());
       slice.len = m_lengths.data();
@@ -113,8 +213,12 @@ void BlockWriter::Finish()
       if (!packed)
          throw std::runtime_error("fqzcomp could not compress a quality block");
       const std::string_view bytes(packed, size);
-      m_qualBlobs.at(last)->assign(bytes.begin(), bytes.end());
+      m_qualBlobs.at(last)->assign(1, kQualFqzcomp);
+      m_qualBlobs.at(last)->insert(m_qualBlobs.at(last)->end(), bytes.begin(), bytes.end());
       free(packed); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+   } else if (!m_lengths.empty()) {
+      const std::string bytes = RansBlock(m_lengths, m_quals);
+      m_qualBlobs.at(last)->assign(bytes.begin(), bytes.end());
    }
    int size = 0;
    int lastStart = 0;
@@ -138,6 +242,7 @@ void BlockWriter::Finish()
    m_quals.clear();
    m_lengths.clear();
    m_flags.clear();
+   m_fqzcomp = false;
 }
 
 std::vector<uint64_t> BlockWriter::TakeBlockEnds()
@@ -195,13 +300,22 @@ QualityBlockReader::Block QualityBlockReader::Decode(Packed packed)
    b.slots = std::move(packed.slots);
    b.lengths.assign(packed.records, 0);
    if (packed.records > 0) {
-      std::size_t size = 0;
-      char *out = fqz_decompress(packed.bytes.data(), packed.bytes.size(), &size, b.lengths.data(),
-                                 static_cast<int>(packed.records));
-      if (!out)
-         throw std::runtime_error("fqzcomp could not decode a quality block");
-      b.quals.assign(out, size);
-      free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+      std::vector<char> &bytes = packed.bytes;
+      if (bytes.size() < 2)
+         throw std::runtime_error("a quality block is damaged");
+      if (bytes.front() == kQualRans) {
+         DecodeRansBlock(bytes, packed.records, b.lengths, b.quals);
+      } else if (bytes.front() == kQualFqzcomp) {
+         std::size_t size = 0;
+         char *out =
+            fqz_decompress(&bytes.at(1), bytes.size() - 1, &size, b.lengths.data(), static_cast<int>(packed.records));
+         if (!out)
+            throw std::runtime_error("fqzcomp could not decode a quality block");
+         b.quals.assign(out, size);
+         free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+      } else {
+         throw std::runtime_error("a quality block has an unknown codec");
+      }
       for (auto &c : b.quals)
          c = static_cast<char>(c + '!');
    }

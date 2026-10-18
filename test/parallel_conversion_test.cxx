@@ -116,10 +116,10 @@ protected:
    }
 };
 
-// With -fqzcomp every input block ends its quality blocks, and the block ends
-// gathered from all threads have to line up with the rows. Each read has its
-// own qualities, so a quality read back from the wrong row shows.
-TEST_F(ParallelConversionTest, FqzcompOnSeveralThreadsKeepsEveryQuality)
+// Every input block ends its quality blocks, and the block ends gathered from
+// all threads have to line up with the rows. Each read has its own qualities,
+// so a quality read back from the wrong row shows.
+TEST_F(ParallelConversionTest, QualityBlocksOnSeveralThreadsKeepEveryQuality)
 {
    std::string sam = Header();
    for (int n = 0; n < 200; ++n) {
@@ -133,14 +133,15 @@ TEST_F(ParallelConversionTest, FqzcompOnSeveralThreadsKeepsEveryQuality)
    samtoramntuple(kSam, kSeq, /*compression_algorithm=*/505, /*quality_policy=*/0);
    const Dump plain = ReadBack(kSeq);
 
-   samtoramntuple(kSam, kPar, /*compression_algorithm=*/505,
-                  /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock, /*threads=*/3,
-                  kTinyBlock);
-   const Dump fqz = ReadBack(kPar);
-   EXPECT_GT(fqz.block_ends.size(), 10U) << "many input blocks, so many quality blocks";
+   for (const uint32_t policy : std::vector<uint32_t>{0, RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kFqzcomp}) {
+      samtoramntuple(kSam, kPar, /*compression_algorithm=*/505, /*quality_policy=*/policy, /*threads=*/3, kTinyBlock);
+      const Dump par = ReadBack(kPar);
+      EXPECT_GT(par.block_ends.size(), 10U) << "many input blocks, so many quality blocks";
 
-   ASSERT_EQ(fqz.lines.size(), 200U);
-   EXPECT_EQ(fqz.lines, plain.lines) << "every quality comes back from its block, on its row";
+      ASSERT_EQ(par.lines.size(), 200U);
+      EXPECT_EQ(par.lines, plain.lines) << "policy " << policy << ": every quality comes back from its block";
+      std::remove(kPar);
+   }
 }
 
 TEST_F(ParallelConversionTest, ManyBlocksOnSeveralThreadsMatchOneBlockRecordForRecord)

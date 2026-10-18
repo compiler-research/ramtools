@@ -44,7 +44,7 @@ The suites live in `test/`:
 | `bam_conversion` | BAM input through htslib, compared with the same reads converted from SAM |
 | `chromosome_split_test` | split output against the unsplit file |
 | `parallel_conversion_test` | `-threads` conversion with tiny blocks: the same records as one block, the sort check across block boundaries, long headers, malformed lines and read errors |
-| `record_blocks_test` | name blocks and `-fqzcomp` quality blocks: which names and qualities go into a block, reading them back in any order, that names are not a column, and damaged blocks and block ends |
+| `record_blocks_test` | name and quality blocks, with rANS and with `-fqzcomp`: which names and qualities go into a block, reading them back in any order, the codec each block records, that names are not a column, and damaged blocks and block ends |
 | `ramdump_test` | the built tools on a fixture: the dump reproduces the input and counts follow samtools' rules |
 
 Run one suite on its own while you work, it is faster than `ctest`:
@@ -165,3 +165,14 @@ has an empty `GetQNAME()`. Read the names with `NameBlockReader`, which decodes
 one block at a time and, while the rows come in order, decodes the next blocks
 ahead on other threads. A region query decodes every block it touches, about
 3 ms each.
+
+## Quality scores
+
+Lossless qualities go into the same blocks, in `qualblock`, and the record's
+`qual` stays empty, with `kQualInBlock` set. The first byte of a block says how
+it is compressed: by default with rANS Nx16 at order 1 with RLE and PACK, as
+CRAM 3.1 compresses its quality series, the lengths of the qualities first and
+then the qualities; with `-fqzcomp`, which passes `kFqzcomp` in the quality
+policy, with fqzcomp. Qualities binned with `-illumina` or dropped with
+`-dropqual` stay in `qual`, as does `*`. Read them with `QualityBlockReader`,
+which returns the quality of any record, from its block or from `qual`.

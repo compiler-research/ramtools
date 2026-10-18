@@ -74,6 +74,22 @@ the README for what that means before 1.0.
   becomes `BlockWriter`, which also writes the name blocks. `NameBlockReader`
   gives the name of any row; a record read from a file has an empty
   `GetQNAME()`. METADATA's `qual_block_ends` becomes `block_ends` ([#114]).
+- Lossless quality scores are stored in the blocks of 10,000 records with
+  rANS order 1, the codec CRAM 3.1 uses for them by default, instead of in the
+  `qual` column. On chr20 of NA12878 at 30x the file goes from 478.2 to
+  435.7 MB (-8.9%), and `ramdump -h` still reproduces the input byte for byte.
+  Conversion takes the same CPU or up to 10% less. Reading every quality costs
+  CPU: on macOS a dump of the whole file takes about 20% more CPU and 8% more
+  time; small region queries, `ramdump -c`, `flagstat` and `idxstats` take the
+  same time. The format version becomes 8 ([#115]).
+- `-fqzcomp` compresses the same blocks with fqzcomp instead of rANS. On chr20
+  of NA12878 at 30x, whose qualities are binned, it saves about 1% of the
+  qualities and takes three times the CPU to read them ([#115]).
+- Library: lossless qualities go into blocks whatever the quality policy, so
+  `kQualInBlock` only says that a record's quality is in its block, and
+  `kFqzcomp` in the policy asks for fqzcomp. A record read from a file has an
+  empty `GetQUAL()` when its quality is in a block; `QualityBlockReader` gives
+  the quality of any record ([#115]).
 
 ### Removed
 
@@ -247,3 +263,4 @@ it stay readable by every later release.
 [#112]: https://github.com/compiler-research/ramtools/pull/112
 [#113]: https://github.com/compiler-research/ramtools/pull/113
 [#114]: https://github.com/compiler-research/ramtools/pull/114
+[#115]: https://github.com/compiler-research/ramtools/pull/115
