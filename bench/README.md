@@ -91,7 +91,9 @@ untimed run first, so the file is in the page cache for every timed run.
 For each run the script records the wall time, the CPU time (user plus
 system, of all the process's threads), the peak memory, and the load average
 before it. Peak memory is the peak physical footprint on macOS and the peak
-RSS on Linux; the two are not comparable with each other.
+RSS on Linux; the two are not comparable with each other. On Linux a command
+runs under a small helper that the script compiles with `cc`, because a child
+forked from Python would count Python's own 20 to 30 MB in its peak.
 
 samtools runs the same reads on the BAM and on the CRAM 3.1, one thread each,
 as the yardstick (`--no-samtools` leaves it out).

@@ -14,7 +14,9 @@ the README for what that means before 1.0.
   md5 sums, builds two revisions the same way, measures conversion, size, the
   round trip, dumps, regions and statistics in alternating order, checks every
   output against samtools, and writes a report. See `bench/README.md`
-  ([#116]).
+  ([#116]). On Linux it runs each command under a small helper it compiles,
+  because a command started from Python counted Python's 20 to 30 MB in its
+  peak memory: `samtools idxstats` showed 22 to 30 MB instead of 10 ([#117]).
 - `-fqzcomp` on both converters compresses lossless quality scores with
   fqzcomp, the codec of CRAM 3.1, in blocks of 10,000 records. On 2 million
   records of chromosome 11 the file is 8.1% smaller, conversion takes 20 to 30%
@@ -271,3 +273,4 @@ it stay readable by every later release.
 [#114]: https://github.com/compiler-research/ramtools/pull/114
 [#115]: https://github.com/compiler-research/ramtools/pull/115
 [#116]: https://github.com/compiler-research/ramtools/pull/116
+[#117]: https://github.com/compiler-research/ramtools/pull/117
