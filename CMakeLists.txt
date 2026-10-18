@@ -56,7 +56,7 @@ ROOT_STANDARD_LIBRARY_PACKAGE(ramcore
         src/ramcore/SamToNTuple.cxx
         src/ramcore/RAMNTupleView.cxx
         src/ramcore/BamtoNTuple.cxx
-        src/ramcore/QualityBlocks.cxx
+        src/ramcore/RecordBlocks.cxx
     LINKDEF
         inc/rntuple/LinkDef.h
     DEPENDENCIES
@@ -75,7 +75,7 @@ target_include_directories(ramcore
 )
 
 target_link_libraries(ramcore PUBLIC PkgConfig::htslib)
-target_link_libraries(ramcore PRIVATE ramtools::fqzcomp)
+target_link_libraries(ramcore PRIVATE ramtools::htscodecs)
 
 install(DIRECTORY inc/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 

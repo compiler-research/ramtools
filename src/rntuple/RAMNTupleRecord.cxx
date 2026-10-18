@@ -196,7 +196,7 @@ void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
    *metaModel->MakeField<std::vector<std::string>>("rnext_refs") = meta.rnext_refs;
    *metaModel->MakeField<uint32_t>("max_ref_span") = meta.max_ref_span;
    *metaModel->MakeField<bool>("coordinate_sorted") = meta.coordinate_sorted;
-   *metaModel->MakeField<std::vector<uint64_t>>("qual_block_ends") = meta.qual_block_ends;
+   *metaModel->MakeField<std::vector<uint64_t>>("block_ends") = meta.block_ends;
    // An entry for every reference, also those without records.
    RAMRefCounts counts = meta.counts;
    counts.Resize(meta.rname_refs.size());
@@ -294,6 +294,7 @@ std::unique_ptr<RNTupleModel> RAMNTupleRecord::MakeModel()
 
    model->MakeField<RAMNTupleRecord>("record");
    model->MakeField<std::vector<std::uint8_t>>(kQualBlockField);
+   model->MakeField<std::vector<std::uint8_t>>(kNameBlockField);
 
    return model;
 }

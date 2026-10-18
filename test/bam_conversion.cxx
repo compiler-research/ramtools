@@ -2,6 +2,7 @@
 
 #include "generate_sam_benchmark.h"
 #include "ramcore/RAMNTupleView.h"
+#include "ramcore/RecordBlocks.h"
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
@@ -274,10 +275,11 @@ TEST_F(BamToNTupleTest, TagsOfEveryTypeComeBackAsSamtoolsPrintsThem)
    const auto file = RAMFile::Open("test_rich.ram");
    ASSERT_NE(file, nullptr);
    auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   NameBlockReader names(*file);
    std::string tags{};
    for (auto row : file->GetReader().GetEntryRange()) {
       const RAMNTupleRecord &rec = view(row);
-      if (rec.GetQNAME() == "read_tags") {
+      if (names.Get(row) == "read_tags") {
          file->AppendTags(rec, tags);
          EXPECT_EQ(rec.tag_xs, 50000);
       }
@@ -296,13 +298,15 @@ TEST_F(BamToNTupleTest, MateFieldsComeBackAsInTheBam)
    const auto file = RAMFile::Open("test_rich.ram");
    ASSERT_NE(file, nullptr);
    auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   NameBlockReader names(*file);
    std::string mates{};
    for (auto row : file->GetReader().GetEntryRange()) {
       const RAMNTupleRecord &rec = view(row);
-      if (rec.GetQNAME() == "read_samechrom" || rec.GetQNAME() == "read_diffchrom") {
+      const std::string name(names.Get(row));
+      if (name == "read_samechrom" || name == "read_diffchrom") {
          const bool sameRef = file->MateOnSameRef(rec);
-         mates += rec.GetQNAME() + " " + file->GetRnext(rec.GetREFNEXT()) + " " +
-                  std::to_string(rec.GetPNEXT(sameRef)) + " " + std::to_string(rec.GetTLEN(sameRef)) + "\n";
+         mates += name + " " + file->GetRnext(rec.GetREFNEXT()) + " " + std::to_string(rec.GetPNEXT(sameRef)) + " " +
+                  std::to_string(rec.GetTLEN(sameRef)) + "\n";
       }
    }
    EXPECT_EQ(mates, "read_diffchrom chr2 2001 0\nread_samechrom = 801 200\n");

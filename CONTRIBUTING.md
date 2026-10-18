@@ -44,7 +44,7 @@ The suites live in `test/`:
 | `bam_conversion` | BAM input through htslib, compared with the same reads converted from SAM |
 | `chromosome_split_test` | split output against the unsplit file |
 | `parallel_conversion_test` | `-threads` conversion with tiny blocks: the same records as one block, the sort check across block boundaries, long headers, malformed lines and read errors |
-| `quality_blocks_test` | `-fqzcomp` quality blocks: which qualities go into a block, reading them back in any order, and damaged block ends |
+| `record_blocks_test` | name blocks and `-fqzcomp` quality blocks: which names and qualities go into a block, reading them back in any order, that names are not a column, and damaged blocks and block ends |
 | `ramdump_test` | the built tools on a fixture: the dump reproduces the input and counts follow samtools' rules |
 
 Run one suite on its own while you work, it is faster than `ctest`:
@@ -101,9 +101,10 @@ Every pull request runs four checks:
 ## Per-file state
 
 A file being read keeps what its METADATA holds, the reference names, the
-longest span, the sort flag, the quality block ends, the SAM header and the
-records per reference, in the `RAMFile` that `RAMFile::Open()` returns. Pass
-that object to `ramntuplescan`, `QualityBlockReader` and the name lookups;
+longest span, the sort flag, the block ends, the SAM header and the records
+per reference, in the `RAMFile` that `RAMFile::Open()` returns. Pass that
+object to `ramntuplescan`, `NameBlockReader`, `QualityBlockReader` and the
+reference name lookups;
 nothing about an open file is static, so several can be open in one process.
 The test `TwoOpenFilesKeepTheirOwnState` checks that.
 
@@ -151,3 +152,16 @@ exactly; for most records `tlen_delta` is 0. Write them with `SetMate()` and
 read them with `GetPNEXT()` and `GetTLEN()`, which take
 `RAMFile::MateOnSameRef()`. A program that reads the columns directly, such as
 an RDataFrame, has to do the same.
+
+## Read names
+
+There is no QNAME column. The converters collect the names of every 10,000
+records, the same blocks as the `-fqzcomp` qualities, and compress them with
+tok3, htscodecs' name tokeniser at level 3 without arithmetic coding, as CRAM
+3.1 does. The last row of a block carries the block in `nameblock`, and
+METADATA's `block_ends` says where each block ends. `qname` stays a member of
+`RAMNTupleRecord` for writing, but it is transient: a record read from a file
+has an empty `GetQNAME()`. Read the names with `NameBlockReader`, which decodes
+one block at a time and, while the rows come in order, decodes the next blocks
+ahead on other threads. A region query decodes every block it touches, about
+3 ms each.

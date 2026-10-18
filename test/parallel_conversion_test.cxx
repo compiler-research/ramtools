@@ -1,5 +1,5 @@
 // Many small blocks on several threads must equal one block on one thread.
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
 #include "rntuple/RAMFile.h"
@@ -67,7 +67,7 @@ struct Dump {
    uint32_t max_span = 0;
    std::vector<std::string> rname_refs;
    RAMRefCounts counts;
-   std::vector<uint64_t> qual_block_ends;
+   std::vector<uint64_t> block_ends;
 };
 
 Dump ReadBack(const char *file)
@@ -83,17 +83,19 @@ Dump ReadBack(const char *file)
    d.max_span = meta.max_ref_span;
    d.rname_refs = meta.rname_refs;
    d.counts = meta.counts;
-   d.qual_block_ends = meta.qual_block_ends;
+   d.block_ends = meta.block_ends;
    ROOT::RNTupleReader &reader = ram->GetReader();
    auto view = reader.GetView<RAMNTupleRecord>("record");
    QualityBlockReader quals(*ram);
+   NameBlockReader names(*ram);
    for (auto i : reader.GetEntryRange()) {
       const RAMNTupleRecord &r = view(i);
       const bool sameRef = ram->MateOnSameRef(r);
-      std::string line = r.GetQNAME() + "\t" + std::to_string(r.GetFLAG()) + "\t" + ram->GetRname(r.GetREFID()) + "\t" +
-                         std::to_string(r.GetPOS()) + "\t" + std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" +
-                         ram->GetRnext(r.GetREFNEXT()) + "\t" + std::to_string(r.GetPNEXT(sameRef)) + "\t" +
-                         std::to_string(r.GetTLEN(sameRef)) + "\t" + r.GetSEQ() + "\t" + quals.Get(r, i);
+      std::string line = std::string(names.Get(i)) + "\t" + std::to_string(r.GetFLAG()) + "\t" +
+                         ram->GetRname(r.GetREFID()) + "\t" + std::to_string(r.GetPOS()) + "\t" +
+                         std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" + ram->GetRnext(r.GetREFNEXT()) +
+                         "\t" + std::to_string(r.GetPNEXT(sameRef)) + "\t" + std::to_string(r.GetTLEN(sameRef)) + "\t" +
+                         r.GetSEQ() + "\t" + quals.Get(r, i);
       ram->AppendTags(r, line);
       d.lines.push_back(line);
    }
@@ -135,7 +137,7 @@ TEST_F(ParallelConversionTest, FqzcompOnSeveralThreadsKeepsEveryQuality)
                   /*quality_policy=*/RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kQualInBlock, /*threads=*/3,
                   kTinyBlock);
    const Dump fqz = ReadBack(kPar);
-   EXPECT_GT(fqz.qual_block_ends.size(), 10U) << "many input blocks, so many quality blocks";
+   EXPECT_GT(fqz.block_ends.size(), 10U) << "many input blocks, so many quality blocks";
 
    ASSERT_EQ(fqz.lines.size(), 200U);
    EXPECT_EQ(fqz.lines, plain.lines) << "every quality comes back from its block, on its row";

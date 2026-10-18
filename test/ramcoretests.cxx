@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 #include "../benchmark/generate_sam_benchmark.h"
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamParser.h"
 #include "ramcore/SamToNTuple.h"
@@ -400,8 +400,8 @@ TEST_F(ramcoreTest, TwoOpenFilesKeepTheirOwnState)
    EXPECT_TRUE(s.coordinate_sorted);
    EXPECT_EQ(u.max_ref_span, 50U);
    EXPECT_EQ(s.max_ref_span, 200010U);
-   EXPECT_EQ(u.qual_block_ends, std::vector<uint64_t>{2}) << "three records in one block";
-   EXPECT_EQ(s.qual_block_ends, std::vector<uint64_t>{1}) << "two records in one block";
+   EXPECT_EQ(u.block_ends, std::vector<uint64_t>{2}) << "three records in one block";
+   EXPECT_EQ(s.block_ends, std::vector<uint64_t>{1}) << "two records in one block";
    EXPECT_EQ(s.header_lines, (std::vector<std::string>{"@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:1000000"}));
    EXPECT_EQ(u.counts.mapped, (std::vector<uint64_t>{0, 3}));
    EXPECT_EQ(s.counts.mapped, std::vector<uint64_t>{2});
@@ -1133,9 +1133,10 @@ TEST_F(ramcoreTest, MalformedCigarRecordIsSkippedByConversion)
    ASSERT_NE(file, nullptr);
    ASSERT_EQ(file->GetReader().GetNEntries(), 2U);
    auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
-   EXPECT_EQ(view(0).GetQNAME(), "a");
+   NameBlockReader names(*file);
+   EXPECT_EQ(names.Get(0), "a");
    EXPECT_EQ(view(0).GetCIGAR(), "4M");
-   EXPECT_EQ(view(1).GetQNAME(), "c");
+   EXPECT_EQ(names.Get(1), "c");
    EXPECT_EQ(view(1).GetCIGAR(), "2M2I");
 
    std::remove(samFile);
