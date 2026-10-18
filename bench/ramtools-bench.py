@@ -33,8 +33,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 # Bump when what is measured, or how, changes; results of different protocols
-# are not comparable.
-PROTOCOL = 1
+# are not comparable. 2: on Linux, peak memory no longer includes this script's.
+PROTOCOL = 2
 
 CRAM_URL = "https://ftp.sra.ebi.ac.uk/vol1/run/ERR323/ERR3239334/NA12878.final.cram"
 REF_URL = ("https://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/"
@@ -73,8 +73,8 @@ def say(text):
 def sh(cmd, cwd=None):
     """stdout of a command, or "" when it cannot run."""
     try:
-        return subprocess.run([str(c) for c in cmd], capture_output=True, text=True, check=True,
-                              cwd=cwd).stdout.strip()
+        return subprocess.run([str(c) for c in cmd], capture_output=True, text=True, errors="replace",
+                              check=True, cwd=cwd).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return ""
 
@@ -82,7 +82,8 @@ def sh(cmd, cwd=None):
 def check_call(cmd, cwd=None, log=None):
     """Runs a command and stops with its output when it fails."""
     cmd = [str(c) for c in cmd]
-    p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    p = subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                       errors="replace")
     if log:
         with open(log, "a") as f:
             f.write("$ " + " ".join(cmd) + "\n" + p.stdout)
@@ -433,6 +434,68 @@ else:
     def peak_footprint(pid):
         return None
 
+# On Linux the peak RSS of a child counts what its parent had mapped when it
+# forked, the size of this Python process (20 to 30 MB), because the kernel
+# keeps the high-water mark across exec. So there a command runs under this
+# helper, compiled once, which forks it from its own small process and reports
+# its usage, as GNU time does.
+MEASURE_C = r"""
+#include <stdio.h>
+#include <sys/resource.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
+
+/* measure REPORT COMMAND...: runs COMMAND and writes to REPORT its wall and CPU
+   seconds, its peak RSS in kB and its wait status. */
+int main(int argc, char **argv)
+{
+   struct timespec t0, t1;
+   struct rusage ru;
+   int status;
+   pid_t pid;
+   FILE *out;
+   if (argc < 3)
+      return 125;
+   clock_gettime(CLOCK_MONOTONIC, &t0);
+   pid = fork();
+   if (pid < 0)
+      return 125;
+   if (pid == 0) {
+      execvp(argv[2], argv + 2);
+      _exit(127);
+   }
+   if (wait4(pid, &status, 0, &ru) < 0)
+      return 125;
+   clock_gettime(CLOCK_MONOTONIC, &t1);
+   out = fopen(argv[1], "w");
+   if (!out)
+      return 125;
+   fprintf(out, "%.6f %.6f %ld %d\n", (double)(t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9,
+           (double)(ru.ru_utime.tv_sec + ru.ru_stime.tv_sec) + (ru.ru_utime.tv_usec + ru.ru_stime.tv_usec) / 1e6,
+           ru.ru_maxrss, status);
+   fclose(out);
+   return 0;
+}
+"""
+MEASURE = None  # the helper's path, set by run() on Linux
+
+
+def measure_helper(work):
+    """The helper compiled into WORK/tools, or None on macOS, which does not need it."""
+    if sys.platform == "darwin":
+        return None
+    exe = Path(work) / "tools" / "measure"
+    src = exe.with_suffix(".c")
+    if not (exe.exists() and src.exists() and src.read_text() == MEASURE_C):
+        cc = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+        if not cc:
+            sys.exit("a C compiler (cc) is needed to measure peak memory on Linux")
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text(MEASURE_C)
+        check_call([cc, "-O2", "-o", exe, src])
+    return exe
+
 
 def exit_code(status):
     if os.WIFEXITED(status):
@@ -444,19 +507,26 @@ def timed(cmd, pin):
     """One run: wall and CPU seconds, peak memory in bytes, the load average before it."""
     cmd = [*pin, *[str(c) for c in cmd]]
     load = os.getloadavg()[0]
-    with tempfile.TemporaryFile() as err:
-        start = time.perf_counter()
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=err)
-        footprint = peak_footprint(proc.pid)
-        _, status, usage = os.wait4(proc.pid, 0)
-        wall = time.perf_counter() - start
-        proc.returncode = exit_code(status)
-        if proc.returncode != 0:
+    with tempfile.TemporaryFile() as err, tempfile.NamedTemporaryFile("r") as report:
+        if MEASURE:
+            helper = subprocess.run([str(MEASURE), report.name, *cmd], stdout=subprocess.DEVNULL, stderr=err)
+            fields = report.read().split()
+            if helper.returncode != 0 or len(fields) != 4:
+                sys.exit(f"the measuring helper failed ({helper.returncode}) on: {' '.join(cmd)}")
+            wall, cpu, peak, code = float(fields[0]), float(fields[1]), int(fields[2]) * 1024, exit_code(int(fields[3]))
+        else:
+            start = time.perf_counter()
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=err)
+            footprint = peak_footprint(proc.pid)
+            _, status, usage = os.wait4(proc.pid, 0)
+            wall = time.perf_counter() - start
+            code = exit_code(status)
+            cpu = usage.ru_utime + usage.ru_stime
+            peak = footprint or usage.ru_maxrss
+        if code != 0:
             err.seek(0)
-            sys.exit(f"failed ({proc.returncode}): {' '.join(cmd)}\n{err.read().decode(errors='replace')[-2000:]}")
-    peak = footprint or usage.ru_maxrss * (1 if sys.platform == "darwin" else 1024)
-    return {"wall": round(wall, 4), "cpu": round(usage.ru_utime + usage.ru_stime, 4),
-            "peak": int(peak), "load": round(load, 2)}
+            sys.exit(f"failed ({code}): {' '.join(cmd)}\n{err.read().decode(errors='replace')[-2000:]}")
+    return {"wall": round(wall, 4), "cpu": round(cpu, 4), "peak": int(peak), "load": round(load, 2)}
 
 
 def series(name, repeat, sides, pin, warm, before=None):
@@ -511,6 +581,8 @@ def run(args):
     pin = ["numactl", f"--cpunodebind={args.pin}", f"--membind={args.pin}"] if args.pin is not None else []
     if pin and sys.platform == "darwin":
         sys.exit("--pin needs numactl, which macOS does not have")
+    global MEASURE
+    MEASURE = measure_helper(work)
 
     base, base_tools = build(args.base, args)
     head, head_tools = build(args.head, args)
@@ -705,8 +777,9 @@ def render(doc):
             old, new = fb.get(n, 0), fh.get(n, 0)
             if max(old, new) < 100_000:
                 continue
-            # A field that held almost nothing on one side has no meaningful percentage.
-            change = "new" if old < 10_000 else ("gone" if new < 10_000 else pct(old, new))
+            # A field that held almost nothing on one side, under 1% of the other, has no meaningful
+            # percentage.
+            change = "new" if old * 100 < new else ("gone" if new * 100 < old else pct(old, new))
             lines.append(f"| {n} | {mb(old)} | {mb(new)} | {change} |")
 
     loads = [r["load"] for step in doc["steps"].values() for runs in step.values() for r in runs]
