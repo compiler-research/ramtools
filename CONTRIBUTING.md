@@ -87,7 +87,10 @@ Every pull request runs four checks:
   the summary.
 - Put the evidence in the description: what you ran, what it printed, and what
   you compared it against. Reviewers check claims against samtools, so give
-  them the command that shows the agreement.
+  them the command that shows the agreement. For a change to speed, memory or
+  size, attach the report of `bench/ramtools-bench.py run` (see
+  `bench/README.md`) on 2 million records, and on all of chr20 when the file
+  format changes.
 - Add a line under `[Unreleased]` in `CHANGELOG.md`, in Added, Changed, Removed
   or Fixed, with a link to the PR. Say what a user notices and, for speed or
   size, by how much. Changes users do not see, such as tests, CI or a

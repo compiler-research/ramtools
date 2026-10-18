@@ -9,6 +9,12 @@ the README for what that means before 1.0.
 
 ### Added
 
+- `bench/ramtools-bench.py` reproduces the benchmarks on any Linux or macOS
+  machine: it downloads chr20 of NA12878 from EBI and checks it against known
+  md5 sums, builds two revisions the same way, measures conversion, size, the
+  round trip, dumps, regions and statistics in alternating order, checks every
+  output against samtools, and writes a report. See `bench/README.md`
+  ([#116]).
 - `-fqzcomp` on both converters compresses lossless quality scores with
   fqzcomp, the codec of CRAM 3.1, in blocks of 10,000 records. On 2 million
   records of chromosome 11 the file is 8.1% smaller, conversion takes 20 to 30%
@@ -264,3 +270,4 @@ it stay readable by every later release.
 [#113]: https://github.com/compiler-research/ramtools/pull/113
 [#114]: https://github.com/compiler-research/ramtools/pull/114
 [#115]: https://github.com/compiler-research/ramtools/pull/115
+[#116]: https://github.com/compiler-research/ramtools/pull/116
