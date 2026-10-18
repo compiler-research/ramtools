@@ -58,7 +58,7 @@ bool ReadMetadata(const std::string &path, RAMFileMetadata &meta)
    meta.rnext_refs = reader->GetView<std::vector<std::string>>("rnext_refs")(0);
    meta.max_ref_span = reader->GetView<uint32_t>("max_ref_span")(0);
    meta.coordinate_sorted = reader->GetView<bool>("coordinate_sorted")(0);
-   meta.qual_block_ends = reader->GetView<std::vector<uint64_t>>("qual_block_ends")(0);
+   meta.block_ends = reader->GetView<std::vector<uint64_t>>("block_ends")(0);
    meta.counts.mapped = reader->GetView<std::vector<uint64_t>>("ref_mapped")(0);
    meta.counts.unmapped = reader->GetView<std::vector<uint64_t>>("ref_unmapped")(0);
    meta.counts.unplaced = reader->GetView<uint64_t>("unplaced")(0);

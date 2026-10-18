@@ -131,7 +131,9 @@ struct RAMFileMetadata {
    uint32_t max_ref_span = 0;
    /// Region queries seek only in a sorted file.
    bool coordinate_sorted = true;
-   std::vector<uint64_t> qual_block_ends; ///< Last row of each quality block.
+   /// Last row of each block of records; that row carries the block's names
+   /// and fqzcomp qualities. See ramcore/RecordBlocks.h.
+   std::vector<uint64_t> block_ends;
    RAMRefCounts counts;                   ///< One entry per reference.
    std::vector<std::string> tag_orders;   ///< The orders tag_order points into; see RAMTags.h.
    std::vector<std::string> tag_rg;       ///< RG values by tag_rg.
@@ -164,13 +166,14 @@ public:
    };
 
    static constexpr const char *kQualBlockField = "qualblock";
+   static constexpr const char *kNameBlockField = "nameblock";
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 6;
+   static constexpr uint32_t kFormatVersion = 7;
 
    // Alignment data fields
-   std::string qname;             // Query template NAME
+   std::string qname;             //! Query template NAME; not a column: the names are in kNameBlockField
    uint16_t flag;                 // Bitwise FLAG
    int32_t refid;                 // Reference sequence ID
    int32_t pos;                   // 0-based left most mapping POSition
@@ -218,6 +221,7 @@ public:
    void SetQUAL(const std::string &qual_str);
 
    // Getters (SAM format, 1-based positions)
+   /// Empty in a record read from a file: read the names with NameBlockReader.
    const std::string &GetQNAME() const { return qname; }
    uint16_t GetFLAG() const { return flag; }
    int32_t GetREFID() const { return refid; }

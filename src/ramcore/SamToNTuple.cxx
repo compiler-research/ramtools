@@ -1,5 +1,5 @@
 #include "ramcore/SamToNTuple.h"
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 #include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
 #include "rntuple/RAMTags.h"
@@ -74,7 +74,7 @@ namespace {
 struct ChromosomeWriter {
    std::unique_ptr<TFile> file{};
    std::unique_ptr<ROOT::RNTupleWriter> writer{};
-   std::unique_ptr<QualityBlockWriter> out;
+   std::unique_ptr<BlockWriter> out;
    int64_t rows = 0;
    int32_t last_pos = -1;
    bool sorted = true;
@@ -122,8 +122,8 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
       cw.writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *cw.file, writeOptions);
       auto *writer = cw.writer.get();
-      cw.out = std::make_unique<QualityBlockWriter>(writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
-                                                    [writer](ROOT::REntry &e) { writer->Fill(e); });
+      cw.out = std::make_unique<BlockWriter>(writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
+                                             [writer](ROOT::REntry &e) { writer->Fill(e); });
       return cw;
    };
 
@@ -167,7 +167,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
    meta.max_ref_span = max_span;
    for (auto &[chr, cw] : writers) {
       cw.out->Finish();
-      meta.qual_block_ends = cw.out->TakeBlockEnds();
+      meta.block_ends = cw.out->TakeBlockEnds();
       cw.out.reset();
       cw.writer.reset();
 
@@ -365,7 +365,7 @@ struct Progress {
    bool failed = false; ///< A worker or the reader gave up; everyone stops.
    FileOrder order;
    size_t records = 0;
-   std::vector<uint64_t> qual_block_ends;
+   std::vector<uint64_t> block_ends;
    std::vector<std::string> late_headers;
 
    void Fail()
@@ -423,7 +423,7 @@ struct SharedRefs {
    RAMTagTables tags;
 };
 
-BlockOrder ProcessBlock(Block &block, QualityBlockWriter &out, uint32_t quality_policy, SharedRefs &refs,
+BlockOrder ProcessBlock(Block &block, BlockWriter &out, uint32_t quality_policy, SharedRefs &refs,
                         RefCache &rname_cache, RefCache &rnext_cache, RAMTagWriter &tags,
                         ramcore::SamRecord &sam_record, size_t &records, std::vector<std::string> &late_headers)
 {
@@ -475,7 +475,7 @@ void WorkerMain(BlockQueue &queue, Progress &progress, SharedRefs &refs,
 {
    const StopOthersOnException guard(progress, queue);
 
-   QualityBlockWriter out(ctx->CreateEntry(), ctx->CreateEntry(), [&ctx](ROOT::REntry &e) { ctx->Fill(e); });
+   BlockWriter out(ctx->CreateEntry(), ctx->CreateEntry(), [&ctx](ROOT::REntry &e) { ctx->Fill(e); });
    RefCache rname_cache;
    RefCache rnext_cache;
    RAMTagWriter tags(refs.tags);
@@ -502,7 +502,7 @@ void WorkerMain(BlockQueue &queue, Progress &progress, SharedRefs &refs,
       ctx->CommitStagedClusters();
       progress.order.Add(order);
       for (const uint64_t end : block_ends)
-         progress.qual_block_ends.push_back(progress.records + end);
+         progress.block_ends.push_back(progress.records + end);
       progress.records += records;
       progress.late_headers.insert(progress.late_headers.end(), late_headers.begin(), late_headers.end());
       progress.next_seq++;
@@ -589,6 +589,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    auto model = ROOT::RNTupleModel::CreateBare();
    model->MakeField<RAMNTupleRecord>("record");
    model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
+   model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField);
 
    ROOT::RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(compression_algorithm);
@@ -654,7 +655,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    refs.tags.Store(meta);
    meta.max_ref_span = progress.order.max_span;
    meta.coordinate_sorted = progress.order.check.sorted;
-   meta.qual_block_ends = std::move(progress.qual_block_ends);
+   meta.block_ends = std::move(progress.block_ends);
    meta.counts = std::move(progress.order.counts);
    if (!meta.coordinate_sorted)
       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);

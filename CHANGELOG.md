@@ -62,6 +62,18 @@ the README for what that means before 1.0.
   that reads the columns directly gets the SAM values with
   `RAMNTupleRecord::GetPNEXT()` and `GetTLEN()`; see CONTRIBUTING. The format
   version becomes 6 ([#113]).
+- Read names are compressed with tok3, the name codec of CRAM 3.1, in blocks
+  of 10,000 records, instead of stored in a `qname` column. On chr20 of NA12878
+  at 30x the file goes from 531.0 to 478.2 MB (-9.9%), and `ramdump -h` still
+  reproduces the input byte for byte. Small region queries, `ramdump -c`,
+  `flagstat` and `idxstats` take the same time, and so does conversion. Reading
+  every name costs CPU: on macOS a dump of the whole file takes about 6% longer
+  (28 s) and 28% more CPU, with the names decoded ahead on a second thread. The
+  format version becomes 7 ([#114]).
+- Library: `QualityBlocks.h` becomes `RecordBlocks.h` and `QualityBlockWriter`
+  becomes `BlockWriter`, which also writes the name blocks. `NameBlockReader`
+  gives the name of any row; a record read from a file has an empty
+  `GetQNAME()`. METADATA's `qual_block_ends` becomes `block_ends` ([#114]).
 
 ### Removed
 
@@ -234,3 +246,4 @@ it stay readable by every later release.
 [#111]: https://github.com/compiler-research/ramtools/pull/111
 [#112]: https://github.com/compiler-research/ramtools/pull/112
 [#113]: https://github.com/compiler-research/ramtools/pull/113
+[#114]: https://github.com/compiler-research/ramtools/pull/114

@@ -1,4 +1,4 @@
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <future>
 #include <memory>
 #include <stdexcept>
@@ -20,35 +21,55 @@
 #include <utility>
 #include <vector>
 
+// After <cstdint>: the header uses uint8_t without including it.
+#include <htscodecs/tokenise_name3.h>
+
 namespace {
 
 // CRAM 3.1's variant: reverse-strand qualities are modelled in sequencing order.
 constexpr int kFqzVersion = 3;
 // fqzcomp's parameter set for MiSeq-like data; the smallest on HG00154.
 constexpr int kFqzStrategy = 2;
+// The name tokeniser's level, of 1 to 9. On NA12878 chr20, level 9 with
+// arithmetic coding saves 2 MB more of 61 MB, but encodes 4.7 times slower.
+constexpr int kTok3Level = 3;
 
 bool IsSamQuality(const std::string &qual)
 {
    return std::all_of(qual.begin(), qual.end(), [](char c) { return c >= '!' && c <= '~'; });
 }
 
+// Ends that do not rise, or that run past the last row, would send a row to a
+// block that does not hold it.
+void CheckBlockEnds(const std::vector<uint64_t> &ends, ROOT::NTupleSize_t rows)
+{
+   for (std::size_t i = 0; i < ends.size(); i++) {
+      if ((i > 0 && ends[i] <= ends[i - 1]) || ends[i] >= rows)
+         throw std::runtime_error("the block ends in the file are damaged");
+   }
+}
+
 } // namespace
 
-QualityBlockWriter::QualityBlockWriter(std::unique_ptr<ROOT::REntry> first, std::unique_ptr<ROOT::REntry> second,
-                                       FillFn fill, std::size_t block_records)
+BlockWriter::BlockWriter(std::unique_ptr<ROOT::REntry> first, std::unique_ptr<ROOT::REntry> second, FillFn fill,
+                         std::size_t block_records)
    : m_entries{std::move(first), std::move(second)},
      m_fill(std::move(fill)),
      m_blockRecords(std::max<std::size_t>(block_records, 1))
 {
    for (std::size_t i = 0; i < 2; i++) {
       m_records.at(i) = m_entries.at(i)->GetPtr<RAMNTupleRecord>("record").get();
-      m_blobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField).get();
+      m_qualBlobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField).get();
+      m_nameBlobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField).get();
    }
 }
 
-void QualityBlockWriter::Add()
+void BlockWriter::Add()
 {
    RAMNTupleRecord &rec = *m_records.at(m_current);
+   m_names += rec.qname;
+   m_names += '\0';
+
    // kQualInBlock comes in from the quality policy as a request (-fqzcomp) and
    // goes out meaning the quality is in the block. fqzcomp takes no empty
    // strings, so "*" stays in the record. So do the lossy policies: their
@@ -76,7 +97,7 @@ void QualityBlockWriter::Add()
       Finish();
 }
 
-void QualityBlockWriter::Finish()
+void BlockWriter::Finish()
 {
    if (!m_pending)
       return;
@@ -92,22 +113,34 @@ void QualityBlockWriter::Finish()
       if (!packed)
          throw std::runtime_error("fqzcomp could not compress a quality block");
       const std::string_view bytes(packed, size);
-      m_blobs.at(last)->assign(bytes.begin(), bytes.end());
+      m_qualBlobs.at(last)->assign(bytes.begin(), bytes.end());
       free(packed); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
    }
+   int size = 0;
+   int lastStart = 0;
+   uint8_t *names = tok3_encode_names(m_names.data(), static_cast<int>(m_names.size()), kTok3Level,
+                                      /*use_arith=*/0, &size, &lastStart);
+   if (!names)
+      throw std::runtime_error("the name tokeniser could not compress a block of names");
+   m_nameBlobs.at(last)->resize(static_cast<std::size_t>(size));
+   std::memcpy(m_nameBlobs.at(last)->data(), names, static_cast<std::size_t>(size));
+   free(names); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+
    m_fill(*m_entries.at(last));
-   m_blobs.at(last)->clear();
+   m_qualBlobs.at(last)->clear();
+   m_nameBlobs.at(last)->clear();
 
    m_rowsSinceTake += m_rows;
    m_blockEnds.push_back(m_rowsSinceTake - 1);
    m_pending = false;
    m_rows = 0;
+   m_names.clear();
    m_quals.clear();
    m_lengths.clear();
    m_flags.clear();
 }
 
-std::vector<uint64_t> QualityBlockWriter::TakeBlockEnds()
+std::vector<uint64_t> BlockWriter::TakeBlockEnds()
 {
    m_rowsSinceTake = 0;
    return std::exchange(m_blockEnds, {});
@@ -115,19 +148,13 @@ std::vector<uint64_t> QualityBlockWriter::TakeBlockEnds()
 
 QualityBlockReader::QualityBlockReader(RAMFile &file)
    : m_flagsView(file.GetReader().GetView<uint32_t>("record.compression_flags")),
-     m_ends(file.GetMetadata().qual_block_ends),
+     m_ends(file.GetMetadata().block_ends),
      m_readAhead(std::min<std::size_t>(kQualityReadAhead, std::max(1U, std::thread::hardware_concurrency())))
 {
    ROOT::RNTupleReader &reader = file.GetReader();
    if (reader.GetDescriptor().FindFieldId(RAMNTupleRecord::kQualBlockField) != ROOT::kInvalidDescriptorId)
       m_view.emplace(reader.GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField));
-
-   // Ends that do not rise, or that run past the last row, would send a row to
-   // a block that does not hold it.
-   for (std::size_t i = 0; i < m_ends.size(); i++) {
-      if ((i > 0 && m_ends[i] <= m_ends[i - 1]) || m_ends[i] >= reader.GetNEntries())
-         throw std::runtime_error("the quality block ends in the file are damaged");
-   }
+   CheckBlockEnds(m_ends, reader.GetNEntries());
 }
 
 std::string QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row)
@@ -206,5 +233,77 @@ void QualityBlockReader::Load(std::size_t block)
    for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
       if (m_ahead.count(next) == 0)
          m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next)));
+   }
+}
+
+NameBlockReader::NameBlockReader(RAMFile &file)
+   : m_view(file.GetReader().GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField)),
+     m_ends(file.GetMetadata().block_ends)
+{
+   CheckBlockEnds(m_ends, file.GetReader().GetNEntries());
+}
+
+std::string_view NameBlockReader::Get(ROOT::NTupleSize_t row)
+{
+   if (m_block == kNoBlock || row < m_firstRow || row > m_ends[m_block]) {
+      const auto it = std::lower_bound(m_ends.begin(), m_ends.end(), static_cast<uint64_t>(row));
+      if (it == m_ends.end())
+         throw std::runtime_error("record " + std::to_string(row) + " has no block of names");
+      Load(static_cast<std::size_t>(it - m_ends.begin()));
+   }
+   const auto i = static_cast<std::size_t>(row - m_firstRow);
+   const std::vector<std::size_t> &starts = m_current.starts;
+   return std::string_view(m_current.names).substr(starts[i], starts[i + 1] - starts[i] - 1);
+}
+
+std::vector<std::uint8_t> NameBlockReader::Read(std::size_t block)
+{
+   const std::vector<std::uint8_t> &bytes = m_view(m_ends[block]);
+   return {bytes.begin(), bytes.end()};
+}
+
+NameBlockReader::Block NameBlockReader::Decode(std::vector<std::uint8_t> packed, std::size_t block, std::size_t rows)
+{
+   uint32_t size = 0;
+   uint8_t *names = tok3_decode_names(packed.data(), static_cast<uint32_t>(packed.size()), &size);
+   if (!names)
+      throw std::runtime_error("the name tokeniser could not decode block " + std::to_string(block));
+   Block b;
+   b.names.resize(size);
+   std::memcpy(b.names.data(), names, size);
+   free(names); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+
+   b.starts.reserve(rows + 1);
+   b.starts.push_back(0);
+   for (std::size_t end = b.names.find('\0'); end != std::string::npos; end = b.names.find('\0', end + 1))
+      b.starts.push_back(end + 1);
+   if (b.starts.size() != rows + 1)
+      throw std::runtime_error("block " + std::to_string(block) + " has " + std::to_string(b.starts.size() - 1) +
+                               " names for " + std::to_string(rows) + " records");
+   return b;
+}
+
+void NameBlockReader::Load(std::size_t block)
+{
+   // Read ahead only while the blocks come in order, so random lookups start nothing.
+   m_run = (m_block != kNoBlock && block == m_block + 1) ? m_run + 1 : 0;
+   const auto rows = [this](std::size_t b) {
+      return static_cast<std::size_t>(m_ends[b] - (b == 0 ? 0 : m_ends[b - 1] + 1) + 1);
+   };
+
+   auto ahead = m_ahead.find(block);
+   if (ahead != m_ahead.end()) {
+      m_current = ahead->second.get();
+      m_ahead.erase(ahead);
+   } else {
+      m_current = Decode(Read(block), block, rows(block));
+   }
+   m_block = block;
+   m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
+
+   const std::size_t depth = std::min(m_run, kNameReadAhead);
+   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
+      if (m_ahead.count(next) == 0)
+         m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next), next, rows(next)));
    }
 }

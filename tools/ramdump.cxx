@@ -2,7 +2,7 @@
 // `ramdump -h file.ram` should reproduce the SAM the file was built from, and
 // `ramdump -c region` should agree with `samtools view -c region`.
 
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
@@ -19,6 +19,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -38,7 +39,7 @@ struct SamWriter {
    SamWriter &operator=(const SamWriter &) = delete;
    SamWriter &operator=(SamWriter &&) = delete;
 
-   void Str(const std::string &s) { buf += s; }
+   void Str(std::string_view s) { buf += s; }
    void Tab() { buf += '\t'; }
    void Int(long long v) { buf += std::to_string(v); }
 
@@ -70,7 +71,6 @@ void WriteHeader(const RAMFile &file, SamWriter &out)
 // the first record. The members are plain types and need neither.
 class RecordReader {
    RAMNTupleRecord m_record;
-   ROOT::RNTupleView<std::string> m_qname;
    ROOT::RNTupleView<uint16_t> m_flag;
    ROOT::RNTupleView<int32_t> m_refid;
    ROOT::RNTupleView<int32_t> m_pos;
@@ -97,8 +97,7 @@ class RecordReader {
 
 public:
    explicit RecordReader(ROOT::RNTupleReader &reader)
-      : m_qname(reader.GetView("record.qname", &m_record.qname)),
-        m_flag(reader.GetView("record.flag", &m_record.flag)),
+      : m_flag(reader.GetView("record.flag", &m_record.flag)),
         m_refid(reader.GetView("record.refid", &m_record.refid)),
         m_pos(reader.GetView("record.pos", &m_record.pos)),
         m_mapq(reader.GetView("record.mapq", &m_record.mapq)),
@@ -132,7 +131,6 @@ public:
 
    const RAMNTupleRecord &operator()(ROOT::NTupleSize_t row)
    {
-      m_qname(row);
       m_flag(row);
       m_refid(row);
       m_pos(row);
@@ -160,9 +158,10 @@ public:
    }
 };
 
-void WriteRecord(const RAMFile &file, const RAMNTupleRecord &rec, const std::string &qual, SamWriter &out)
+void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, const std::string &qual,
+                 SamWriter &out)
 {
-   out.Str(rec.GetQNAME());
+   out.Str(name);
    out.Tab();
    out.Int(rec.GetFLAG());
    out.Tab();
@@ -304,6 +303,7 @@ int main(int argc, char *argv[])
 
    RecordReader records(ram->GetReader());
    QualityBlockReader quals(*ram);
+   NameBlockReader names(*ram);
    Long64_t kept = 0;
 
    ramntuplescan(*ram, region.c_str(), [&](Long64_t row) {
@@ -313,7 +313,8 @@ int main(int argc, char *argv[])
          return;
       kept++;
       if (!countOnly)
-         WriteRecord(*ram, rec, quals.Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
+         WriteRecord(*ram, names.Get(static_cast<ROOT::NTupleSize_t>(row)), rec,
+                     quals.Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
    });
 
    if (countOnly) {

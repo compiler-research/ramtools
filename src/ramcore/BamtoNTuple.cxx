@@ -1,5 +1,5 @@
 #include "ramcore/BamtoNTuple.h"
-#include "ramcore/QualityBlocks.h"
+#include "ramcore/RecordBlocks.h"
 
 #include "rntuple/RAMNTupleRecord.h"
 #include "rntuple/RAMTags.h"
@@ -240,8 +240,8 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
    opts.SetMaxUnzippedPageSize(64000);
 
    auto writer = ROOT::RNTupleWriter::Append(std::move(model), "RAM", *rootFile, opts);
-   QualityBlockWriter out(writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
-                          [&writer](ROOT::REntry &e) { writer->Fill(e); });
+   BlockWriter out(writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
+                   [&writer](ROOT::REntry &e) { writer->Fill(e); });
 
    bam1_t *rec = bam_init1();
    std::size_t count = 0;
@@ -261,7 +261,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    bam_destroy1(rec);
    out.Finish();
-   meta.qual_block_ends = out.TakeBlockEnds();
+   meta.block_ends = out.TakeBlockEnds();
    writer.reset();
 
    // Region queries can only seek on a sorted file; the file records which it is.
