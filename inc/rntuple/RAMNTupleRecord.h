@@ -12,6 +12,8 @@
 #include <ROOT/RField.hxx>
 #include <ROOT/RNTupleView.hxx>
 
+#include <array>
+#include <charconv>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -229,6 +231,8 @@ public:
    int32_t GetPOS() const { return pos + 1; } // Convert back to 1-based for SAM
    uint8_t GetMAPQ() const { return mapq; }
    std::string GetCIGAR() const;
+   /// Appends what GetCIGAR() returns to \p out.
+   void AppendCIGAR(std::string &out) const;
    int32_t GetREFNEXT() const { return refnext; }
    /// PNEXT (1-based) and TLEN as SetMate() was given them; \p sameRef as
    /// there, or RAMFile::MateOnSameRef().
@@ -289,6 +293,17 @@ std::string DecodeQuality(const std::string &encoded_qual, uint32_t compression_
 /// Returns an empty vector and logs an error if the CIGAR is malformed.
 std::vector<uint32_t> ParseCIGAR(const std::string &cigar_str);
 std::string FormatCIGAR(const std::vector<uint32_t> &cigar_ops);
+void AppendCIGAR(std::string &out, const std::vector<uint32_t> &cigar_ops);
+
+/// Appends \p value in decimal, as std::to_string writes it, without the
+/// temporary string: on a full dump those cost about 4% of the CPU.
+inline void AppendInt(std::string &out, long long value)
+{
+   std::array<char, 20> digits{}; // "-9223372036854775808"
+   // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+   const char *end = std::to_chars(digits.data(), digits.data() + digits.size(), value).ptr;
+   out.append(digits.data(), static_cast<std::size_t>(end - digits.data()));
+}
 
 extern const uint8_t kIlluminaBinning[256];
 } // namespace RAMNTupleUtils

@@ -784,6 +784,16 @@ TEST_F(ramcoreTest, RefTableMapsNamesToIds)
    EXPECT_EQ(refs.GetRefs(), (std::vector<std::string>{"chr1", "="}));
 }
 
+TEST_F(ramcoreTest, AppendIntWritesWhatToStringWrites)
+{
+   for (const long long v : {0LL, 7LL, -1LL, 151LL, -2147483648LL, 4294967295LL, std::numeric_limits<long long>::min(),
+                             std::numeric_limits<long long>::max()}) {
+      std::string out = "x";
+      RAMNTupleUtils::AppendInt(out, v);
+      EXPECT_EQ(out, "x" + std::to_string(v));
+   }
+}
+
 TEST_F(ramcoreTest, RecordGetters)
 {
    RAMNTupleRecord record;
@@ -792,6 +802,9 @@ TEST_F(ramcoreTest, RecordGetters)
    record.SetCIGAR("1M1I1D1N1S1H1P1=1X");
    EXPECT_EQ(record.GetCIGAR(), "1M1I1D1N1S1H1P1=1X");
    EXPECT_EQ(record.GetNCIGAROP(), 9U);
+   std::string line = "read\t";
+   record.AppendCIGAR(line);
+   EXPECT_EQ(line, "read\t1M1I1D1N1S1H1P1=1X");
 
    EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/0), 1);
    EXPECT_EQ(record.GetCIGAROPLEN(/*idx=*/1), 1);

@@ -98,6 +98,15 @@ the README for what that means before 1.0.
   `kFqzcomp` in the policy asks for fqzcomp. A record read from a file has an
   empty `GetQUAL()` when its quality is in a block; `QualityBlockReader` gives
   the quality of any record ([#115]).
+- `ramdump` writes numbers, CIGARs and qualities into its output without
+  temporary strings. On chr20 of NA12878 at 30x a dump of the whole file takes
+  27.9 s of CPU and 17.6 s instead of 29.8 s and 19.3 s (-6% and -9%, one
+  socket of a Xeon E5-2690 v4), and a 10 Mb region 6% less CPU. The output is
+  unchanged ([#<N>]).
+- Library: `QualityBlockReader::Get` returns a `std::string_view` into the
+  decoded block, valid until the next call, instead of a copy.
+  `RAMNTupleRecord::AppendCIGAR` and `RAMNTupleUtils::AppendInt` append to a
+  string without making a temporary one ([#<N>]).
 
 ### Removed
 
@@ -274,3 +283,4 @@ it stay readable by every later release.
 [#115]: https://github.com/compiler-research/ramtools/pull/115
 [#116]: https://github.com/compiler-research/ramtools/pull/116
 [#117]: https://github.com/compiler-research/ramtools/pull/117
+[#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

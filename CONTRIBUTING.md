@@ -178,4 +178,5 @@ CRAM 3.1 compresses its quality series, the lengths of the qualities first and
 then the qualities; with `-fqzcomp`, which passes `kFqzcomp` in the quality
 policy, with fqzcomp. Qualities binned with `-illumina` or dropped with
 `-dropqual` stay in `qual`, as does `*`. Read them with `QualityBlockReader`,
-which returns the quality of any record, from its block or from `qual`.
+which returns the quality of any record, from its block or from `qual`, as a
+view that is valid until the next call.
