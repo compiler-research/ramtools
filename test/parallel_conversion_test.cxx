@@ -95,7 +95,8 @@ Dump ReadBack(const char *file)
                          ram->GetRname(r.GetREFID()) + "\t" + std::to_string(r.GetPOS()) + "\t" +
                          std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" + ram->GetRnext(r.GetREFNEXT()) +
                          "\t" + std::to_string(r.GetPNEXT(sameRef)) + "\t" + std::to_string(r.GetTLEN(sameRef)) + "\t" +
-                         r.GetSEQ() + "\t" + quals.Get(r, i);
+                         r.GetSEQ() + "\t";
+      line += quals.Get(r, i);
       ram->AppendTags(r, line);
       d.lines.push_back(line);
    }

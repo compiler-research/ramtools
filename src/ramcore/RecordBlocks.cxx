@@ -262,10 +262,12 @@ QualityBlockReader::QualityBlockReader(RAMFile &file)
    CheckBlockEnds(m_ends, reader.GetNEntries());
 }
 
-std::string QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row)
+std::string_view QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row)
 {
-   if (!rec.TestBit(RAMNTupleRecord::kQualInBlock))
-      return rec.GetQUAL();
+   if (!rec.TestBit(RAMNTupleRecord::kQualInBlock)) {
+      m_text = rec.GetQUAL();
+      return m_text;
+   }
 
    const auto it = std::lower_bound(m_ends.begin(), m_ends.end(), static_cast<uint64_t>(row));
    if (it == m_ends.end() || !m_view)
@@ -275,7 +277,8 @@ std::string QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize
       Load(block);
 
    const std::size_t slot = m_current.slots[static_cast<std::size_t>(row - m_firstRow)];
-   return m_current.quals.substr(m_current.offsets[slot], static_cast<std::size_t>(m_current.lengths[slot]));
+   const std::string_view quals = m_current.quals;
+   return quals.substr(m_current.offsets[slot], static_cast<std::size_t>(m_current.lengths[slot]));
 }
 
 QualityBlockReader::Packed QualityBlockReader::Read(std::size_t block)

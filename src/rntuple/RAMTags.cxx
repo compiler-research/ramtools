@@ -188,7 +188,7 @@ void RAMTagReader::Append(const RAMNTupleRecord &rec, std::string &out) const
          }
          out += m_prefixes.at(static_cast<std::size_t>(i));
          if (i < kRG) {
-            out += std::to_string(IntTag(rec, i));
+            RAMNTupleUtils::AppendInt(out, IntTag(rec, i));
          } else if (i >= kMD) {
             out += StringTag(rec, i);
          } else {

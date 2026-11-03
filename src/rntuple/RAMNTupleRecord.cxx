@@ -245,6 +245,11 @@ std::string RAMNTupleRecord::GetCIGAR() const
    return RAMNTupleUtils::FormatCIGAR(cigar);
 }
 
+void RAMNTupleRecord::AppendCIGAR(std::string &out) const
+{
+   RAMNTupleUtils::AppendCIGAR(out, cigar);
+}
+
 // Text, not the 4-bit packing: overlapping reads share runs of bases, which the
 // compressor matches as long as they stay byte-aligned. Packing shifts every
 // odd-offset overlap by half a byte, and zstd files came out larger with it.
@@ -431,17 +436,24 @@ std::vector<uint32_t> ParseCIGAR(const std::string &cigar_str)
 
 std::string FormatCIGAR(const std::vector<uint32_t> &cigar_ops)
 {
+   std::string out{};
+   AppendCIGAR(out, cigar_ops);
+   return out;
+}
+
+void AppendCIGAR(std::string &out, const std::vector<uint32_t> &cigar_ops)
+{
    // Without this an unmapped read comes back with an empty CIGAR column
    // producing a malformed SAM record
-   if (cigar_ops.empty())
-      return "*";
+   if (cigar_ops.empty()) {
+      out += '*';
+      return;
+   }
 
-   std::string out{};
    for (uint32_t op : cigar_ops) {
-      out += std::to_string(op >> 4);
+      AppendInt(out, op >> 4);
       out += kCodeToCigar.at(op & 0xf);
    }
-   return out;
 }
 
 } // namespace RAMNTupleUtils

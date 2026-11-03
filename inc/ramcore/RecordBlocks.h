@@ -86,7 +86,9 @@ class QualityBlockReader {
 public:
    explicit QualityBlockReader(RAMFile &file);
 
-   std::string Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row);
+   /// Valid until the next call. A view into the decoded block, not a copy:
+   /// copying every quality out cost 7% of a full dump's CPU.
+   std::string_view Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row);
 
 private:
    struct Packed {
@@ -115,6 +117,7 @@ private:
    std::size_t m_run = 0; ///< Consecutive blocks read so far.
    uint64_t m_firstRow = 0;
    Block m_current;
+   std::string m_text; ///< The last quality Get() took from its record, not from a block.
    std::map<std::size_t, std::future<Block>> m_ahead;
 };
 

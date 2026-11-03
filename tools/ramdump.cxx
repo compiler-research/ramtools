@@ -41,7 +41,7 @@ struct SamWriter {
 
    void Str(std::string_view s) { buf += s; }
    void Tab() { buf += '\t'; }
-   void Int(long long v) { buf += std::to_string(v); }
+   void Int(long long v) { RAMNTupleUtils::AppendInt(buf, v); }
 
    void EndLine()
    {
@@ -158,7 +158,7 @@ public:
    }
 };
 
-void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, const std::string &qual,
+void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, std::string_view qual,
                  SamWriter &out)
 {
    out.Str(name);
@@ -171,7 +171,7 @@ void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleReco
    out.Tab();
    out.Int(rec.GetMAPQ());
    out.Tab();
-   out.Str(rec.GetCIGAR());
+   rec.AppendCIGAR(out.buf);
    out.Tab();
    out.Str(file.GetRnext(rec.GetREFNEXT()));
    out.Tab();
