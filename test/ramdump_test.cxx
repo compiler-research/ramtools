@@ -200,6 +200,29 @@ TEST_F(RamdumpTest, ThreadedConversionWritesTheSameRecords)
    std::remove(threaded);
 }
 
+// -@ formats blocks of 10,000 records on threads and writes them in order: the
+// output is the same as on one thread, with a FLAG filter too.
+TEST_F(RamdumpTest, ThreadsWriteTheSameRecordsInOrder)
+{
+   const char *sam = "ramdump_test_many.sam";
+   const char *ram = "ramdump_test_many.root";
+   {
+      std::ofstream out(sam);
+      out << Header();
+      for (int n = 0; n < 25000; n++)
+         out << "r" << n << "\t" << ((n % 3) ? 0 : 16) << "\tchr1\t" << 1 + (n / 30)
+             << "\t60\t4M\t*\t0\t0\tACGT\tIIII\n";
+   }
+   ASSERT_EQ(Quiet(std::string(SAMTORAMNTUPLE_BIN) + " " + sam + " " + ram), 0);
+   for (const std::string options : {"-h", "-F 16"}) {
+      const std::string one = Output(Command(options, ram, ""));
+      EXPECT_EQ(Output(Command(options + " -@ 3", ram, "")), one) << options;
+   }
+   EXPECT_NE(Quiet(Command("-@ 0", ram, "")), 0);
+   std::remove(sam);
+   std::remove(ram);
+}
+
 // The expected text is what samtools 1.18 idxstats prints for the same SAM.
 TEST_F(RamdumpTest, IdxstatsFollowsSamtools)
 {

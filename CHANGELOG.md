@@ -33,6 +33,12 @@ the README for what that means before 1.0.
   (17.7 million records) it takes 1.3 s of CPU and 20 MB on one thread, against
   9.4 s for `samtools flagstat` on the BAM and 3.9 s on the CRAM 3.1. The file
   format is unchanged ([#108]).
+- `ramdump -@ N` reads and formats the whole file on N threads, each taking
+  every N-th block of 10,000 records with a reader of its own; the records come
+  out in order. On chromosome 20 of NA12878 a full read takes 4.6 s on 8
+  threads and 7.9 s on 4 instead of 16.5 s on one, with 546 MB instead of
+  107 MB on 8; `samtools view -@ 8` takes 3.6 s from BAM and 7.7 s from
+  CRAM 3.1. With a region, `-@` is ignored ([#124]).
 
 ### Changed
 
@@ -314,4 +320,5 @@ it stay readable by every later release.
 [#120]: https://github.com/compiler-research/ramtools/pull/120
 [#122]: https://github.com/compiler-research/ramtools/pull/122
 [#123]: https://github.com/compiler-research/ramtools/pull/123
+[#124]: https://github.com/compiler-research/ramtools/pull/124
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

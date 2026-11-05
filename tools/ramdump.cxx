@@ -14,19 +14,26 @@
 #include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
+#include <TROOT.h>
 
 #include <algorithm>
 #include <cerrno>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <future>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -62,6 +69,24 @@ struct SamWriter {
       fwrite(buf.data(), sizeof(char), buf.size(), out);
       buf.clear();
    }
+
+   /// Writes \p text after what is buffered.
+   void Write(std::string_view text)
+   {
+      Flush();
+      fwrite(text.data(), sizeof(char), text.size(), out);
+   }
+};
+
+// SAM text kept in memory: a thread of a dump on several threads formats its
+// records into one, to be written in order.
+struct SamText {
+   std::string buf;
+
+   void Str(std::string_view s) { buf += s; }
+   void Tab() { buf += '\t'; }
+   void Int(long long v) { RAMNTupleUtils::AppendInt(buf, v); }
+   void EndLine() { buf += '\n'; }
 };
 
 void WriteHeader(const RAMFile &file, SamWriter &out)
@@ -256,8 +281,9 @@ public:
    }
 };
 
+template <typename Out>
 void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, std::string_view qual,
-                 SamWriter &out)
+                 Out &out)
 {
    out.Str(name);
    out.Tab();
@@ -285,6 +311,90 @@ void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleReco
    out.EndLine();
 }
 
+// Writes every record of \p path on \p threads threads. A reader is not shared
+// between threads, so each thread opens the file for itself and formats every
+// threads-th block of records (those of a block of names and qualities, 10,000
+// records) into a text of its own; the texts are written in order. A thread
+// never takes two consecutive blocks, so the block readers decode nothing
+// ahead, which other threads would need; and the file is opened without
+// RNTuple's cluster cache, which would make every thread decompress the whole
+// cluster of each block it takes. At most two blocks per thread wait to be
+// written.
+void DumpOnThreads(const std::string &path, const std::vector<uint64_t> &ends, int threads, uint16_t requireFlags,
+                   uint16_t excludeFlags, SamWriter &writer)
+{
+   const std::size_t stride = std::max<std::size_t>(1, std::min(static_cast<std::size_t>(threads), ends.size()));
+   const std::size_t window = 2 * stride;
+   std::mutex mutex;
+   std::condition_variable changed;
+   std::map<std::size_t, std::string> texts; // Formatted, waiting to be written.
+   std::size_t written = 0;                  // Blocks taken by the writer.
+   bool failed = false;
+
+   const auto work = [&](std::size_t first) {
+      try {
+         ROOT::RNTupleReadOptions options;
+         options.SetClusterCache(ROOT::RNTupleReadOptions::EClusterCache::kOff);
+         const auto file = RAMFile::Open(path, options);
+         if (!file)
+            throw std::runtime_error("cannot open " + path);
+         RecordReader records(file->GetReader());
+         QualityBlockReader quals(*file);
+         NameBlockReader names(*file);
+         for (std::size_t block = first; block < ends.size(); block += stride) {
+            {
+               std::unique_lock<std::mutex> lock(mutex);
+               changed.wait(lock, [&] { return failed || block < written + window; });
+               if (failed)
+                  return;
+            }
+            SamText text;
+            for (uint64_t row = block == 0 ? 0 : ends[block - 1] + 1; row <= ends[block]; row++) {
+               const auto &rec = records(row);
+               const uint16_t flag = rec.GetFLAG();
+               if ((flag & requireFlags) != requireFlags || (flag & excludeFlags))
+                  continue;
+               WriteRecord(*file, names.Get(row), rec, quals.Get(rec, row), text);
+            }
+            {
+               const std::lock_guard<std::mutex> lock(mutex);
+               texts.emplace(block, std::move(text.buf));
+            }
+            changed.notify_all();
+         }
+      } catch (...) {
+         {
+            const std::lock_guard<std::mutex> lock(mutex);
+            failed = true;
+         }
+         changed.notify_all();
+         throw;
+      }
+   };
+
+   std::vector<std::future<void>> workers;
+   workers.reserve(stride);
+   for (std::size_t i = 0; i < stride; i++)
+      workers.push_back(std::async(std::launch::async, work, i));
+   for (std::size_t block = 0; block < ends.size(); block++) {
+      std::string text;
+      {
+         std::unique_lock<std::mutex> lock(mutex);
+         changed.wait(lock, [&] { return failed || texts.count(block) != 0; });
+         if (failed)
+            break;
+         const auto it = texts.find(block);
+         text = std::move(it->second);
+         texts.erase(it);
+         written++;
+      }
+      changed.notify_all();
+      writer.Write(text);
+   }
+   for (auto &w : workers)
+      w.get();
+}
+
 void Usage()
 {
    std::cerr << "Usage: ramdump [options] <in.ram> [region]\n"
@@ -295,6 +405,7 @@ void Usage()
              << "  -f INT    only records with all of these FLAG bits set\n"
              << "  -F INT    only records with none of these FLAG bits set\n"
              << "  -o FILE   write to FILE instead of stdout\n"
+             << "  -@ INT    with no region, read and format on INT threads (default 1)\n"
              << "\nRegion is rname[:start[-end]], 1-based and inclusive, as in samtools.\n";
 }
 
@@ -311,6 +422,21 @@ bool ParseFlag(const std::string &text, uint16_t &out)
    return true;
 }
 
+constexpr int kMaxThreads = 1024;
+
+// A decimal number of threads and nothing else, so "3x" is an error rather than 3.
+bool ParseThreads(const std::string &text, int &out)
+{
+   constexpr int kDecimal = 10;
+   char *end = nullptr;
+   errno = 0;
+   const long value = std::strtol(text.c_str(), &end, kDecimal);
+   if (text.empty() || *end != '\0' || errno == ERANGE || value < 1 || value > kMaxThreads)
+      return false;
+   out = static_cast<int>(value);
+   return true;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -323,6 +449,7 @@ int main(int argc, char *argv[])
    bool countOnly = false;
    uint16_t requireFlags = 0;
    uint16_t excludeFlags = 0;
+   int threads = 1;
    std::string outPath{};
    std::string file{};
    std::string region{};
@@ -352,6 +479,15 @@ int main(int argc, char *argv[])
             return 1;
          }
          outPath = args[i];
+      } else if (arg == "-@") {
+         if (++i == args.size()) {
+            std::cerr << "ramdump: -@ needs a value\n";
+            return 1;
+         }
+         if (!ParseThreads(args[i], threads)) {
+            std::cerr << "ramdump: -@ takes a number of threads from 1 to " << kMaxThreads << "\n";
+            return 1;
+         }
       } else if (arg == "--help") {
          Usage();
          return 0;
@@ -383,6 +519,9 @@ int main(int argc, char *argv[])
    // chr20 a region of 1 kb reads 1 MB of the file without the cache and 7 MB
    // with it, and takes less time. A whole file is read faster with the cache
    // when it is not in memory yet.
+   const bool onThreads = threads > 1 && region.empty() && !countOnly && !headerOnly;
+   if (onThreads)
+      ROOT::EnableThreadSafety();
    ROOT::RNTupleReadOptions options;
    if (!region.empty() && region != "*")
       options.SetClusterCache(ROOT::RNTupleReadOptions::EClusterCache::kOff);
@@ -399,6 +538,11 @@ int main(int argc, char *argv[])
 
    if (withHeader && !countOnly)
       WriteHeader(*ram, writer);
+
+   if (onThreads) {
+      DumpOnThreads(file, ram->GetMetadata().block_ends, threads, requireFlags, excludeFlags, writer);
+      return 0;
+   }
 
    // Counting with no FLAG filter never has to decode a record.
    if (countOnly && requireFlags == 0 && excludeFlags == 0) {
