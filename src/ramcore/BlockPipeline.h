@@ -36,6 +36,7 @@ struct BlockOrder {
    int32_t first_pos = -1;
    uint32_t max_span = 0;
    RAMRefCounts counts;
+   RAMFlagCounts flags;
 
    void Note(int32_t refid, int32_t pos)
    {
@@ -52,10 +53,12 @@ struct FileOrder {
    RAMCoordinateOrder check;
    uint32_t max_span = 0;
    RAMRefCounts counts;
+   RAMFlagCounts flags;
 
    void Add(const BlockOrder &b)
    {
       counts.Add(b.counts);
+      flags.Add(b.flags);
       if (!b.check.sorted)
          check.sorted = false;
       if (b.has_placed) {

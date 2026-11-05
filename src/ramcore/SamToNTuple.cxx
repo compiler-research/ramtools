@@ -61,6 +61,13 @@ void FillRecordFields(const ramcore::SamRecord &sam_record, RAMNTupleRecord &rec
    tags.Split(sam_record.optional_fields, rec);
 }
 
+// The mate's reference as htslib's mtid has it, for flagstat: the record's own
+// for "=", -1 for "*" or a name the header lacks.
+int32_t MateRefId(const RAMNTupleRefs &rnames, const std::string &rnext, int32_t refid)
+{
+   return rnext == "=" ? refid : rnames.FindRefId(rnext);
+}
+
 } // namespace
 
 namespace {
@@ -74,6 +81,7 @@ struct ChromosomeWriter {
    int32_t last_pos = -1;
    bool sorted = true;
    RAMRefCounts counts;
+   RAMFlagCounts flags;
 };
 
 } // namespace
@@ -136,6 +144,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
       max_span = std::max(max_span, rec.GetRefSpan());
       cw.counts.Note(rec.refid, rec.flag);
+      cw.flags.Note(rec.flag, rec.refid, MateRefId(rnames, sam_record.rnext, rec.refid), rec.mapq);
       cw.out->Add();
       cw.rows++;
 
@@ -168,6 +177,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
       meta.coordinate_sorted = cw.sorted;
       meta.counts = std::move(cw.counts);
+      meta.flags = cw.flags;
       if (!cw.sorted)
          fprintf(stderr, "%s: %s is not in coordinate order; region queries will read it in full.\n", datafile,
                  chr.c_str());
@@ -278,6 +288,7 @@ BlockOrder ProcessBlock(Block &block, BlockWriter &out, uint32_t quality_policy,
       order.max_span = std::max(order.max_span, rec.GetRefSpan());
       order.Note(rec.refid, rec.pos);
       order.counts.Note(rec.refid, rec.flag);
+      order.flags.Note(rec.flag, rec.refid, MateRefId(refs.rnames, sam_record.rnext, rec.refid), rec.mapq);
       out.Add();
       records++;
    }
@@ -422,6 +433,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    meta.coordinate_sorted = progress.order.check.sorted;
    meta.block_ends = std::move(progress.block_ends);
    meta.counts = std::move(progress.order.counts);
+   meta.flags = progress.order.flags;
    if (!meta.coordinate_sorted)
       fprintf(stderr, "%s is not in coordinate order; region queries will read it in full.\n", datafile);
    RAMNTupleRecord::WriteMetadata(*rootFile, meta);
