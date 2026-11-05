@@ -64,6 +64,10 @@ bool ReadMetadata(const std::string &path, RAMFileMetadata &meta)
    meta.counts.mapped = reader->GetView<std::vector<uint64_t>>("ref_mapped")(0);
    meta.counts.unmapped = reader->GetView<std::vector<uint64_t>>("ref_unmapped")(0);
    meta.counts.unplaced = reader->GetView<uint64_t>("unplaced")(0);
+   if (!meta.flags.Unflatten(reader->GetView<std::vector<uint64_t>>("flag_counts")(0))) {
+      Refuse(path + " has a damaged METADATA: the flagstat counts are incomplete");
+      return false;
+   }
    meta.tag_orders = reader->GetView<std::vector<std::string>>("tag_orders")(0);
    meta.tag_rg = reader->GetView<std::vector<std::string>>("tag_rg")(0);
    meta.tag_pg = reader->GetView<std::vector<std::string>>("tag_pg")(0);

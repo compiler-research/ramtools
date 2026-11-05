@@ -123,6 +123,54 @@ struct RAMRefCounts {
    }
 };
 
+/// The counters of samtools flagstat (bam_stat.c), for one of QC-passed and
+/// QC-failed records.
+struct RAMFlagStat {
+   uint64_t total = 0;
+   uint64_t primary = 0;
+   uint64_t secondary = 0;
+   uint64_t supplementary = 0;
+   uint64_t duplicates = 0;
+   uint64_t primary_duplicates = 0;
+   uint64_t mapped = 0;
+   uint64_t primary_mapped = 0;
+   uint64_t paired = 0;
+   uint64_t read1 = 0;
+   uint64_t read2 = 0;
+   uint64_t properly_paired = 0;
+   uint64_t both_mapped = 0;
+   uint64_t singletons = 0;
+   uint64_t mate_other_chr = 0;
+   uint64_t mate_other_chr_q5 = 0;
+};
+
+/// The counters in the order samtools prints them, which is also the order
+/// METADATA stores them in.
+inline const std::array<uint64_t RAMFlagStat::*, 16> kRAMFlagStatFields = {
+   &RAMFlagStat::total,          &RAMFlagStat::primary,
+   &RAMFlagStat::secondary,      &RAMFlagStat::supplementary,
+   &RAMFlagStat::duplicates,     &RAMFlagStat::primary_duplicates,
+   &RAMFlagStat::mapped,         &RAMFlagStat::primary_mapped,
+   &RAMFlagStat::paired,         &RAMFlagStat::read1,
+   &RAMFlagStat::read2,          &RAMFlagStat::properly_paired,
+   &RAMFlagStat::both_mapped,    &RAMFlagStat::singletons,
+   &RAMFlagStat::mate_other_chr, &RAMFlagStat::mate_other_chr_q5};
+
+/// What `ramstats flagstat` prints, counted by the converters as they write the
+/// records and stored in METADATA, as the counts per reference are.
+struct RAMFlagCounts {
+   std::array<RAMFlagStat, 2> stat{}; ///< [0] QC-passed, [1] QC-failed records.
+
+   /// Counts a record as bam_stat.c does. \p mateRefid is the reference of the
+   /// mate, -1 for none, as htslib's mtid.
+   void Note(uint16_t flag, int32_t refid, int32_t mateRefid, uint8_t mapq);
+   void Add(const RAMFlagCounts &other);
+   /// The counters of [0], then those of [1], each in kRAMFlagStatFields' order.
+   [[nodiscard]] std::vector<uint64_t> Flatten() const;
+   /// The reverse of Flatten(); false if \p values has not as many counters.
+   bool Unflatten(const std::vector<uint64_t> &values);
+};
+
 /// What a RAM file's METADATA holds, one value per file.
 struct RAMFileMetadata {
    std::vector<std::string> header_lines; ///< The SAM header, a line per entry, without the newline.
@@ -137,6 +185,7 @@ struct RAMFileMetadata {
    /// and qualities. See ramcore/RecordBlocks.h.
    std::vector<uint64_t> block_ends;
    RAMRefCounts counts;                   ///< One entry per reference.
+   RAMFlagCounts flags;                   ///< What flagstat prints.
    std::vector<std::string> tag_orders;   ///< The orders tag_order points into; see RAMTags.h.
    std::vector<std::string> tag_rg;       ///< RG values by tag_rg.
    std::vector<std::string> tag_pg;       ///< PG values by tag_pg.
@@ -173,7 +222,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 8;
+   static constexpr uint32_t kFormatVersion = 9;
 
    // Alignment data fields
    std::string qname;             //! Query template NAME; not a column: the names are in kNameBlockField

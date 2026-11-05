@@ -73,6 +73,12 @@ the README for what that means before 1.0.
   at a time, instead of one view call per value. On chromosome 20 of NA12878 a
   full read takes 16.8 s instead of 18.1 s and a 10 Mb region 3.2 s instead of
   3.4 s; a small region reads as many pages as before ([#123]).
+- `ramstats flagstat` prints counts the converters store in METADATA while
+  they write the records, as `idxstats` does, instead of reading four columns of
+  every record: on chromosome 20 of NA12878 it takes 0.05 s instead of 0.41 s,
+  and as long on any file. `--scan` counts them again from the columns. The
+  format version becomes 9, and files written before must be converted again
+  ([#126]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -326,4 +332,5 @@ it stay readable by every later release.
 [#123]: https://github.com/compiler-research/ramtools/pull/123
 [#124]: https://github.com/compiler-research/ramtools/pull/124
 [#125]: https://github.com/compiler-research/ramtools/pull/125
+[#126]: https://github.com/compiler-research/ramtools/pull/126
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

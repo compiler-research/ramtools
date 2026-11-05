@@ -181,6 +181,86 @@ int32_t RAMNTupleRecord::PredictTLEN(int32_t pnext0, bool sameRef) const
 }
 
 // RAMFile::Open() reads these fields back.
+void RAMFlagCounts::Note(uint16_t flag, int32_t refid, int32_t mateRefid, uint8_t mapq)
+{
+   constexpr uint16_t kPaired = 0x1;
+   constexpr uint16_t kProperPair = 0x2;
+   constexpr uint16_t kUnmapped = 0x4;
+   constexpr uint16_t kMateUnmapped = 0x8;
+   constexpr uint16_t kRead1 = 0x40;
+   constexpr uint16_t kRead2 = 0x80;
+   constexpr uint16_t kSecondary = 0x100;
+   constexpr uint16_t kQcFail = 0x200;
+   constexpr uint16_t kDuplicate = 0x400;
+   constexpr uint16_t kSupplementary = 0x800;
+   constexpr uint8_t kMateMapq = 5;
+
+   RAMFlagStat &c = (flag & kQcFail) ? stat[1] : stat[0];
+   c.total++;
+   if (flag & kSecondary) {
+      c.secondary++;
+   } else if (flag & kSupplementary) {
+      c.supplementary++;
+   } else {
+      c.primary++;
+      if (flag & kPaired) {
+         c.paired++;
+         if ((flag & kProperPair) && !(flag & kUnmapped))
+            c.properly_paired++;
+         if (flag & kRead1)
+            c.read1++;
+         if (flag & kRead2)
+            c.read2++;
+         if ((flag & kMateUnmapped) && !(flag & kUnmapped))
+            c.singletons++;
+         if (!(flag & kUnmapped) && !(flag & kMateUnmapped)) {
+            c.both_mapped++;
+            if (mateRefid != refid) {
+               c.mate_other_chr++;
+               if (mapq >= kMateMapq)
+                  c.mate_other_chr_q5++;
+            }
+         }
+      }
+      if (!(flag & kUnmapped))
+         c.primary_mapped++;
+      if (flag & kDuplicate)
+         c.primary_duplicates++;
+   }
+   if (!(flag & kUnmapped))
+      c.mapped++;
+   if (flag & kDuplicate)
+      c.duplicates++;
+}
+
+void RAMFlagCounts::Add(const RAMFlagCounts &other)
+{
+   for (std::size_t i = 0; i < stat.size(); i++)
+      for (const auto field : kRAMFlagStatFields)
+         stat.at(i).*field += other.stat.at(i).*field;
+}
+
+std::vector<uint64_t> RAMFlagCounts::Flatten() const
+{
+   std::vector<uint64_t> values;
+   values.reserve(stat.size() * kRAMFlagStatFields.size());
+   for (const RAMFlagStat &s : stat)
+      for (const auto field : kRAMFlagStatFields)
+         values.push_back(s.*field);
+   return values;
+}
+
+bool RAMFlagCounts::Unflatten(const std::vector<uint64_t> &values)
+{
+   if (values.size() != stat.size() * kRAMFlagStatFields.size())
+      return false;
+   auto value = values.begin();
+   for (RAMFlagStat &s : stat)
+      for (const auto field : kRAMFlagStatFields)
+         s.*field = *value++;
+   return true;
+}
+
 void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
 {
    if (!file.IsOpen())
@@ -203,6 +283,7 @@ void RAMNTupleRecord::WriteMetadata(TFile &file, const RAMFileMetadata &meta)
    *metaModel->MakeField<std::vector<uint64_t>>("ref_mapped") = counts.mapped;
    *metaModel->MakeField<std::vector<uint64_t>>("ref_unmapped") = counts.unmapped;
    *metaModel->MakeField<uint64_t>("unplaced") = counts.unplaced;
+   *metaModel->MakeField<std::vector<uint64_t>>("flag_counts") = meta.flags.Flatten();
    *metaModel->MakeField<std::vector<std::string>>("tag_orders") = meta.tag_orders;
    *metaModel->MakeField<std::vector<std::string>>("tag_rg") = meta.tag_rg;
    *metaModel->MakeField<std::vector<std::string>>("tag_pg") = meta.tag_pg;

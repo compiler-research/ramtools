@@ -84,6 +84,7 @@ struct Dump {
    uint32_t max_span = 0;
    std::vector<std::string> rname_refs;
    RAMRefCounts counts;
+   std::vector<uint64_t> flags; ///< flagstat's counters, flattened.
    std::vector<uint64_t> block_ends;
 };
 
@@ -100,6 +101,7 @@ Dump ReadBack(const char *file)
    d.max_span = meta.max_ref_span;
    d.rname_refs = meta.rname_refs;
    d.counts = meta.counts;
+   d.flags = meta.flags.Flatten();
    d.block_ends = meta.block_ends;
    ROOT::RNTupleReader &reader = ram->GetReader();
    auto view = reader.GetView<RAMNTupleRecord>("record");
@@ -188,6 +190,7 @@ TEST_F(ParallelConversionTest, ManyBlocksOnSeveralThreadsMatchOneBlockRecordForR
    EXPECT_EQ(par.counts.mapped, seq.counts.mapped);
    EXPECT_EQ(par.counts.unmapped, seq.counts.unmapped);
    EXPECT_EQ(par.counts.unplaced, seq.counts.unplaced);
+   EXPECT_EQ(par.flags, seq.flags) << "flagstat's counts, summed over the blocks";
 
    auto reader = ROOT::RNTupleReader::Open("RAM", kPar);
    EXPECT_GT(reader->GetDescriptor().GetNClusters(), 20U);
@@ -365,6 +368,7 @@ TEST_F(ParallelConversionTest, BamInManyBlocksMatchesSamRecordForRecord)
       EXPECT_EQ(par.counts.mapped, seq.counts.mapped);
       EXPECT_EQ(par.counts.unmapped, seq.counts.unmapped);
       EXPECT_EQ(par.counts.unplaced, seq.counts.unplaced);
+      EXPECT_EQ(par.flags, seq.flags) << threads << " threads: flagstat's counts";
       std::remove(kPar);
    }
 }

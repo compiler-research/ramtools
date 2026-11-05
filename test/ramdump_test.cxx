@@ -358,6 +358,15 @@ TEST_F(RamdumpTest, FlagstatFollowsSamtools)
                                                   " }\n"
                                                   "}\n");
 
+   // The counts the converter stored equal those counted again from the
+   // columns, and do not depend on the threads that wrote the file.
+   for (const std::string options : {"", "-O tsv ", "-O json "})
+      EXPECT_EQ(Output(flagstat + options + "--scan " + ram), Output(flagstat + options + ram)) << options;
+   const char *threaded = "ramdump_test_flags_threads.root";
+   ASSERT_EQ(Quiet(std::string(SAMTORAMNTUPLE_BIN) + " " + sam + " " + threaded + " -threads 2"), 0);
+   EXPECT_EQ(Output(flagstat + threaded), Output(flagstat + ram));
+   std::remove(threaded);
+
    EXPECT_NE(Quiet(flagstat + "-O xml " + ram), 0);
    EXPECT_NE(Quiet(flagstat), 0);
    EXPECT_NE(Quiet(flagstat + "missing.root"), 0);

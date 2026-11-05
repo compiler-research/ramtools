@@ -245,6 +245,13 @@ BlockOrder ProcessBlock(const Block &block, BlockWriter &out, const sam_hdr_t *h
       order.max_span = std::max(order.max_span, rec.GetRefSpan());
       order.Note(rec.refid, rec.pos);
       order.counts.Note(rec.refid, rec.flag);
+      // The mate's reference for flagstat, as htslib's mtid.
+      int32_t mate = -1;
+      if (b.core.mtid == b.core.tid)
+         mate = rec.refid;
+      else if (b.core.mtid >= 0)
+         mate = refs.rnames.FindRefId(sam_hdr_tid2name(hdr, b.core.mtid));
+      order.flags.Note(rec.flag, rec.refid, mate, rec.mapq);
       out.Add();
       records++;
    }
@@ -355,6 +362,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
    RAMFileMetadata meta;
    meta.max_ref_span = progress.order.max_span;
    meta.counts = std::move(progress.order.counts);
+   meta.flags = progress.order.flags;
    meta.block_ends = std::move(progress.block_ends);
    // Region queries can only seek on a sorted file; the file records which it is.
    meta.coordinate_sorted = progress.order.check.sorted;

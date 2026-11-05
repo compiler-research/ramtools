@@ -30,12 +30,13 @@ namespace {
 void Usage()
 {
    std::cerr << "Usage: ramstats idxstats <in.ram>\n"
-             << "       ramstats flagstat [-O default|tsv|json] <in.ram>\n"
+             << "       ramstats flagstat [-O default|tsv|json] [--scan] <in.ram>\n"
              << "\nidxstats prints a line per reference, as samtools idxstats does: the name,\n"
              << "the length, the mapped and the unmapped records, then '*' and the records\n"
              << "with no reference.\n"
-             << "\nflagstat counts the records by their FLAG bits, QC-passed and QC-failed\n"
-             << "apart, and prints the counts in samtools flagstat's text, TSV or JSON.\n";
+             << "\nflagstat prints the counts of the records by their FLAG bits, QC-passed and\n"
+             << "QC-failed apart, in samtools flagstat's text, TSV or JSON. The converters\n"
+             << "count them while writing; --scan counts them again from the columns.\n";
 }
 
 // LN of every @SQ line by SN, as written in the header.
@@ -93,64 +94,32 @@ std::string Idxstats(const RAMFile &file)
    return out;
 }
 
-// FLAG bits, named as in htslib's BAM_F constants.
-constexpr uint16_t kPaired = 0x1;
-constexpr uint16_t kProperPair = 0x2;
-constexpr uint16_t kUnmapped = 0x4;
-constexpr uint16_t kMateUnmapped = 0x8;
-constexpr uint16_t kRead1 = 0x40;
-constexpr uint16_t kRead2 = 0x80;
-constexpr uint16_t kSecondary = 0x100;
-constexpr uint16_t kQcFail = 0x200;
-constexpr uint16_t kDuplicate = 0x400;
-constexpr uint16_t kSupplementary = 0x800;
-
-// The counters of samtools flagstat (bam_stat.c), for one of QC-passed and
-// QC-failed records.
-struct FlagCounts {
-   uint64_t total = 0;
-   uint64_t primary = 0;
-   uint64_t secondary = 0;
-   uint64_t supplementary = 0;
-   uint64_t duplicates = 0;
-   uint64_t primary_duplicates = 0;
-   uint64_t mapped = 0;
-   uint64_t primary_mapped = 0;
-   uint64_t paired = 0;
-   uint64_t read1 = 0;
-   uint64_t read2 = 0;
-   uint64_t properly_paired = 0;
-   uint64_t both_mapped = 0;
-   uint64_t singletons = 0;
-   uint64_t mate_other_chr = 0;
-   uint64_t mate_other_chr_q5 = 0;
-};
-
 // A line of the output, in samtools' order.
 struct FlagLine {
-   uint64_t FlagCounts::*count;
+   uint64_t RAMFlagStat::*count;
    const char *text;         ///< The label in the default and TSV outputs.
    const char *json;         ///< The key in the JSON output.
-   uint64_t FlagCounts::*of; ///< What the percentage is of, or null for none.
+   uint64_t RAMFlagStat::*of; ///< What the percentage is of, or null for none.
 };
 
 const std::array<FlagLine, 16> kFlagLines = {{
-   {&FlagCounts::total, "total (QC-passed reads + QC-failed reads)", "total", nullptr},
-   {&FlagCounts::primary, "primary", "primary", nullptr},
-   {&FlagCounts::secondary, "secondary", "secondary", nullptr},
-   {&FlagCounts::supplementary, "supplementary", "supplementary", nullptr},
-   {&FlagCounts::duplicates, "duplicates", "duplicates", nullptr},
-   {&FlagCounts::primary_duplicates, "primary duplicates", "primary duplicates", nullptr},
-   {&FlagCounts::mapped, "mapped", "mapped", &FlagCounts::total},
-   {&FlagCounts::primary_mapped, "primary mapped", "primary mapped", &FlagCounts::primary},
-   {&FlagCounts::paired, "paired in sequencing", "paired in sequencing", nullptr},
-   {&FlagCounts::read1, "read1", "read1", nullptr},
-   {&FlagCounts::read2, "read2", "read2", nullptr},
-   {&FlagCounts::properly_paired, "properly paired", "properly paired", &FlagCounts::paired},
-   {&FlagCounts::both_mapped, "with itself and mate mapped", "with itself and mate mapped", nullptr},
-   {&FlagCounts::singletons, "singletons", "singletons", &FlagCounts::paired},
-   {&FlagCounts::mate_other_chr, "with mate mapped to a different chr", "with mate mapped to a different chr", nullptr},
-   {&FlagCounts::mate_other_chr_q5, "with mate mapped to a different chr (mapQ>=5)",
+   {&RAMFlagStat::total, "total (QC-passed reads + QC-failed reads)", "total", nullptr},
+   {&RAMFlagStat::primary, "primary", "primary", nullptr},
+   {&RAMFlagStat::secondary, "secondary", "secondary", nullptr},
+   {&RAMFlagStat::supplementary, "supplementary", "supplementary", nullptr},
+   {&RAMFlagStat::duplicates, "duplicates", "duplicates", nullptr},
+   {&RAMFlagStat::primary_duplicates, "primary duplicates", "primary duplicates", nullptr},
+   {&RAMFlagStat::mapped, "mapped", "mapped", &RAMFlagStat::total},
+   {&RAMFlagStat::primary_mapped, "primary mapped", "primary mapped", &RAMFlagStat::primary},
+   {&RAMFlagStat::paired, "paired in sequencing", "paired in sequencing", nullptr},
+   {&RAMFlagStat::read1, "read1", "read1", nullptr},
+   {&RAMFlagStat::read2, "read2", "read2", nullptr},
+   {&RAMFlagStat::properly_paired, "properly paired", "properly paired", &RAMFlagStat::paired},
+   {&RAMFlagStat::both_mapped, "with itself and mate mapped", "with itself and mate mapped", nullptr},
+   {&RAMFlagStat::singletons, "singletons", "singletons", &RAMFlagStat::paired},
+   {&RAMFlagStat::mate_other_chr, "with mate mapped to a different chr", "with mate mapped to a different chr",
+    nullptr},
+   {&RAMFlagStat::mate_other_chr_q5, "with mate mapped to a different chr (mapQ>=5)",
     "with mate mapped to a different chr (mapQ >= 5)", nullptr},
 }};
 
@@ -170,11 +139,11 @@ std::vector<int32_t> MateRefIds(const RAMFile &file)
 // The columns are read this many rows at a time.
 constexpr ROOT::NTupleSize_t kChunk = 65536;
 
-// Counts every record as bam_stat.c does; [1] holds the QC-failed ones. The
-// four columns are read a chunk at a time with RNTuple's bulk reads, which copy
-// whole pages into the vectors: reading them one value per view call took four
-// fifths of the time.
-std::array<FlagCounts, 2> CountFlags(RAMFile &file)
+// Counts every record from the columns, as the converters count them into
+// METADATA (flagstat --scan). The four columns are read a chunk at a time with
+// RNTuple's bulk reads, which copy whole pages into the vectors: reading them
+// one value per view call took four fifths of the time.
+RAMFlagCounts CountFlags(RAMFile &file)
 {
    ROOT::RNTupleReader &reader = file.GetReader();
    auto flagView = reader.GetView<uint16_t>("record.flag");
@@ -201,7 +170,7 @@ std::array<FlagCounts, 2> CountFlags(RAMFile &file)
    for (const auto &cluster : reader.GetDescriptor().GetClusterIterable())
       clusters.emplace_back(cluster.GetId(), cluster.GetNEntries());
 
-   std::array<FlagCounts, 2> counts{};
+   RAMFlagCounts counts;
    for (const auto &[cluster, rows] : clusters) {
       for (ROOT::NTupleSize_t start = 0; start < rows; start += kChunk) {
          const std::size_t n = std::min(kChunk, rows - start);
@@ -211,50 +180,14 @@ std::array<FlagCounts, 2> CountFlags(RAMFile &file)
          refnextBulk.ReadBulk(first, nullptr, n);
          mapqBulk.ReadBulk(first, nullptr, n);
          for (std::size_t i = 0; i < n; i++) {
-            const uint16_t flag = flags[i];
-            FlagCounts &c = (flag & kQcFail) ? counts[1] : counts[0];
-            c.total++;
-            if (flag & kSecondary) {
-               c.secondary++;
-            } else if (flag & kSupplementary) {
-               c.supplementary++;
-            } else {
-               c.primary++;
-               if (flag & kPaired) {
-                  c.paired++;
-                  if ((flag & kProperPair) && !(flag & kUnmapped))
-                     c.properly_paired++;
-                  if (flag & kRead1)
-                     c.read1++;
-                  if (flag & kRead2)
-                     c.read2++;
-                  if ((flag & kMateUnmapped) && !(flag & kUnmapped))
-                     c.singletons++;
-                  if (!(flag & kUnmapped) && !(flag & kMateUnmapped)) {
-                     c.both_mapped++;
-                     const int32_t refid = refids[i];
-                     const int32_t refnext = refnexts[i];
-                     int32_t mate = -1;
-                     if (refnext >= 0 && static_cast<std::size_t>(refnext) < mateRefIds.size())
-                        mate = mateRefIds[static_cast<std::size_t>(refnext)] == kSameRef
-                                  ? refid
-                                  : mateRefIds[static_cast<std::size_t>(refnext)];
-                     if (mate != refid) {
-                        c.mate_other_chr++;
-                        if (mapqs[i] >= 5)
-                           c.mate_other_chr_q5++;
-                     }
-                  }
-               }
-               if (!(flag & kUnmapped))
-                  c.primary_mapped++;
-               if (flag & kDuplicate)
-                  c.primary_duplicates++;
-            }
-            if (!(flag & kUnmapped))
-               c.mapped++;
-            if (flag & kDuplicate)
-               c.duplicates++;
+            const int32_t refid = refids[i];
+            const int32_t refnext = refnexts[i];
+            int32_t mate = -1;
+            if (refnext >= 0 && static_cast<std::size_t>(refnext) < mateRefIds.size())
+               mate = mateRefIds[static_cast<std::size_t>(refnext)] == kSameRef
+                         ? refid
+                         : mateRefIds[static_cast<std::size_t>(refnext)];
+            counts.Note(flags[i], refid, mate, mapqs[i]);
          }
       }
    }
@@ -275,12 +208,12 @@ std::string Percent(uint64_t n, uint64_t of, bool json)
    return s.str();
 }
 
-std::string FlagstatDefault(const std::array<FlagCounts, 2> &c)
+std::string FlagstatDefault(const std::array<RAMFlagStat, 2> &c)
 {
    std::string out{};
    for (const FlagLine &line : kFlagLines) {
       out += std::to_string(c[0].*line.count) + " + " + std::to_string(c[1].*line.count) + " ";
-      if (line.count == &FlagCounts::total)
+      if (line.count == &RAMFlagStat::total)
          out += "in ";
       out += line.text;
       if (line.of != nullptr)
@@ -291,7 +224,7 @@ std::string FlagstatDefault(const std::array<FlagCounts, 2> &c)
    return out;
 }
 
-std::string FlagstatTsv(const std::array<FlagCounts, 2> &c)
+std::string FlagstatTsv(const std::array<RAMFlagStat, 2> &c)
 {
    std::string out{};
    for (const FlagLine &line : kFlagLines) {
@@ -304,7 +237,7 @@ std::string FlagstatTsv(const std::array<FlagCounts, 2> &c)
 }
 
 // Spaces before the newlines included, as samtools prints them.
-std::string FlagstatJson(const std::array<FlagCounts, 2> &c)
+std::string FlagstatJson(const std::array<RAMFlagStat, 2> &c)
 {
    const std::array<const char *, 2> names = {"QC-passed reads", "QC-failed reads"};
    std::string out = "{\n";
@@ -324,14 +257,17 @@ std::string FlagstatJson(const std::array<FlagCounts, 2> &c)
    return out;
 }
 
-// ramstats flagstat [-O default|tsv|json] <in.ram>; the arguments after "flagstat".
+// ramstats flagstat [-O default|tsv|json] [--scan] <in.ram>; the arguments after "flagstat".
 int Flagstat(const std::vector<std::string> &args)
 {
    std::string format = "default";
    std::string path{};
+   bool scan = false;
    for (std::size_t i = 0; i < args.size(); i++) {
       if ((args[i] == "-O" || args[i] == "--output-fmt") && i + 1 < args.size()) {
          format = args[++i];
+      } else if (args[i] == "--scan") {
+         scan = true;
       } else if (path.empty() && !args[i].empty() && args[i][0] != '-') {
          path = args[i];
       } else {
@@ -350,7 +286,7 @@ int Flagstat(const std::vector<std::string> &args)
       std::cerr << "ramstats: cannot open " << path << "\n";
       return 1;
    }
-   const auto counts = CountFlags(*file);
+   const std::array<RAMFlagStat, 2> counts = scan ? CountFlags(*file).stat : file->GetMetadata().flags.stat;
    if (format == "json" || format == "JSON")
       std::cout << FlagstatJson(counts);
    else if (format == "tsv" || format == "TSV")
