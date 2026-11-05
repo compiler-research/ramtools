@@ -220,6 +220,14 @@ public:
    static constexpr const char *kQualBlockField = "qualblock";
    static constexpr const char *kNameBlockField = "nameblock";
 
+   /// The converters' cap on a page before compression. Opening a file reads
+   /// the page list of every cluster, so fewer pages open faster. A small
+   /// region decompresses a page of each column it reads, which costs more with
+   /// larger pages: on chr20 of NA12878, 128 kB pages halve the pages of 64 kB
+   /// ones, and a region of 1 kb in a file kept open takes 8.3 ms instead of
+   /// 6.4 ms, where 256 kB pages took 11.7 ms.
+   static constexpr std::size_t kMaxUnzippedPageSize = 128U * 1024U;
+
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
    static constexpr uint32_t kFormatVersion = 9;

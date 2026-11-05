@@ -119,7 +119,7 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
       ROOT::RNTupleWriteOptions writeOptions;
       writeOptions.SetCompression(compression_algorithm);
-      writeOptions.SetMaxUnzippedPageSize(64000);
+      writeOptions.SetMaxUnzippedPageSize(RAMNTupleRecord::kMaxUnzippedPageSize);
       // Every chromosome's buffers are open at once, so keep the clusters small.
       writeOptions.SetApproxZippedClusterSize(8 * 1024 * 1024);
 
@@ -388,7 +388,7 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
 
    ROOT::RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(compression_algorithm);
-   writeOptions.SetMaxUnzippedPageSize(64000);
+   writeOptions.SetMaxUnzippedPageSize(RAMNTupleRecord::kMaxUnzippedPageSize);
    // Required by RNTupleParallelWriter.
    writeOptions.SetUseBufferedWrite(true);
 

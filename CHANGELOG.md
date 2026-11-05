@@ -79,6 +79,15 @@ the README for what that means before 1.0.
   and as long on any file. `--scan` counts them again from the columns. The
   format version becomes 9, and files written before must be converted again
   ([#126]).
+- The converters cap pages at 128 kB before compression instead of 64 kB.
+  Opening a file reads the page list of every cluster, and a file now has half
+  the pages. On all of NA12878 converted from BAM, 1.99 million pages instead
+  of 3.99 million: `ramstats idxstats` takes 0.37 s and 157 MB instead of
+  0.59 s and 268 MB, a region of 1 kb 0.59 s and 209 MB instead of 0.90 s and
+  345 MB, and the file is 18.16 GB instead of 18.42 GB. On chromosome 20 a
+  region of 1 kb in a file kept open takes 8.3 ms instead of 6.4 ms, because
+  its pages are larger, and as long as before in a process of its own. Files
+  written before read as before ([#127]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -333,4 +342,5 @@ it stay readable by every later release.
 [#124]: https://github.com/compiler-research/ramtools/pull/124
 [#125]: https://github.com/compiler-research/ramtools/pull/125
 [#126]: https://github.com/compiler-research/ramtools/pull/126
+[#127]: https://github.com/compiler-research/ramtools/pull/127
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

@@ -322,7 +322,7 @@ void bamtoramntuple(const char *bamfile, const char *treefile, bool /*split*/, b
 
    ROOT::RNTupleWriteOptions opts;
    opts.SetCompression(compression_algorithm);
-   opts.SetMaxUnzippedPageSize(64000);
+   opts.SetMaxUnzippedPageSize(RAMNTupleRecord::kMaxUnzippedPageSize);
    // Required by RNTupleParallelWriter.
    opts.SetUseBufferedWrite(true);
 
