@@ -1,6 +1,7 @@
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
+#include <ROOT/RNTupleReadOptions.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <TError.h>
@@ -18,10 +19,11 @@ namespace {
 // RNTupleReader reports a missing file or RNTuple only by throwing. Checking
 // with TFile first costs more than it saves: opening a TFile starts ROOT's
 // interpreter, about 0.35 s and 125 MB on every open.
-std::unique_ptr<ROOT::RNTupleReader> TryOpen(const std::string &ntupleName, const std::string &path)
+std::unique_ptr<ROOT::RNTupleReader>
+TryOpen(const std::string &ntupleName, const std::string &path, const ROOT::RNTupleReadOptions &options = {})
 {
    try {
-      return ROOT::RNTupleReader::Open(ntupleName, path);
+      return ROOT::RNTupleReader::Open(ntupleName, path, options);
    } catch (const std::exception &) {
       return nullptr;
    }
@@ -70,9 +72,9 @@ bool ReadMetadata(const std::string &path, RAMFileMetadata &meta)
 
 } // namespace
 
-std::unique_ptr<RAMFile> RAMFile::Open(const std::string &path)
+std::unique_ptr<RAMFile> RAMFile::Open(const std::string &path, const ROOT::RNTupleReadOptions &options)
 {
-   auto reader = TryOpen("RAM", path);
+   auto reader = TryOpen("RAM", path, options);
    if (!reader) {
       Refuse(path + " has no RNTuple RAM");
       return nullptr;
