@@ -51,6 +51,14 @@ the README for what that means before 1.0.
   fifths of its time. On chromosome 20 of NA12878 it takes 0.44 s instead of
   1.38 s, against 5.9 s for `samtools flagstat` on the BAM and 2.9 s on the
   CRAM 3.1 ([#120]).
+- `bamtoramntuple -threads N` fills and compresses the records on N threads, as
+  `samtoramntuple` does: the BAM is read in blocks of 64 MB, each filled on a
+  thread of its own and committed in input order, and htslib inflates the
+  input on N threads instead of on every core of the machine. On chromosome 20
+  of NA12878 a conversion on 8 threads takes 22.8 s instead of 81.2 s and
+  203 s of CPU instead of 357 s, with 1136 MB instead of 419 MB. The file has a
+  cluster per block, 115 of about 3.8 MB instead of 6 of about 70 MB, as from
+  SAM. A read error in the BAM now stops the conversion with a message ([#122]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -300,4 +308,5 @@ it stay readable by every later release.
 [#117]: https://github.com/compiler-research/ramtools/pull/117
 [#119]: https://github.com/compiler-research/ramtools/pull/119
 [#120]: https://github.com/compiler-research/ramtools/pull/120
+[#122]: https://github.com/compiler-research/ramtools/pull/122
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

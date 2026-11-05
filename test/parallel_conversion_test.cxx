@@ -1,4 +1,5 @@
 // Many small blocks on several threads must equal one block on one thread.
+#include "ramcore/BamtoNTuple.h"
 #include "ramcore/RecordBlocks.h"
 #include "ramcore/RAMNTupleView.h"
 #include "ramcore/SamToNTuple.h"
@@ -7,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleView.hxx>
+#include <htslib/sam.h>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -60,6 +62,21 @@ void WriteSam(const char *path, const std::string &content)
    sam << content;
 }
 
+void WriteBam(const char *sam_path, const char *bam_path)
+{
+   samFile *in = sam_open(sam_path, "r");
+   samFile *out = sam_open(bam_path, "wb");
+   sam_hdr_t *hdr = sam_hdr_read(in);
+   EXPECT_GE(sam_hdr_write(out, hdr), 0);
+   bam1_t *rec = bam_init1();
+   while (sam_read1(in, hdr, rec) >= 0)
+      EXPECT_GE(sam_write1(out, hdr, rec), 0);
+   bam_destroy1(rec);
+   sam_hdr_destroy(hdr);
+   sam_close(in);
+   sam_close(out);
+}
+
 struct Dump {
    std::vector<std::string> header;
    std::vector<std::string> lines;
@@ -108,12 +125,14 @@ protected:
    static constexpr const char *kSam = "parallel_test.sam";
    static constexpr const char *kSeq = "parallel_test_seq.root";
    static constexpr const char *kPar = "parallel_test_par.root";
+   static constexpr const char *kBam = "parallel_test.bam";
 
    void TearDown() override
    {
       std::remove(kSam);
       std::remove(kSeq);
       std::remove(kPar);
+      std::remove(kBam);
    }
 };
 
@@ -319,6 +338,35 @@ TEST_F(ParallelConversionTest, MissingInputIsReported)
    testing::internal::CaptureStdout();
    EXPECT_FALSE(samtoramntuple("does_not_exist.sam", kPar, 505, 0, 2));
    EXPECT_NE(testing::internal::GetCapturedStdout().find("Failed to parse SAM file"), std::string::npos);
+}
+
+// From BAM, one thread and several, in many small blocks, give the records,
+// header, references and counts that SAM gives in one block.
+TEST_F(ParallelConversionTest, BamInManyBlocksMatchesSamRecordForRecord)
+{
+   WriteSam(kSam, Header() + SortedRecords(/*per_ref=*/300));
+   samtoramntuple(kSam, kSeq, /*compression_algorithm=*/505, /*quality_policy=*/0);
+   const Dump seq = ReadBack(kSeq);
+   WriteBam(kSam, kBam);
+
+   for (const int threads : {1, 3}) {
+      testing::internal::CaptureStdout();
+      bamtoramntuple(kBam, kPar, /*split=*/false, /*cache=*/true, /*compression_algorithm=*/505, /*quality_policy=*/0,
+                     threads, kTinyBlock);
+      testing::internal::GetCapturedStdout();
+      const Dump par = ReadBack(kPar);
+      ASSERT_EQ(par.lines.size(), 603U);
+      EXPECT_EQ(par.lines, seq.lines) << threads << " threads: same records in the same order";
+      EXPECT_GT(par.block_ends.size(), 10U) << "many input blocks, so many quality blocks";
+      EXPECT_EQ(par.header, seq.header);
+      EXPECT_TRUE(par.sorted);
+      EXPECT_EQ(par.max_span, seq.max_span);
+      EXPECT_EQ(par.rname_refs, seq.rname_refs);
+      EXPECT_EQ(par.counts.mapped, seq.counts.mapped);
+      EXPECT_EQ(par.counts.unmapped, seq.counts.unmapped);
+      EXPECT_EQ(par.counts.unplaced, seq.counts.unplaced);
+      std::remove(kPar);
+   }
 }
 
 } // namespace
