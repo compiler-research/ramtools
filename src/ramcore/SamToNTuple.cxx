@@ -1,4 +1,5 @@
 #include "ramcore/SamToNTuple.h"
+#include "BlockPipeline.h"
 #include "ramcore/RecordBlocks.h"
 #include "ramcore/SamParser.h"
 #include "rntuple/RAMNTupleRecord.h"
@@ -16,17 +17,11 @@
 #include <TROOT.h>
 
 #include <algorithm>
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <deque>
-#include <exception>
-#include <functional>
-#include <future>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -185,54 +180,15 @@ void samtoramntuple_split_by_chromosome(const char *datafile, const char *output
 
 // Single-file conversion: the main thread reads blocks of whole lines, worker
 // threads fill them into their own RNTupleFillContext and commit the staged
-// clusters in block order.
+// clusters in block order (BlockPipeline.h).
 
 namespace {
 
-struct BlockOrder {
-   RAMCoordinateOrder check;
-   bool has_placed = false;
-   int32_t first_refid = -1;
-   int32_t first_pos = -1;
-   uint32_t max_span = 0;
-   RAMRefCounts counts;
-
-   void Note(int32_t refid, int32_t pos)
-   {
-      if (refid >= 0 && !has_placed) {
-         has_placed = true;
-         first_refid = refid;
-         first_pos = pos;
-      }
-      check.Note(refid, pos);
-   }
-};
-
-struct FileOrder {
-   RAMCoordinateOrder check;
-   uint32_t max_span = 0;
-   RAMRefCounts counts;
-
-   void Add(const BlockOrder &b)
-   {
-      counts.Add(b.counts);
-      if (!b.check.sorted)
-         check.sorted = false;
-      if (b.has_placed) {
-         check.Note(b.first_refid, b.first_pos);
-         check.Note(b.check.last_refid, b.check.last_pos);
-      }
-      if (b.check.seen_unplaced)
-         check.seen_unplaced = true;
-      max_span = std::max(max_span, b.max_span);
-   }
-};
-
-struct Block {
-   size_t seq = 0;        ///< Position in the input, from 0.
-   size_t first_line = 0; ///< 1-based number of the block's first line, for warnings.
-   std::vector<char> data;
-};
+using ramcore::blocks::Block;
+using ramcore::blocks::BlockOrder;
+using ramcore::blocks::Progress;
+using ramcore::blocks::RefCache;
+using ramcore::blocks::SharedRefs;
 
 // Reads blocks of whole lines; every block ends with '\n'.
 class BlockReader {
@@ -279,148 +235,6 @@ public:
          out.push_back('\n');
       return true;
    }
-};
-
-// Bounded FIFO. Not TBB (TTaskGroup, TThreadExecutor): it does not start tasks
-// in order, and a task waiting for an earlier block could then deadlock.
-class BlockQueue {
-   std::mutex m_mutex;
-   std::condition_variable m_notEmpty;
-   std::condition_variable m_notFull;
-   std::deque<Block> m_blocks;
-   size_t m_capacity;
-   bool m_closed = false;
-
-public:
-   explicit BlockQueue(size_t capacity) : m_capacity(std::max<size_t>(capacity, 1)) {}
-
-   void Push(Block &&block)
-   {
-      std::unique_lock<std::mutex> lock(m_mutex);
-      m_notFull.wait(lock, [&] { return m_blocks.size() < m_capacity || m_closed; });
-      if (m_closed)
-         return;
-      m_blocks.push_back(std::move(block));
-      m_notEmpty.notify_one();
-   }
-
-   /// Returns once a Push would not have to wait, so the reader can read its
-   /// next block when there is room for it instead of holding it until then.
-   void WaitForRoom()
-   {
-      std::unique_lock<std::mutex> lock(m_mutex);
-      m_notFull.wait(lock, [&] { return m_blocks.size() < m_capacity || m_closed; });
-   }
-
-   bool Pop(Block &block)
-   {
-      std::unique_lock<std::mutex> lock(m_mutex);
-      m_notEmpty.wait(lock, [&] { return !m_blocks.empty() || m_closed; });
-      if (m_blocks.empty())
-         return false;
-      block = std::move(m_blocks.front());
-      m_blocks.pop_front();
-      m_notFull.notify_one();
-      return true;
-   }
-
-   void Close()
-   {
-      const std::lock_guard<std::mutex> lock(m_mutex);
-      m_closed = true;
-      m_notEmpty.notify_all();
-      m_notFull.notify_all();
-   }
-
-   void Abort()
-   {
-      const std::lock_guard<std::mutex> lock(m_mutex);
-      m_closed = true;
-      m_blocks.clear();
-      m_notEmpty.notify_all();
-      m_notFull.notify_all();
-   }
-};
-
-struct RefCache {
-   std::string name;
-   int id = -1;
-   bool valid = false;
-
-   int Lookup(RAMNTupleRefs &refs, const std::string &rname)
-   {
-      if (valid && rname == name)
-         return id;
-      id = refs.GetRefId(rname);
-      name = rname;
-      valid = true;
-      return id;
-   }
-};
-
-struct Progress {
-   std::mutex mutex;
-   std::condition_variable next_turn;
-   size_t next_seq = 0; ///< The block whose clusters may be committed next.
-   bool failed = false; ///< A worker or the reader gave up; everyone stops.
-   FileOrder order;
-   size_t records = 0;
-   std::vector<uint64_t> block_ends;
-   std::vector<std::string> late_headers;
-
-   void Fail()
-   {
-      const std::lock_guard<std::mutex> lock(mutex);
-      failed = true;
-      next_turn.notify_all();
-   }
-
-   bool Failed()
-   {
-      const std::lock_guard<std::mutex> lock(mutex);
-      return failed;
-   }
-};
-
-// A worker leaving by exception stops the others; the exception itself
-// travels in the worker's future.
-class StopOthersOnException {
-   Progress &m_progress;
-   BlockQueue &m_queue;
-   const int m_exceptions = std::uncaught_exceptions();
-
-public:
-   StopOthersOnException(Progress &progress, BlockQueue &queue) : m_progress(progress), m_queue(queue) {}
-   StopOthersOnException(const StopOthersOnException &) = delete;
-   StopOthersOnException &operator=(const StopOthersOnException &) = delete;
-   StopOthersOnException(StopOthersOnException &&) = delete;
-   StopOthersOnException &operator=(StopOthersOnException &&) = delete;
-   ~StopOthersOnException()
-   {
-      if (std::uncaught_exceptions() > m_exceptions) {
-         m_progress.Fail();
-         m_queue.Abort();
-      }
-   }
-};
-
-class CloseQueueOnExit {
-   BlockQueue &m_queue;
-
-public:
-   explicit CloseQueueOnExit(BlockQueue &queue) : m_queue(queue) {}
-   CloseQueueOnExit(const CloseQueueOnExit &) = delete;
-   CloseQueueOnExit &operator=(const CloseQueueOnExit &) = delete;
-   CloseQueueOnExit(CloseQueueOnExit &&) = delete;
-   CloseQueueOnExit &operator=(CloseQueueOnExit &&) = delete;
-   ~CloseQueueOnExit() { m_queue.Abort(); }
-};
-
-// The tables every worker fills; each locks.
-struct SharedRefs {
-   RAMNTupleRefs rnames;
-   RAMNTupleRefs rnexts;
-   RAMTagTables tags;
 };
 
 BlockOrder ProcessBlock(Block &block, BlockWriter &out, uint32_t quality_policy, SharedRefs &refs,
@@ -470,44 +284,19 @@ BlockOrder ProcessBlock(Block &block, BlockWriter &out, uint32_t quality_policy,
    return order;
 }
 
-void WorkerMain(BlockQueue &queue, Progress &progress, SharedRefs &refs,
-                const std::shared_ptr<ROOT::RNTupleFillContext> &ctx, uint32_t quality_policy)
+void WorkerMain(ramcore::blocks::BlockQueue &queue, Progress &progress, ROOT::RNTupleFillContext &ctx, SharedRefs &refs,
+                uint32_t quality_policy)
 {
-   const StopOthersOnException guard(progress, queue);
-
-   BlockWriter out(ctx->CreateEntry(), ctx->CreateEntry(), [&ctx](ROOT::REntry &e) { ctx->Fill(e); });
    RefCache rname_cache;
    RefCache rnext_cache;
    RAMTagWriter tags(refs.tags);
    ramcore::SamRecord sam_record;
-
-   Block block;
-   while (queue.Pop(block)) {
-      size_t records = 0;
-      std::vector<std::string> late_headers;
-      const BlockOrder order = ProcessBlock(block, out, quality_policy, refs, rname_cache, rnext_cache, tags,
-                                            sam_record, records, late_headers);
-      // The records are copied into the fill context and `out` now: free the
-      // text before compressing and waiting for this block's turn.
-      std::vector<char>().swap(block.data);
-      // Quality blocks end with the input block, whose clusters are committed as a unit.
-      out.Finish();
-      const std::vector<uint64_t> block_ends = out.TakeBlockEnds();
-      ctx->FlushCluster();
-
-      std::unique_lock<std::mutex> lock(progress.mutex);
-      progress.next_turn.wait(lock, [&] { return progress.next_seq == block.seq || progress.failed; });
-      if (progress.failed)
-         return;
-      ctx->CommitStagedClusters();
-      progress.order.Add(order);
-      for (const uint64_t end : block_ends)
-         progress.block_ends.push_back(progress.records + end);
-      progress.records += records;
-      progress.late_headers.insert(progress.late_headers.end(), late_headers.begin(), late_headers.end());
-      progress.next_seq++;
-      progress.next_turn.notify_all();
-   }
+   ramcore::blocks::FillBlocks(
+      queue, progress, ctx,
+      [&](Block &block, BlockWriter &out, size_t &records, std::vector<std::string> &late_headers) {
+         return ProcessBlock(block, out, quality_policy, refs, rname_cache, rnext_cache, tags, sam_record, records,
+                             late_headers);
+      });
 }
 
 // Returns the offset of the first record line, npos if the block is all header.
@@ -586,11 +375,6 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
    for (const auto &name : refs.rnames.GetRefs())
       refs.rnexts.GetRefId(name);
 
-   auto model = ROOT::RNTupleModel::CreateBare();
-   model->MakeField<RAMNTupleRecord>("record");
-   model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
-   model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField);
-
    ROOT::RNTupleWriteOptions writeOptions;
    writeOptions.SetCompression(compression_algorithm);
    writeOptions.SetMaxUnzippedPageSize(64000);
@@ -599,44 +383,25 @@ bool samtoramntuple(const char *datafile, const char *treefile, int compression_
 
    Progress progress;
    {
-      auto writer = ROOT::RNTupleParallelWriter::Append(std::move(model), "RAM", *rootFile, writeOptions);
-
-      // One block waiting is enough: reading a block takes a fraction of the
-      // time a worker spends parsing and compressing one, and every block held
-      // costs block_bytes of memory.
-      BlockQueue queue(/*capacity=*/1);
-      // Destruction order on an exception: close the queue, join the futures,
-      // drop the contexts, then the writer.
-      std::vector<std::shared_ptr<ROOT::RNTupleFillContext>> contexts;
-      std::vector<std::future<void>> workers;
-      const CloseQueueOnExit closer(queue);
-      for (int i = 0; i < threads; i++) {
-         auto ctx = writer->CreateFillContext();
-         ctx->EnableStagedClusterCommitting();
-         contexts.push_back(ctx);
-         workers.push_back(std::async(std::launch::async, WorkerMain, std::ref(queue), std::ref(progress),
-                                      std::ref(refs), ctx, quality_policy));
-      }
-
-      if (have_records) {
-         size_t seq = 0;
-         Block block = std::move(first);
-         bool more = true;
-         while (more) {
-            block.seq = seq++;
+      auto writer =
+         ROOT::RNTupleParallelWriter::Append(ramcore::blocks::MakeBareModel(), "RAM", *rootFile, writeOptions);
+      bool first_pending = have_records;
+      ramcore::blocks::FillInBlocks(
+         *writer, threads, progress,
+         [&refs, quality_policy](ramcore::blocks::BlockQueue &queue, Progress &p, ROOT::RNTupleFillContext &ctx) {
+            WorkerMain(queue, p, ctx, refs, quality_policy);
+         },
+         [&](Block &block) {
+            if (first_pending) {
+               block.data = std::move(first.data);
+               first_pending = false;
+            } else if (!have_records || !reader.Next(block.data)) {
+               return false;
+            }
             block.first_line = lines + 1;
             lines += static_cast<size_t>(std::count(block.data.begin(), block.data.end(), '\n'));
-            queue.Push(std::move(block));
-            block = Block{};
-            queue.WaitForRoom();
-            more = !progress.Failed() && reader.Next(block.data);
-         }
-      }
-      queue.Close();
-      for (auto &w : workers)
-         w.get();
-
-      contexts.clear();
+            return true;
+         });
       writer.reset();
    }
    if (reader.Failed()) {

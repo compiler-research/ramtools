@@ -2,7 +2,6 @@
 
 #include "rntuple/RAMNTupleRecord.h"
 
-#include <TROOT.h>
 #include <cctype>
 #include <climits>
 #include <cstdint>
@@ -54,7 +53,7 @@ int main(int argc, char *argv[])
                 << "  -fqzcomp     Compress quality scores with fqzcomp instead of rANS: may be\n"
                 << "               smaller for unbinned qualities, three times the CPU to read\n"
                 << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n"
-                << "  -threads N   compress pages on N threads (default 1)\n";
+                << "  -threads N   fill and compress on N threads, and inflate the BAM on N more (default 1)\n";
       return 1;
    }
 
@@ -108,11 +107,6 @@ int main(int argc, char *argv[])
       }
       quality_mode |= RAMNTupleRecord::kFqzcomp;
    }
-   // The writer compresses pages on ROOT's thread pool once implicit
-   // multithreading is on; the BAM reader already uses htslib threads.
-   if (threads > 1)
-      ROOT::EnableImplicitMT(threads);
-
    std::string outfile;
    if (output == nullptr) {
       outfile = input;
@@ -128,7 +122,7 @@ int main(int argc, char *argv[])
 
    bamtoramntuple(input, ramfile.c_str(),
                   /*split=*/false, /*cache=*/true,
-                  /*compression_algorithm=*/compression, /*quality_policy=*/quality_mode);
+                  /*compression_algorithm=*/compression, /*quality_policy=*/quality_mode, threads);
 
    return 0;
 }
