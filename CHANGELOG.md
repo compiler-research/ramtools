@@ -36,6 +36,16 @@ the README for what that means before 1.0.
 
 ### Changed
 
+- `ramdump` with a region searches for it with only the reference and position
+  columns open, opens the others at the first record found, and reads without
+  RNTuple's cluster cache, which loaded every column of each cluster the search
+  visited and of the next one. On chromosome 20 of NA12878 a region of 1 kb
+  reads 1.0 MB of the file instead of 53.4 MB and takes 68 ms and 38 MB
+  instead of 103 ms and 50 MB, or 80 ms instead of 246 ms from a cold cache.
+  A count with `-f` or `-F` reads only the flags: 0.31 s instead of 1.76 s in
+  a 10 Mb region. Library: `RAMFile::Open()` takes RNTuple's read options;
+  without the cluster cache, a region of 1 kb in a file kept open takes 6.3 ms
+  instead of 34.4 ms ([#119]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -283,4 +293,5 @@ it stay readable by every later release.
 [#115]: https://github.com/compiler-research/ramtools/pull/115
 [#116]: https://github.com/compiler-research/ramtools/pull/116
 [#117]: https://github.com/compiler-research/ramtools/pull/117
+[#119]: https://github.com/compiler-research/ramtools/pull/119
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

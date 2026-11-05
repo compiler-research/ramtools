@@ -155,7 +155,6 @@ Long64_t ramntuplescan(RAMFile &file, const char *query, const std::function<voi
 
    auto refidView = reader.GetView<int32_t>("record.refid");
    auto posView = reader.GetView<int32_t>("record.pos");
-   auto cigarView = reader.GetView<std::vector<uint32_t>>("record.cigar");
 
    // Back off by the longest span so a read that starts before the region and
    // reaches into it is not stepped over; a span of 0 means the file has no
@@ -167,6 +166,10 @@ Long64_t ramntuplescan(RAMFile &file, const char *query, const std::function<voi
       const Int_t seekPos = (maxSpan > 0 && rs > maxSpan) ? rs - maxSpan : 0;
       start = firstRowAtOrAfter(refidView, posView, total, refid, seekPos);
    }
+
+   // Made after the search: RNTuple loads a cluster with every column that has a
+   // view, and the search needs only the reference and the position.
+   auto cigarView = reader.GetView<std::vector<uint32_t>>("record.cigar");
 
    Long64_t count = 0;
 

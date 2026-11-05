@@ -4,6 +4,7 @@
 #include "rntuple/RAMNTupleRecord.h"
 #include "rntuple/RAMTags.h"
 
+#include <ROOT/RNTupleReadOptions.hxx>
 #include <ROOT/RNTupleReader.hxx>
 
 #include <cstdint>
@@ -17,8 +18,8 @@
 class RAMFile {
 public:
    /// nullptr, with the reason printed, for a file that is not a RAM file or
-   /// has another format version.
-   static std::unique_ptr<RAMFile> Open(const std::string &path);
+   /// has another format version. \p options are for the reader of the records.
+   static std::unique_ptr<RAMFile> Open(const std::string &path, const ROOT::RNTupleReadOptions &options = {});
 
    RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta);
 
