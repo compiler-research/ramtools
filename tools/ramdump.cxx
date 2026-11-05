@@ -397,7 +397,7 @@ void DumpOnThreads(const std::string &path, const std::vector<uint64_t> &ends, i
 
 void Usage()
 {
-   std::cerr << "Usage: ramdump [options] <in.ram> [region]\n"
+   std::cerr << "Usage: ramdump [options] <in.ram> [region ...]\n"
              << "Options:\n"
              << "  -h        include the header in the output\n"
              << "  -H        print the header only\n"
@@ -406,7 +406,9 @@ void Usage()
              << "  -F INT    only records with none of these FLAG bits set\n"
              << "  -o FILE   write to FILE instead of stdout\n"
              << "  -@ INT    with no region, read and format on INT threads (default 1)\n"
-             << "\nRegion is rname[:start[-end]], 1-based and inclusive, as in samtools.\n";
+             << "\nRegion is rname[:start[-end]], 1-based and inclusive, as in samtools. Several\n"
+             << "regions are read in turn from the file kept open, each region's records in\n"
+             << "order, as samtools view does without -M; -c counts them all.\n";
 }
 
 // Accepts 0x900 as well as 2304, as samtools does.
@@ -452,7 +454,7 @@ int main(int argc, char *argv[])
    int threads = 1;
    std::string outPath{};
    std::string file{};
-   std::string region{};
+   std::vector<std::string> regions;
 
    for (size_t i = 0; i < args.size(); i++) {
       const std::string &arg = args[i];
@@ -497,7 +499,7 @@ int main(int argc, char *argv[])
       } else if (file.empty()) {
          file = arg;
       } else {
-         region = arg;
+         regions.push_back(arg);
       }
    }
 
@@ -519,11 +521,11 @@ int main(int argc, char *argv[])
    // chr20 a region of 1 kb reads 1 MB of the file without the cache and 7 MB
    // with it, and takes less time. A whole file is read faster with the cache
    // when it is not in memory yet.
-   const bool onThreads = threads > 1 && region.empty() && !countOnly && !headerOnly;
+   const bool onThreads = threads > 1 && regions.empty() && !countOnly && !headerOnly;
    if (onThreads)
       ROOT::EnableThreadSafety();
    ROOT::RNTupleReadOptions options;
-   if (!region.empty() && region != "*")
+   if (std::any_of(regions.begin(), regions.end(), [](const std::string &r) { return r != "*"; }))
       options.SetClusterCache(ROOT::RNTupleReadOptions::EClusterCache::kOff);
    auto ram = RAMFile::Open(file, options);
    if (!ram) {
@@ -544,9 +546,17 @@ int main(int argc, char *argv[])
       return 0;
    }
 
+   // No region is the whole file. Several are read in turn from the file kept
+   // open, each region's records in order, as samtools view does without -M.
+   if (regions.empty())
+      regions.emplace_back();
+
    // Counting with no FLAG filter never has to decode a record.
    if (countOnly && requireFlags == 0 && excludeFlags == 0) {
-      writer.Int(ramntuplescan(*ram, region.c_str(), nullptr));
+      Long64_t total = 0;
+      for (const auto &region : regions)
+         total += ramntuplescan(*ram, region.c_str(), nullptr);
+      writer.Int(total);
       writer.EndLine();
       return 0;
    }
@@ -561,7 +571,7 @@ int main(int argc, char *argv[])
    std::optional<NameBlockReader> names;
    Long64_t kept = 0;
 
-   ramntuplescan(*ram, region.c_str(), [&](Long64_t row) {
+   const auto visit = [&](Long64_t row) {
       if (countOnly) {
          if (!flags)
             flags.emplace(ram->GetReader().GetView<uint16_t>("record.flag"));
@@ -581,7 +591,9 @@ int main(int argc, char *argv[])
          return;
       WriteRecord(*ram, names->Get(static_cast<ROOT::NTupleSize_t>(row)), rec,
                   quals->Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
-   });
+   };
+   for (const auto &region : regions)
+      ramntuplescan(*ram, region.c_str(), visit);
 
    if (countOnly) {
       writer.Int(kept);

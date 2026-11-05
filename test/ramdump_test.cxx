@@ -200,6 +200,15 @@ TEST_F(RamdumpTest, ThreadedConversionWritesTheSameRecords)
    std::remove(threaded);
 }
 
+// Several regions are read in turn, each region's records in order, and -c
+// counts them all, as samtools view does without -M.
+TEST_F(RamdumpTest, SeveralRegionsAreReadInTurn)
+{
+   EXPECT_EQ(Dump("", "chr2 chr1:100-160"), Dump("", "chr2") + Dump("", "chr1:100-160"));
+   EXPECT_EQ(Dump("-c", "chr2 chr1 chr2"), "5\n");
+   EXPECT_EQ(Dump("-c -F 256", "chr2 chr1 chr2"), "4\n");
+}
+
 // -@ formats blocks of 10,000 records on threads and writes them in order: the
 // output is the same as on one thread, with a FLAG filter too.
 TEST_F(RamdumpTest, ThreadsWriteTheSameRecordsInOrder)
