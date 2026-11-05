@@ -39,6 +39,10 @@ the README for what that means before 1.0.
   threads and 7.9 s on 4 instead of 16.5 s on one, with 546 MB instead of
   107 MB on 8; `samtools view -@ 8` takes 3.6 s from BAM and 7.7 s from
   CRAM 3.1. With a region, `-@` is ignored ([#124]).
+- `ramdump` takes several regions and reads them in turn from the file kept
+  open, each region's records in order, as `samtools view` does without `-M`;
+  `-c` counts them all. On chromosome 20 of NA12878, 100 regions of 1 kb take
+  0.73 s in one process instead of 6.55 s in a process each ([#125]).
 
 ### Changed
 
@@ -321,4 +325,5 @@ it stay readable by every later release.
 [#122]: https://github.com/compiler-research/ramtools/pull/122
 [#123]: https://github.com/compiler-research/ramtools/pull/123
 [#124]: https://github.com/compiler-research/ramtools/pull/124
+[#125]: https://github.com/compiler-research/ramtools/pull/125
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>
