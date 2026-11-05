@@ -7,10 +7,12 @@
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
+#include <ROOT/RNTupleDescriptor.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleView.hxx>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +22,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -164,63 +167,96 @@ std::vector<int32_t> MateRefIds(const RAMFile &file)
    return ids;
 }
 
-// Counts every record as bam_stat.c does; [1] holds the QC-failed ones.
+// The columns are read this many rows at a time.
+constexpr ROOT::NTupleSize_t kChunk = 65536;
+
+// Counts every record as bam_stat.c does; [1] holds the QC-failed ones. The
+// four columns are read a chunk at a time with RNTuple's bulk reads, which copy
+// whole pages into the vectors: reading them one value per view call took four
+// fifths of the time.
 std::array<FlagCounts, 2> CountFlags(RAMFile &file)
 {
    ROOT::RNTupleReader &reader = file.GetReader();
-   auto flags = reader.GetView<uint16_t>("record.flag");
-   auto refids = reader.GetView<int32_t>("record.refid");
-   auto refnexts = reader.GetView<int32_t>("record.refnext");
-   auto mapqs = reader.GetView<uint8_t>("record.mapq");
+   auto flagView = reader.GetView<uint16_t>("record.flag");
+   auto refidView = reader.GetView<int32_t>("record.refid");
+   auto refnextView = reader.GetView<int32_t>("record.refnext");
+   auto mapqView = reader.GetView<uint8_t>("record.mapq");
+   std::vector<uint16_t> flags(kChunk);
+   std::vector<int32_t> refids(kChunk);
+   std::vector<int32_t> refnexts(kChunk);
+   std::vector<uint8_t> mapqs(kChunk);
+   auto flagBulk = flagView.CreateBulk();
+   auto refidBulk = refidView.CreateBulk();
+   auto refnextBulk = refnextView.CreateBulk();
+   auto mapqBulk = mapqView.CreateBulk();
+   flagBulk.AdoptBuffer(flags.data(), kChunk);
+   refidBulk.AdoptBuffer(refids.data(), kChunk);
+   refnextBulk.AdoptBuffer(refnexts.data(), kChunk);
+   mapqBulk.AdoptBuffer(mapqs.data(), kChunk);
    const std::vector<int32_t> mateRefIds = MateRefIds(file);
 
+   // Bulk reads take an index inside a cluster. The reader's copy of the
+   // descriptor may be replaced while reading, so the clusters are listed first.
+   std::vector<std::pair<ROOT::DescriptorId_t, ROOT::NTupleSize_t>> clusters;
+   for (const auto &cluster : reader.GetDescriptor().GetClusterIterable())
+      clusters.emplace_back(cluster.GetId(), cluster.GetNEntries());
+
    std::array<FlagCounts, 2> counts{};
-   const ROOT::NTupleSize_t rows = reader.GetNEntries();
-   for (ROOT::NTupleSize_t row = 0; row < rows; row++) {
-      const uint16_t flag = flags(row);
-      FlagCounts &c = (flag & kQcFail) ? counts[1] : counts[0];
-      c.total++;
-      if (flag & kSecondary) {
-         c.secondary++;
-      } else if (flag & kSupplementary) {
-         c.supplementary++;
-      } else {
-         c.primary++;
-         if (flag & kPaired) {
-            c.paired++;
-            if ((flag & kProperPair) && !(flag & kUnmapped))
-               c.properly_paired++;
-            if (flag & kRead1)
-               c.read1++;
-            if (flag & kRead2)
-               c.read2++;
-            if ((flag & kMateUnmapped) && !(flag & kUnmapped))
-               c.singletons++;
-            if (!(flag & kUnmapped) && !(flag & kMateUnmapped)) {
-               c.both_mapped++;
-               const int32_t refid = refids(row);
-               const int32_t refnext = refnexts(row);
-               int32_t mate = -1;
-               if (refnext >= 0 && static_cast<std::size_t>(refnext) < mateRefIds.size())
-                  mate = mateRefIds[static_cast<std::size_t>(refnext)] == kSameRef
-                            ? refid
-                            : mateRefIds[static_cast<std::size_t>(refnext)];
-               if (mate != refid) {
-                  c.mate_other_chr++;
-                  if (mapqs(row) >= 5)
-                     c.mate_other_chr_q5++;
+   for (const auto &[cluster, rows] : clusters) {
+      for (ROOT::NTupleSize_t start = 0; start < rows; start += kChunk) {
+         const std::size_t n = std::min(kChunk, rows - start);
+         const ROOT::RNTupleLocalIndex first(cluster, start);
+         flagBulk.ReadBulk(first, nullptr, n);
+         refidBulk.ReadBulk(first, nullptr, n);
+         refnextBulk.ReadBulk(first, nullptr, n);
+         mapqBulk.ReadBulk(first, nullptr, n);
+         for (std::size_t i = 0; i < n; i++) {
+            const uint16_t flag = flags[i];
+            FlagCounts &c = (flag & kQcFail) ? counts[1] : counts[0];
+            c.total++;
+            if (flag & kSecondary) {
+               c.secondary++;
+            } else if (flag & kSupplementary) {
+               c.supplementary++;
+            } else {
+               c.primary++;
+               if (flag & kPaired) {
+                  c.paired++;
+                  if ((flag & kProperPair) && !(flag & kUnmapped))
+                     c.properly_paired++;
+                  if (flag & kRead1)
+                     c.read1++;
+                  if (flag & kRead2)
+                     c.read2++;
+                  if ((flag & kMateUnmapped) && !(flag & kUnmapped))
+                     c.singletons++;
+                  if (!(flag & kUnmapped) && !(flag & kMateUnmapped)) {
+                     c.both_mapped++;
+                     const int32_t refid = refids[i];
+                     const int32_t refnext = refnexts[i];
+                     int32_t mate = -1;
+                     if (refnext >= 0 && static_cast<std::size_t>(refnext) < mateRefIds.size())
+                        mate = mateRefIds[static_cast<std::size_t>(refnext)] == kSameRef
+                                  ? refid
+                                  : mateRefIds[static_cast<std::size_t>(refnext)];
+                     if (mate != refid) {
+                        c.mate_other_chr++;
+                        if (mapqs[i] >= 5)
+                           c.mate_other_chr_q5++;
+                     }
+                  }
                }
+               if (!(flag & kUnmapped))
+                  c.primary_mapped++;
+               if (flag & kDuplicate)
+                  c.primary_duplicates++;
             }
+            if (!(flag & kUnmapped))
+               c.mapped++;
+            if (flag & kDuplicate)
+               c.duplicates++;
          }
-         if (!(flag & kUnmapped))
-            c.primary_mapped++;
-         if (flag & kDuplicate)
-            c.primary_duplicates++;
       }
-      if (!(flag & kUnmapped))
-         c.mapped++;
-      if (flag & kDuplicate)
-         c.duplicates++;
    }
    return counts;
 }

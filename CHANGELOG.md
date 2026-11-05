@@ -46,6 +46,11 @@ the README for what that means before 1.0.
   a 10 Mb region. Library: `RAMFile::Open()` takes RNTuple's read options;
   without the cluster cache, a region of 1 kb in a file kept open takes 6.3 ms
   instead of 34.4 ms ([#119]).
+- `ramstats flagstat` reads its four columns 65,536 rows at a time with
+  RNTuple's bulk reads instead of one view call per value, which took four
+  fifths of its time. On chromosome 20 of NA12878 it takes 0.44 s instead of
+  1.38 s, against 5.9 s for `samtools flagstat` on the BAM and 2.9 s on the
+  CRAM 3.1 ([#120]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -294,4 +299,5 @@ it stay readable by every later release.
 [#116]: https://github.com/compiler-research/ramtools/pull/116
 [#117]: https://github.com/compiler-research/ramtools/pull/117
 [#119]: https://github.com/compiler-research/ramtools/pull/119
+[#120]: https://github.com/compiler-research/ramtools/pull/120
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>
