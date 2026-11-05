@@ -59,6 +59,10 @@ the README for what that means before 1.0.
   203 s of CPU instead of 357 s, with 1136 MB instead of 419 MB. The file has a
   cluster per block, 115 of about 3.8 MB instead of 6 of about 70 MB, as from
   SAM. A read error in the BAM now stops the conversion with a message ([#122]).
+- `ramdump` reads the fifteen numeric fields of a record in bulk, a run of rows
+  at a time, instead of one view call per value. On chromosome 20 of NA12878 a
+  full read takes 16.8 s instead of 18.1 s and a 10 Mb region 3.2 s instead of
+  3.4 s; a small region reads as many pages as before ([#123]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -309,4 +313,5 @@ it stay readable by every later release.
 [#119]: https://github.com/compiler-research/ramtools/pull/119
 [#120]: https://github.com/compiler-research/ramtools/pull/120
 [#122]: https://github.com/compiler-research/ramtools/pull/122
+[#123]: https://github.com/compiler-research/ramtools/pull/123
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>

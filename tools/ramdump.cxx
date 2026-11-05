@@ -7,17 +7,22 @@
 #include "rntuple/RAMFile.h"
 #include "rntuple/RAMNTupleRecord.h"
 
+#include <ROOT/RFieldBase.hxx>
+#include <ROOT/RNTupleDescriptor.hxx>
 #include <ROOT/RNTupleReadOptions.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <ROOT/RNTupleView.hxx>
 #include <Rtypes.h>
 
+#include <algorithm>
 #include <cerrno>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -67,61 +72,149 @@ void WriteHeader(const RAMFile &file, SamWriter &out)
    }
 }
 
-// Reads records one field at a time, straight into a record's members. A view
-// of the whole record (GetView<RAMNTupleRecord>) looks up ROOT's dictionary for
-// the class, and that starts ROOT's interpreter: about 0.4 s and 150 MB before
-// the first record. The members are plain types and need neither.
+// A column of plain numbers, read with RNTuple's bulk reads into a vector: for
+// such a field that copies whole pages, where a view call per value cost about
+// a tenth of a full read. The vector grows with the runs asked for.
+template <typename T>
+class BulkColumn {
+   ROOT::RNTupleView<T> m_view;
+   ROOT::RFieldBase::RBulkValues m_bulk;
+   std::vector<T> m_values;
+
+public:
+   BulkColumn(ROOT::RNTupleReader &reader, const char *name)
+      : m_view(reader.GetView<T>(name)), m_bulk(m_view.CreateBulk())
+   {
+   }
+   ~BulkColumn() = default;
+   // The bulk reads into m_values, so the column must stay where it was built.
+   BulkColumn(const BulkColumn &) = delete;
+   BulkColumn(BulkColumn &&) = delete;
+   BulkColumn &operator=(const BulkColumn &) = delete;
+   BulkColumn &operator=(BulkColumn &&) = delete;
+
+   void Read(ROOT::RNTupleLocalIndex first, std::size_t rows)
+   {
+      if (rows > m_values.size()) {
+         m_values.resize(rows);
+         m_bulk.AdoptBuffer(m_values.data(), rows);
+      }
+      m_bulk.ReadBulk(first, nullptr, rows);
+   }
+   T operator[](std::size_t i) const { return m_values[i]; }
+};
+
+// Reads records straight into a record's members. A view of the whole record
+// (GetView<RAMNTupleRecord>) looks up ROOT's dictionary for the class, and that
+// starts ROOT's interpreter: about 0.4 s and 150 MB before the first record. The
+// members are plain types and need neither. The numbers are read in bulk, a run
+// of rows of one cluster at a time; the strings and vectors one row at a time.
+// A run starts at 1,024 rows and doubles up to 65,536 while the rows come in
+// order, so that a small region reads no more pages than before.
 class RecordReader {
+   static constexpr std::size_t kFirstRun = 1024;
+   static constexpr std::size_t kLongestRun = 65536;
+
+   struct Cluster {
+      ROOT::NTupleSize_t first;
+      ROOT::NTupleSize_t rows;
+      ROOT::DescriptorId_t id;
+   };
+
    RAMNTupleRecord m_record;
-   ROOT::RNTupleView<uint16_t> m_flag;
-   ROOT::RNTupleView<int32_t> m_refid;
-   ROOT::RNTupleView<int32_t> m_pos;
-   ROOT::RNTupleView<uint8_t> m_mapq;
+   std::vector<Cluster> m_clusters; ///< By first row.
+   ROOT::NTupleSize_t m_runFirst = 0;
+   std::size_t m_runRows = 0;
+   std::size_t m_run = kFirstRun / 2; ///< The length of the last run asked for.
+
+   BulkColumn<uint16_t> m_flag;
+   BulkColumn<int32_t> m_refid;
+   BulkColumn<int32_t> m_pos;
+   BulkColumn<uint8_t> m_mapq;
+   BulkColumn<int32_t> m_refnext;
+   BulkColumn<int32_t> m_pnextDelta;
+   BulkColumn<int32_t> m_tlenDelta;
+   BulkColumn<int32_t> m_tagNm;
+   BulkColumn<int32_t> m_tagAs;
+   BulkColumn<int32_t> m_tagXs;
+   BulkColumn<int32_t> m_tagMq;
+   BulkColumn<uint32_t> m_tagRg;
+   BulkColumn<uint32_t> m_tagPg;
+   BulkColumn<uint32_t> m_tagOrder;
+   BulkColumn<uint32_t> m_compressionFlags;
    ROOT::RNTupleView<std::vector<uint32_t>> m_cigar;
-   ROOT::RNTupleView<int32_t> m_refnext;
-   ROOT::RNTupleView<int32_t> m_pnextDelta;
-   ROOT::RNTupleView<int32_t> m_tlenDelta;
    ROOT::RNTupleView<std::string> m_seq;
    ROOT::RNTupleView<std::string> m_qual;
-   ROOT::RNTupleView<int32_t> m_tagNm;
-   ROOT::RNTupleView<int32_t> m_tagAs;
-   ROOT::RNTupleView<int32_t> m_tagXs;
-   ROOT::RNTupleView<int32_t> m_tagMq;
-   ROOT::RNTupleView<uint32_t> m_tagRg;
-   ROOT::RNTupleView<uint32_t> m_tagPg;
    ROOT::RNTupleView<std::string> m_tagMd;
    ROOT::RNTupleView<std::string> m_tagMc;
    ROOT::RNTupleView<std::string> m_tagSa;
    ROOT::RNTupleView<std::string> m_tagXa;
-   ROOT::RNTupleView<uint32_t> m_tagOrder;
    ROOT::RNTupleView<std::vector<std::string>> m_tags;
-   ROOT::RNTupleView<uint32_t> m_compressionFlags;
+
+   // Reads the numbers of a run of rows from \p row on, within its cluster.
+   void ReadRun(ROOT::NTupleSize_t row)
+   {
+      m_run = row == m_runFirst + m_runRows ? std::min(m_run * 2, kLongestRun) : kFirstRun;
+      const auto next = std::upper_bound(m_clusters.begin(), m_clusters.end(), row,
+                                         [](ROOT::NTupleSize_t r, const Cluster &c) { return r < c.first; });
+      const Cluster &cluster = *std::prev(next);
+      const ROOT::NTupleSize_t inCluster = row - cluster.first;
+      const auto rows = static_cast<std::size_t>(std::min<ROOT::NTupleSize_t>(m_run, cluster.rows - inCluster));
+      const ROOT::RNTupleLocalIndex first(cluster.id, inCluster);
+      m_flag.Read(first, rows);
+      m_refid.Read(first, rows);
+      m_pos.Read(first, rows);
+      m_mapq.Read(first, rows);
+      m_refnext.Read(first, rows);
+      m_pnextDelta.Read(first, rows);
+      m_tlenDelta.Read(first, rows);
+      m_tagNm.Read(first, rows);
+      m_tagAs.Read(first, rows);
+      m_tagXs.Read(first, rows);
+      m_tagMq.Read(first, rows);
+      m_tagRg.Read(first, rows);
+      m_tagPg.Read(first, rows);
+      m_tagOrder.Read(first, rows);
+      m_compressionFlags.Read(first, rows);
+      m_runFirst = row;
+      m_runRows = rows;
+   }
+
+   static std::vector<Cluster> Clusters(ROOT::RNTupleReader &reader)
+   {
+      std::vector<Cluster> clusters;
+      for (const auto &c : reader.GetDescriptor().GetClusterIterable())
+         clusters.push_back({c.GetFirstEntryIndex(), c.GetNEntries(), c.GetId()});
+      std::sort(clusters.begin(), clusters.end(), [](const Cluster &a, const Cluster &b) { return a.first < b.first; });
+      return clusters;
+   }
 
 public:
    explicit RecordReader(ROOT::RNTupleReader &reader)
-      : m_flag(reader.GetView("record.flag", &m_record.flag)),
-        m_refid(reader.GetView("record.refid", &m_record.refid)),
-        m_pos(reader.GetView("record.pos", &m_record.pos)),
-        m_mapq(reader.GetView("record.mapq", &m_record.mapq)),
+      : m_clusters(Clusters(reader)),
+        m_flag(reader, /*name=*/"record.flag"),
+        m_refid(reader, /*name=*/"record.refid"),
+        m_pos(reader, /*name=*/"record.pos"),
+        m_mapq(reader, /*name=*/"record.mapq"),
+        m_refnext(reader, /*name=*/"record.refnext"),
+        m_pnextDelta(reader, /*name=*/"record.pnext_delta"),
+        m_tlenDelta(reader, /*name=*/"record.tlen_delta"),
+        m_tagNm(reader, /*name=*/"record.tag_nm"),
+        m_tagAs(reader, /*name=*/"record.tag_as"),
+        m_tagXs(reader, /*name=*/"record.tag_xs"),
+        m_tagMq(reader, /*name=*/"record.tag_mq"),
+        m_tagRg(reader, /*name=*/"record.tag_rg"),
+        m_tagPg(reader, /*name=*/"record.tag_pg"),
+        m_tagOrder(reader, /*name=*/"record.tag_order"),
+        m_compressionFlags(reader, /*name=*/"record.compression_flags"),
         m_cigar(reader.GetView("record.cigar", &m_record.cigar)),
-        m_refnext(reader.GetView("record.refnext", &m_record.refnext)),
-        m_pnextDelta(reader.GetView("record.pnext_delta", &m_record.pnext_delta)),
-        m_tlenDelta(reader.GetView("record.tlen_delta", &m_record.tlen_delta)),
         m_seq(reader.GetView("record.seq", &m_record.seq)),
         m_qual(reader.GetView("record.qual", &m_record.qual)),
-        m_tagNm(reader.GetView("record.tag_nm", &m_record.tag_nm)),
-        m_tagAs(reader.GetView("record.tag_as", &m_record.tag_as)),
-        m_tagXs(reader.GetView("record.tag_xs", &m_record.tag_xs)),
-        m_tagMq(reader.GetView("record.tag_mq", &m_record.tag_mq)),
-        m_tagRg(reader.GetView("record.tag_rg", &m_record.tag_rg)),
-        m_tagPg(reader.GetView("record.tag_pg", &m_record.tag_pg)),
         m_tagMd(reader.GetView("record.tag_md", &m_record.tag_md)),
         m_tagMc(reader.GetView("record.tag_mc", &m_record.tag_mc)),
         m_tagSa(reader.GetView("record.tag_sa", &m_record.tag_sa)),
         m_tagXa(reader.GetView("record.tag_xa", &m_record.tag_xa)),
-        m_tagOrder(reader.GetView("record.tag_order", &m_record.tag_order)),
-        m_tags(reader.GetView("record.tags", &m_record.tags)),
-        m_compressionFlags(reader.GetView("record.compression_flags", &m_record.compression_flags))
+        m_tags(reader.GetView("record.tags", &m_record.tags))
    {
    }
    ~RecordReader() = default;
@@ -133,29 +226,32 @@ public:
 
    const RAMNTupleRecord &operator()(ROOT::NTupleSize_t row)
    {
-      m_flag(row);
-      m_refid(row);
-      m_pos(row);
-      m_mapq(row);
+      if (row < m_runFirst || row >= m_runFirst + m_runRows)
+         ReadRun(row);
+      const auto i = static_cast<std::size_t>(row - m_runFirst);
+      m_record.flag = m_flag[i];
+      m_record.refid = m_refid[i];
+      m_record.pos = m_pos[i];
+      m_record.mapq = m_mapq[i];
+      m_record.refnext = m_refnext[i];
+      m_record.pnext_delta = m_pnextDelta[i];
+      m_record.tlen_delta = m_tlenDelta[i];
+      m_record.tag_nm = m_tagNm[i];
+      m_record.tag_as = m_tagAs[i];
+      m_record.tag_xs = m_tagXs[i];
+      m_record.tag_mq = m_tagMq[i];
+      m_record.tag_rg = m_tagRg[i];
+      m_record.tag_pg = m_tagPg[i];
+      m_record.tag_order = m_tagOrder[i];
+      m_record.compression_flags = m_compressionFlags[i];
       m_cigar(row);
-      m_refnext(row);
-      m_pnextDelta(row);
-      m_tlenDelta(row);
       m_seq(row);
       m_qual(row);
-      m_tagNm(row);
-      m_tagAs(row);
-      m_tagXs(row);
-      m_tagMq(row);
-      m_tagRg(row);
-      m_tagPg(row);
       m_tagMd(row);
       m_tagMc(row);
       m_tagSa(row);
       m_tagXa(row);
-      m_tagOrder(row);
       m_tags(row);
-      m_compressionFlags(row);
       return m_record;
    }
 };
