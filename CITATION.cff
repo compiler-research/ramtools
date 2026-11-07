@@ -33,6 +33,9 @@ identifiers:
   - type: doi
     value: 10.5281/zenodo.23362910
     description: Version 0.1.0.
+  - type: doi
+    value: 10.5281/zenodo.24038253
+    description: Version 0.2.0.
 repository-code: "https://github.com/compiler-research/ramtools"
 license: Apache-2.0
 version: 0.2.0
