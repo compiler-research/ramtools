@@ -36,7 +36,9 @@ sudo apt-get install -y build-essential cmake git pkg-config libhts-dev libtbb-d
 are needed by ROOT. Read names and quality scores are compressed with
 htscodecs, the codecs CRAM 3.1 uses; if `libhtscodecs-dev` is installed it is
 used, otherwise the build downloads htscodecs 1.6.7 and compiles the files it
-needs.
+needs. The bases are compressed with libdeflate; if `pkg-config` finds it, as it
+does with `libdeflate-dev` installed, it is used, otherwise the build downloads
+libdeflate 1.26 and compiles it.
 
 ### 2. ROOT
 
@@ -69,9 +71,9 @@ cmake --build build -j$(nproc)
 ```
 
 The first configure downloads GoogleTest and Google Benchmark for the tests and
-benchmarks, and htscodecs unless `libhtscodecs-dev` is installed. Without
-network access, install `libhtscodecs-dev` and turn the tests and benchmarks
-off with `-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
+benchmarks, htscodecs unless `libhtscodecs-dev` is installed, and libdeflate
+unless `libdeflate-dev` is. Without network access, install both and turn the
+tests and benchmarks off with `-DRAMTOOLS_BUILD_TESTS=OFF -DRAMTOOLS_BUILD_BENCHMARKS=OFF`.
 
 The tools are in `build/tools/`. Running one without arguments prints its
 usage:
@@ -105,7 +107,7 @@ becoming `reads.ram`. Options for either tool:
 
 | Option | Effect |
 |--------|--------|
-| `-compression N` | ROOT compression code, algorithm times 100 plus level; the default 505 is ZSTD level 5 (see below) |
+| `-compression N` | ROOT compression code, algorithm times 100 plus level; the default 505 is ZSTD, which ROOT runs at level 10 (see below) |
 | `-threads N` | converts on N threads, see below |
 | `-illumina` | stores quality scores in Illumina's 8 bins, which makes the file smaller |
 | `-dropqual` | stores no quality scores |
@@ -232,9 +234,8 @@ file is `samtoramntuple -compression N` with the setting shown. A CRAM cannot
 be read without its reference, so the stacked bar is the size of a
 self-contained copy. Uncompressed RAM (`-compression 0`) is 83.7 GB, larger
 than the SAM, because every string and vector column carries an offset column
-that the codecs then remove. ZSTD 9 is the only setting that comes in under
-CRAM plus its reference, at ten times the conversion time of ZSTD 5 for 9% less
-space.
+that the codecs then remove. 509 is the only setting that comes in under CRAM
+plus its reference, at ten times the conversion time of 505 for 9% less space.
 
 ### Conversion
 
@@ -245,20 +246,20 @@ hard disk, which reads and writes about 77 MB/s.
 |--------|---------|------|---------|-----------|
 | BAM | `samtools view -@ 4 -b` | 24:08 | 3,589 | 15.22 |
 | CRAM | `samtools view -@ 4 -C -T ref.fasta` | 12:34 | 1,817 | 7.77 |
-| RAM, ZSTD 5 | `samtoramntuple` | 1:30:06 | 5,258 | 11.43 |
-| RAM, ZSTD 5 | `samtoramntuple -threads 4` | 32:59 | 7,664 | 11.43 |
-| RAM, ZSTD 3 | `samtoramntuple -compression 503 -threads 4` | 17:09 | 3,513 | 11.74 |
-| RAM, ZSTD 1 | `samtoramntuple -compression 501 -threads 4` | 14:32 | 1,273 | 12.27 |
+| RAM, 505 | `samtoramntuple` | 1:30:06 | 5,258 | 11.43 |
+| RAM, 505 | `samtoramntuple -threads 4` | 32:59 | 7,664 | 11.43 |
+| RAM, 503 | `samtoramntuple -compression 503 -threads 4` | 17:09 | 3,513 | 11.74 |
+| RAM, 501 | `samtoramntuple -compression 501 -threads 4` | 14:32 | 1,273 | 12.27 |
 
 Almost all of the conversion time is ZSTD; parsing the SAM is about 4% of it.
-Lowering the level is what makes it faster: ZSTD 3 needs half the CPU of ZSTD 5
-for a 3% larger file, and ZSTD 1 converts faster than samtools writes a BAM and
-still gives a file a fifth smaller.
+Lowering the level is what makes it faster: 503 needs half the CPU of 505 for a
+3% larger file, and 501 converts faster than samtools writes a BAM and still
+gives a file a fifth smaller.
 
 ### Region queries
 
 Records overlapping a region, counted with `samtools view -c` for BAM and CRAM
-and `ramdump -c` for RAM (ZSTD 5). Best of three runs, warm cache. All three
+and `ramdump -c` for RAM (505). Best of three runs, warm cache. All three
 formats return the same records for every region.
 
 | Region | Records | BAM (s) | CRAM (s) | RAM (s) |
@@ -278,13 +279,17 @@ little difference: the 10 Mb query takes 0.46 to 0.55 s across all of them.
 
 `-compression N` takes a ROOT compression code, algorithm times 100 plus level:
 1 is ZLIB, 2 LZMA, 4 LZ4, 5 ZSTD, with levels 1 to 9, and 0 means no
-compression. The default is 505, ZSTD level 5. For a quick conversion use 501
-or 503 with `-threads`; for the smallest file, 509 at a much higher conversion
-cost.
+compression. ROOT runs zstd at twice the level it is given, so the default,
+505, is zstd's level 10, 503 is level 6 and 501 level 2. For a quick conversion
+use 501 or 503 with `-threads`; for the smallest file, 509 at a much higher
+conversion cost.
 
-Read names and lossless quality scores are stored in blocks of 10,000
-records, the size of a CRAM slice, with the codecs CRAM 3.1 uses by default:
-the names with tok3, the qualities with rANS order 1. `-fqzcomp` compresses the
+Read names, bases and lossless quality scores are stored in blocks of 10,000
+records, the size of a CRAM slice. Names and qualities have the codecs CRAM 3.1
+uses by default, tok3 and rANS order 1. The bases have DEFLATE, libdeflate at
+level 6, which CRAM uses for the bases of a file without a reference: on chr20
+of NA12878 they take 84.6 MB, against 96.1 MB as a column compressed with zstd
+at level 10, in half the CPU. `-fqzcomp` compresses the
 quality blocks with fqzcomp instead, CRAM 3.1's codec for its smaller
 profiles. On chr20 of NA12878 at 30x, whose qualities are binned to four
 values, it saves about 1% of the qualities and makes reading them three times

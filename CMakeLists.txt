@@ -35,6 +35,7 @@ pkg_check_modules(htslib REQUIRED IMPORTED_TARGET htslib)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules)
 include(RamtoolsHtscodecs)
+include(RamtoolsLibdeflate)
 
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
@@ -75,7 +76,7 @@ target_include_directories(ramcore
 )
 
 target_link_libraries(ramcore PUBLIC PkgConfig::htslib)
-target_link_libraries(ramcore PRIVATE ramtools::htscodecs)
+target_link_libraries(ramcore PRIVATE ramtools::htscodecs ramtools::libdeflate)
 
 install(DIRECTORY inc/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 

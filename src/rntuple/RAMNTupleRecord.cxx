@@ -332,8 +332,9 @@ void RAMNTupleRecord::AppendCIGAR(std::string &out) const
 }
 
 // Text, not the 4-bit packing: overlapping reads share runs of bases, which the
-// compressor matches as long as they stay byte-aligned. Packing shifts every
-// odd-offset overlap by half a byte, and zstd files came out larger with it.
+// compressor of the bases' blocks matches as long as they stay byte-aligned.
+// Packing shifts every odd-offset overlap by half a byte, and zstd files came
+// out larger with it.
 void RAMNTupleRecord::SetSEQ(const std::string &seq_str)
 {
    // "*" is SAM's "sequence not stored" sentinel. Normalizing never produces
@@ -381,6 +382,7 @@ std::unique_ptr<RNTupleModel> RAMNTupleRecord::MakeModel()
    model->MakeField<RAMNTupleRecord>("record");
    model->MakeField<std::vector<std::uint8_t>>(kQualBlockField);
    model->MakeField<std::vector<std::uint8_t>>(kNameBlockField);
+   model->MakeField<std::vector<std::uint8_t>>(kSeqBlockField);
 
    return model;
 }

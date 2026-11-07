@@ -213,12 +213,14 @@ public:
       kIlluminaBinning = 1 << 15, // Illumina 8 bin compression
       kDrop = 1 << 16,            // Drop quality score
       kQualInBlock = 1 << 18,     // QUAL is in its block, not in `qual`
-      kFqzcomp = 1 << 19          // In a quality policy: compress the quality blocks
+      kFqzcomp = 1 << 19,         // In a quality policy: compress the quality blocks
                                   // with fqzcomp, not rANS (-fqzcomp); not kept in records
+      kSeqInBlock = 1 << 20       // SEQ is in its block, not in `seq`
    };
 
    static constexpr const char *kQualBlockField = "qualblock";
    static constexpr const char *kNameBlockField = "nameblock";
+   static constexpr const char *kSeqBlockField = "seqblock";
 
    /// The converters' cap on a page before compression. Opening a file reads
    /// the page list of every cluster, so fewer pages open faster. A small
@@ -230,7 +232,7 @@ public:
 
    /// Version of the file layout, stored in METADATA. Until 1.0 a reader opens
    /// only files of its own version; bump it with every change to the layout.
-   static constexpr uint32_t kFormatVersion = 9;
+   static constexpr uint32_t kFormatVersion = 10;
 
    // Alignment data fields
    std::string qname;             //! Query template NAME; not a column: the names are in kNameBlockField
@@ -244,7 +246,7 @@ public:
    // GetPNEXT() and GetTLEN() give the SAM values back.
    int32_t pnext_delta = 0;       // 0-based PNEXT - pos when the mate is on this reference, else 0-based PNEXT
    int32_t tlen_delta = 0;        // TLEN - PredictTLEN()
-   std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"
+   std::string seq;               // Segment sequence as uppercase IUPAC text, or "*"; empty when kSeqInBlock
    std::string qual;              // Quality scores (encoded); empty when kQualInBlock
 
    // Standard tags in columns of their own; RAMTagWriter fills them and
@@ -299,12 +301,14 @@ public:
    /// record: the distance between their 5' ends, as BWA and Picard compute
    /// it. 0 when either is unmapped or the mate is on another reference.
    [[nodiscard]] int32_t PredictTLEN(int32_t pnext0, bool sameRef) const;
+   /// Empty in a record read from a file whose bases are in a block
+   /// (kSeqInBlock): read the bases with SeqBlockReader.
    [[nodiscard]] const std::string &GetSEQ() const { return seq; }
    /// Empty in a record read from a file whose quality is in a block
    /// (kQualInBlock): read the qualities with QualityBlockReader.
    std::string GetQUAL() const;
 
-   /// Number of bases; 0 for "*".
+   /// Number of bases in `seq`; 0 for "*", and for bases in a block.
    int GetSEQLEN() const;
 
    size_t GetNCIGAROP() const { return cigar.size(); }
