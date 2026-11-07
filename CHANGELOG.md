@@ -7,6 +7,17 @@ the README for what that means before 1.0.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-07
+
+The format of this release stores the typed SAM tags in columns of their own, the
+mate's position and template length as differences from what the record predicts,
+and the read names, qualities and bases in blocks of 10,000 records with the codecs
+CRAM 3.1 uses. On chromosome 20 of NA12878 at 30x the file goes from 622.5 MB, with
+every tag as text as before [#111], to 417.9 MB; CRAM 3.1 takes 302.5 MB. New are
+`ramstats idxstats` and `flagstat`, `ramdump -@ N` and several regions in one
+`ramdump`, and a script that reproduces the benchmarks. A reader opens only files
+of its own format version, 10: files written by 0.1.0 must be converted again.
+
 ### Added
 
 - `bench/ramtools-bench.py` reproduces the benchmarks on any Linux or macOS
@@ -169,11 +180,11 @@ the README for what that means before 1.0.
   temporary strings. On chr20 of NA12878 at 30x a dump of the whole file takes
   27.9 s of CPU and 17.6 s instead of 29.8 s and 19.3 s (-6% and -9%, one
   socket of a Xeon E5-2690 v4), and a 10 Mb region 6% less CPU. The output is
-  unchanged ([#<N>]).
+  unchanged ([#118]).
 - Library: `QualityBlockReader::Get` returns a `std::string_view` into the
   decoded block, valid until the next call, instead of a copy.
   `RAMNTupleRecord::AppendCIGAR` and `RAMNTupleUtils::AppendInt` append to a
-  string without making a temporary one ([#<N>]).
+  string without making a temporary one ([#118]).
 
 ### Removed
 
@@ -277,7 +288,8 @@ it stay readable by every later release.
   directory, as on macOS ([#95]).
 - clang-tidy findings and suppressions ([#14], [#38]).
 
-[Unreleased]: https://github.com/compiler-research/ramtools/compare/v0.1.0...develop
+[Unreleased]: https://github.com/compiler-research/ramtools/compare/v0.2.0...develop
+[0.2.0]: https://github.com/compiler-research/ramtools/releases/tag/v0.2.0
 [0.1.0]: https://github.com/compiler-research/ramtools/releases/tag/v0.1.0
 [#1]: https://github.com/compiler-research/ramtools/pull/1
 [#2]: https://github.com/compiler-research/ramtools/pull/2
@@ -350,6 +362,7 @@ it stay readable by every later release.
 [#115]: https://github.com/compiler-research/ramtools/pull/115
 [#116]: https://github.com/compiler-research/ramtools/pull/116
 [#117]: https://github.com/compiler-research/ramtools/pull/117
+[#118]: https://github.com/compiler-research/ramtools/pull/118
 [#119]: https://github.com/compiler-research/ramtools/pull/119
 [#120]: https://github.com/compiler-research/ramtools/pull/120
 [#122]: https://github.com/compiler-research/ramtools/pull/122
@@ -359,4 +372,3 @@ it stay readable by every later release.
 [#126]: https://github.com/compiler-research/ramtools/pull/126
 [#127]: https://github.com/compiler-research/ramtools/pull/127
 [#128]: https://github.com/compiler-research/ramtools/pull/128
-[#<N>]: https://github.com/compiler-research/ramtools/pull/<N>
