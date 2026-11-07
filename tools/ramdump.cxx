@@ -282,8 +282,8 @@ public:
 };
 
 template <typename Out>
-void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, std::string_view qual,
-                 Out &out)
+void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleRecord &rec, std::string_view seq,
+                 std::string_view qual, Out &out)
 {
    out.Str(name);
    out.Tab();
@@ -304,7 +304,7 @@ void WriteRecord(const RAMFile &file, std::string_view name, const RAMNTupleReco
    out.Tab();
    out.Int(rec.GetTLEN(sameRef));
    out.Tab();
-   out.Str(rec.GetSEQ());
+   out.Str(seq);
    out.Tab();
    out.Str(qual);
    file.AppendTags(rec, out.buf);
@@ -339,6 +339,7 @@ void DumpOnThreads(const std::string &path, const std::vector<uint64_t> &ends, i
          if (!file)
             throw std::runtime_error("cannot open " + path);
          RecordReader records(file->GetReader());
+         SeqBlockReader seqs(*file);
          QualityBlockReader quals(*file);
          NameBlockReader names(*file);
          for (std::size_t block = first; block < ends.size(); block += stride) {
@@ -354,7 +355,7 @@ void DumpOnThreads(const std::string &path, const std::vector<uint64_t> &ends, i
                const uint16_t flag = rec.GetFLAG();
                if ((flag & requireFlags) != requireFlags || (flag & excludeFlags))
                   continue;
-               WriteRecord(*file, names.Get(row), rec, quals.Get(rec, row), text);
+               WriteRecord(*file, names.Get(row), rec, seqs.Get(rec, row), quals.Get(rec, row), text);
             }
             {
                const std::lock_guard<std::mutex> lock(mutex);
@@ -567,6 +568,7 @@ int main(int argc, char *argv[])
    // A count needs only the flags.
    std::optional<ROOT::RNTupleView<uint16_t>> flags;
    std::optional<RecordReader> records;
+   std::optional<SeqBlockReader> seqs;
    std::optional<QualityBlockReader> quals;
    std::optional<NameBlockReader> names;
    Long64_t kept = 0;
@@ -582,6 +584,7 @@ int main(int argc, char *argv[])
       }
       if (!records) {
          records.emplace(ram->GetReader());
+         seqs.emplace(*ram);
          quals.emplace(*ram);
          names.emplace(*ram);
       }
@@ -589,8 +592,8 @@ int main(int argc, char *argv[])
       const uint16_t flag = rec.GetFLAG();
       if ((flag & requireFlags) != requireFlags || (flag & excludeFlags))
          return;
-      WriteRecord(*ram, names->Get(static_cast<ROOT::NTupleSize_t>(row)), rec,
-                  quals->Get(rec, static_cast<ROOT::NTupleSize_t>(row)), writer);
+      const auto r = static_cast<ROOT::NTupleSize_t>(row);
+      WriteRecord(*ram, names->Get(r), rec, seqs->Get(rec, r), quals->Get(rec, r), writer);
    };
    for (const auto &region : regions)
       ramntuplescan(*ram, region.c_str(), visit);

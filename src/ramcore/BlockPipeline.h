@@ -226,6 +226,7 @@ inline std::unique_ptr<ROOT::RNTupleModel> MakeBareModel()
    model->MakeField<RAMNTupleRecord>("record");
    model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
    model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField);
+   model->MakeField<std::vector<std::uint8_t>>(RAMNTupleRecord::kSeqBlockField);
    return model;
 }
 

@@ -11,7 +11,8 @@
 namespace {
 
 // ROOT compression code: algorithm*100+level, with algorithm 1 ZLIB, 2 LZMA,
-// 4 LZ4 or 5 ZSTD and level 1 to 9; 0 means no compression.
+// 4 LZ4 or 5 ZSTD and level 1 to 9; 0 means no compression. ROOT runs zstd at
+// twice the level, so 505 is zstd's level 10.
 bool ParseCompression(const std::string &text, int &code)
 {
    char *end = nullptr;
@@ -51,7 +52,8 @@ int main(int argc, char* argv[]) {
        std::cout << "  -dropqual    Drop quality scores\n";
        std::cout << "  -fqzcomp     Compress quality scores with fqzcomp instead of rANS: may be\n"
                  << "               smaller for unbinned qualities, three times the CPU to read\n";
-       std::cout << "  -compression N  ROOT compression code, algorithm*100+level (default 505, ZSTD level 5)\n";
+       std::cout << "  -compression N  ROOT compression code, algorithm*100+level (default 505:\n"
+                 << "                  ZSTD, which ROOT runs at level 10)\n";
        std::cout << "  -threads N   parse and compress on N threads (default 1)\n";
        return 1;
     }

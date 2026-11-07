@@ -25,6 +25,7 @@ struct Read {
    uint16_t flag;
    std::string qual;
    std::string name = "r";
+   std::string seq = "ACGT";
 };
 
 const char *const kFile = "record_blocks_test.root";
@@ -32,16 +33,17 @@ const char *const kFile = "record_blocks_test.root";
 // with -fqzcomp.
 const uint32_t kRansPolicy = RAMNTupleRecord::kPhred33;
 const uint32_t kFqzcompPolicy = RAMNTupleRecord::kPhred33 | RAMNTupleRecord::kFqzcomp;
-// The first byte of a quality block, by codec.
+// The first byte of a quality block, by codec, and of a block of bases.
 const uint8_t kRansCodec = 1;
 const uint8_t kFqzcompCodec = 2;
+const uint8_t kDeflateCodec = 1;
 
 using Damage = std::function<void(std::vector<std::uint8_t> &)>;
 
 // Writes the reads; \p ends, when given, replaces the block ends, and \p damage
-// changes every quality block, as in a damaged file.
+// changes every block of \p field, as in a damaged file.
 void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, const std::vector<uint64_t> &ends = {},
-           const Damage &damage = nullptr)
+           const Damage &damage = nullptr, const char *field = RAMNTupleRecord::kQualBlockField)
 {
    std::unique_ptr<TFile> file(TFile::Open(kFile, "RECREATE"));
    RAMFileMetadata meta;
@@ -50,8 +52,8 @@ void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, c
       auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
       BlockWriter out(
          writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
-         [&writer, &damage](ROOT::REntry &e) {
-            auto &blob = *e.GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
+         [&writer, &damage, field](ROOT::REntry &e) {
+            auto &blob = *e.GetPtr<std::vector<std::uint8_t>>(field);
             if (damage && !blob.empty())
                damage(blob);
             writer->Fill(e);
@@ -64,6 +66,7 @@ void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, c
          rec.SetFLAG(read.flag);
          rec.refid = 0;
          rec.SetQUAL(read.qual);
+         rec.SetSEQ(read.seq);
          out.Add();
       }
       out.Finish();
@@ -83,14 +86,24 @@ void ExpectQualities(const std::vector<Read> &reads, const std::vector<std::size
       EXPECT_EQ(quals.Get(view(row), row), reads[row].qual) << "row " << row;
 }
 
-// The first byte of the quality block that row \p end carries, or 0 for none.
-uint8_t CodecAt(uint64_t end)
+void ExpectSequences(const std::vector<Read> &reads, const std::vector<std::size_t> &order)
+{
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   SeqBlockReader seqs(*file);
+   for (const std::size_t row : order)
+      EXPECT_EQ(seqs.Get(view(row), row), reads[row].seq) << "row " << row;
+}
+
+// The first byte of the block of \p field that row \p end carries, or 0 for none.
+uint8_t CodecAt(uint64_t end, const char *field = RAMNTupleRecord::kQualBlockField)
 {
    auto file = RAMFile::Open(kFile);
    EXPECT_NE(file, nullptr);
    if (!file)
       return 0;
-   auto blocks = file->GetReader().GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField);
+   auto blocks = file->GetReader().GetView<std::vector<std::uint8_t>>(field);
    const std::vector<std::uint8_t> &blob = blocks(end);
    return blob.empty() ? 0 : blob.front();
 }
@@ -153,6 +166,8 @@ TEST_F(RecordBlocksTest, EachBlockSaysItsCodec)
    Write(reads, /*block=*/2, kFqzcompPolicy);
    EXPECT_EQ(CodecAt(1), kFqzcompCodec);
    EXPECT_EQ(CodecAt(2), kFqzcompCodec);
+   EXPECT_EQ(CodecAt(1, RAMNTupleRecord::kSeqBlockField), kDeflateCodec);
+   EXPECT_EQ(CodecAt(2, RAMNTupleRecord::kSeqBlockField), kDeflateCodec);
 }
 
 TEST_F(RecordBlocksTest, ABlockWithoutQualitiesNeedsNoData)
@@ -205,6 +220,7 @@ TEST_F(RecordBlocksTest, DamagedBlockEndsAreReported)
       auto file = RAMFile::Open(kFile);
       ASSERT_NE(file, nullptr);
       EXPECT_THROW(QualityBlockReader quals(*file), std::runtime_error) << ends[0] << "," << ends[1];
+      EXPECT_THROW(SeqBlockReader seqs(*file), std::runtime_error) << ends[0] << "," << ends[1];
       EXPECT_THROW(NameBlockReader names(*file), std::runtime_error) << ends[0] << "," << ends[1];
    }
 }
@@ -232,6 +248,108 @@ TEST_F(RecordBlocksTest, DamagedQualityBlocksAreReported)
       QualityBlockReader quals(*file);
       EXPECT_THROW(quals.Get(view(0), 0), std::runtime_error) << "damage " << i;
    }
+}
+
+// Bases go into blocks unless they are "*" or empty, and come back in any order:
+// IUPAC codes, a long read, a record object reused after one whose bases are in
+// a block.
+TEST_F(RecordBlocksTest, EverySequenceComesBackInAnyOrder)
+{
+   const std::vector<Read> reads = {
+      {0, "IIII", "a", "ACGTACGTAC"},
+      {0, "IIII", "b", "=ACMGRSVTWYHKDBN"},
+      {0, "IIII", "c", "*"}, // reuses row 0's record object, so its in-block bit must be cleared
+      {0, "IIII", "d", std::string(1000, 'G') + "T"},
+      {0, "IIII", "e", ""},
+      {0, "IIII", "f", "N"},
+      {0, "IIII", "g", "TTTTTTTTTT"},
+   };
+   Write(reads, /*block=*/3, kRansPolicy);
+   std::vector<std::size_t> forward;
+   std::vector<std::size_t> backward;
+   for (std::size_t i = 0; i < reads.size(); i++) {
+      forward.push_back(i);
+      backward.push_back(reads.size() - 1 - i);
+   }
+   ExpectSequences(reads, forward);
+   ExpectSequences(reads, backward);
+   ExpectSequences(reads, {3, 0, 6, 2, 5, 1, 4});
+
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   for (std::size_t row = 0; row < reads.size(); row++) {
+      const bool inBlock = reads[row].seq != "*" && !reads[row].seq.empty();
+      EXPECT_EQ(view(row).TestBit(RAMNTupleRecord::kSeqInBlock), inBlock) << "row " << row;
+      if (inBlock)
+         EXPECT_TRUE(view(row).seq.empty()) << "row " << row;
+   }
+}
+
+// Reading in order decodes the next blocks ahead, a block without bases among them.
+TEST_F(RecordBlocksTest, ReadingAheadPassesABlockWithoutBases)
+{
+   const std::vector<Read> reads = {{0, "IIII", "a", "AC"}, {0, "IIII", "b", "GT"}, {0, "IIII", "c", "CA"},
+                                    {0, "IIII", "d", "TG"}, {0, "IIII", "e", "*"},  {0, "IIII", "f", "*"},
+                                    {0, "IIII", "g", "AA"}, {0, "IIII", "h", "CC"}};
+   Write(reads, /*block=*/2, kRansPolicy);
+   EXPECT_EQ(CodecAt(5, RAMNTupleRecord::kSeqBlockField), 0) << "no bases, no block";
+   ExpectSequences(reads, {0, 1, 2, 3, 4, 5, 6, 7});
+}
+
+TEST_F(RecordBlocksTest, ABlockWithoutBasesNeedsNoData)
+{
+   const std::vector<Read> reads = {
+      {0, "IIII", "a", "*"}, {0, "IIII", "b", "*"}, {0, "IIII", "c", "*"}, {0, "IIII", "d", "ACGT"}};
+   Write(reads, /*block=*/3, kRansPolicy);
+   EXPECT_EQ(CodecAt(2, RAMNTupleRecord::kSeqBlockField), 0) << "no bases, no block";
+   ExpectSequences(reads, {3, 0, 1, 2});
+}
+
+// A damaged block of bases is reported when it is read: an unknown codec, a
+// block cut short, a lengths part longer than the block, and streams that do
+// not decode.
+TEST_F(RecordBlocksTest, DamagedSeqBlocksAreReported)
+{
+   const std::vector<Read> reads = {{0, "IIII", "a", "ACGTACGTAC"}, {0x10, "IIII", "b", "TTTTGGGGCC"}};
+   const std::vector<Damage> damages = {
+      [](std::vector<std::uint8_t> &b) { b.at(0) = 9; },
+      [](std::vector<std::uint8_t> &b) { b.resize(1); },
+      [](std::vector<std::uint8_t> &b) { b.resize(4); },
+      [](std::vector<std::uint8_t> &b) { b.at(4) = 0x7f; },
+      [](std::vector<std::uint8_t> &b) { b.resize(b.size() - 1); },
+      [](std::vector<std::uint8_t> &b) { b.at(1) = 1; },
+   };
+   for (std::size_t i = 0; i < damages.size(); i++) {
+      Write(reads, /*block=*/2, kRansPolicy, /*ends=*/{}, damages[i], RAMNTupleRecord::kSeqBlockField);
+      auto file = RAMFile::Open(kFile);
+      ASSERT_NE(file, nullptr);
+      auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+      SeqBlockReader seqs(*file);
+      EXPECT_THROW(seqs.Get(view(0), 0), std::runtime_error) << "damage " << i;
+   }
+}
+
+// A damaged block decoded ahead, on another thread, is reported when its rows
+// are read, and again if they are asked for again.
+TEST_F(RecordBlocksTest, ADamagedBlockReadAheadIsReported)
+{
+   const std::vector<Read> reads = {{0, "IIII", "a", "AC"}, {0, "IIII", "b", "GT"}, {0, "IIII", "c", "CA"},
+                                    {0, "IIII", "d", "TG"}, {0, "IIII", "e", "AA"}, {0, "IIII", "f", "CC"}};
+   int blocks = 0;
+   const Damage third = [&blocks](std::vector<std::uint8_t> &b) {
+      if (++blocks == 3)
+         b.resize(b.size() - 1);
+   };
+   Write(reads, /*block=*/2, kRansPolicy, /*ends=*/{}, third, RAMNTupleRecord::kSeqBlockField);
+   auto file = RAMFile::Open(kFile);
+   ASSERT_NE(file, nullptr);
+   auto view = file->GetReader().GetView<RAMNTupleRecord>("record");
+   SeqBlockReader seqs(*file);
+   for (std::size_t row = 0; row < 4; row++)
+      EXPECT_EQ(seqs.Get(view(row), row), reads[row].seq) << "row " << row;
+   EXPECT_THROW(seqs.Get(view(4), 4), std::runtime_error);
+   EXPECT_THROW(seqs.Get(view(5), 5), std::runtime_error);
 }
 
 // Names go into blocks whatever the quality policy, and come back in any order:

@@ -7,6 +7,7 @@
 #include <ROOT/RNTupleTypes.hxx>
 #include <htscodecs/fqzcomp_qual.h>
 #include <htscodecs/rANS_static4x16.h>
+#include <libdeflate.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -40,12 +41,24 @@ constexpr int kTok3Level = 3;
 // decodes 25 times slower, and 114.6 MB for the qualities as a zstd column.
 constexpr int kRansOrder = 1 | RANS_ORDER_RLE | RANS_ORDER_PACK;
 
-// The first byte of a quality block says how the rest is compressed. A rANS
-// block holds the size of its lengths part in four bytes, little endian, the
-// lengths as varints, then the qualities, each part compressed with kRansOrder.
-// An fqzcomp block is fqzcomp's own stream, which holds the lengths.
+// DEFLATE, which CRAM 3.1 uses for the bases of a file without a reference, at
+// level 6. On NA12878 chr20 the bases take 84.6 MB, against 96.1 MB as a column
+// with ROOT's 505 (zstd at level 10, since ROOT gives zstd twice its level), in
+// half the CPU, and decode as fast. The gain is the compressor's, not the
+// blocks': zstd at level 10 in blocks gives 95.2 MB. Level 9 gives 81.9 MB in
+// six times the CPU.
+constexpr int kDeflateLevel = 6;
+
+// The first byte of a block of qualities or bases says how the rest is
+// compressed. A rANS or DEFLATE block holds the size of its lengths part in
+// four bytes, little endian, the lengths as varints compressed with kRansOrder,
+// then the values, compressed with rANS (kRansOrder) or with raw DEFLATE. A
+// quality block has the lengths of the records whose quality it holds, a block
+// of bases one for every record of the block. An fqzcomp block is fqzcomp's own
+// stream, which holds the lengths.
 constexpr char kQualRans = 1;
 constexpr char kQualFqzcomp = 2;
+constexpr char kSeqDeflate = 1;
 
 bool IsSamQuality(const std::string &qual)
 {
@@ -63,7 +76,7 @@ std::string Rans(std::string &in)
    unsigned int size = 0;
    unsigned char *out = rans_compress_4x16(AsBytes(in.data()), static_cast<unsigned int>(in.size()), &size, kRansOrder);
    if (!out)
-      throw std::runtime_error("rANS could not compress a quality block");
+      throw std::runtime_error("rANS could not compress a block");
    std::string bytes(size, '\0');
    std::memcpy(bytes.data(), out, size);
    free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
@@ -75,15 +88,16 @@ std::string Unrans(char *in, std::size_t size)
    unsigned int n = 0;
    unsigned char *out = rans_uncompress_4x16(AsBytes(in), static_cast<unsigned int>(size), &n);
    if (!out)
-      throw std::runtime_error("rANS could not decode a quality block");
+      throw std::runtime_error("rANS could not decode a block");
    std::string bytes(n, '\0');
    std::memcpy(bytes.data(), out, n);
    free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
    return bytes;
 }
 
-// The block of \p lengths and \p quals, as kQualRans describes it.
-std::string RansBlock(const std::vector<uint32_t> &lengths, std::string &quals)
+// A block with the codec byte \p codec, \p lengths and the compressed values
+// \p packed, as kQualRans and kSeqDeflate describe it.
+std::string BlockWithLengths(char codec, const std::vector<uint32_t> &lengths, const std::string &packed)
 {
    std::string varints;
    for (uint32_t n : lengths) {
@@ -92,49 +106,109 @@ std::string RansBlock(const std::vector<uint32_t> &lengths, std::string &quals)
       varints.push_back(static_cast<char>(n));
    }
    const std::string packedLengths = Rans(varints);
-   std::string block(1, kQualRans);
+   std::string block(1, codec);
    for (int shift = 0; shift < 32; shift += 8)
       block.push_back(static_cast<char>((packedLengths.size() >> shift) & 0xff));
    block += packedLengths;
-   block += Rans(quals);
+   block += packed;
    return block;
 }
 
-// Fills \p lengths and \p quals from the block after its codec byte, for \p records qualities.
-void DecodeRansBlock(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::string &quals)
+// Fills \p lengths from the lengths part of a block that holds \p records
+// values, and returns where its values start and, in \p total, their size.
+// \p what names the block in errors.
+std::size_t ReadLengths(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::size_t &total,
+                        const char *what)
 {
+   const std::string damaged = std::string(what) + " is damaged";
    constexpr std::size_t kHeader = 5;
    if (bytes.size() < kHeader)
-      throw std::runtime_error("a quality block is damaged");
+      throw std::runtime_error(damaged);
    std::size_t lengthsSize = 0;
    for (std::size_t i = 0; i < 4; i++)
       lengthsSize |= static_cast<std::size_t>(static_cast<unsigned char>(bytes.at(1 + i))) << (8 * i);
    if (lengthsSize >= bytes.size() - kHeader)
-      throw std::runtime_error("a quality block is damaged");
+      throw std::runtime_error(damaged);
 
    const std::string varints = Unrans(&bytes.at(kHeader), lengthsSize);
    lengths.clear();
-   std::size_t total = 0;
+   total = 0;
    uint32_t n = 0;
    int shift = 0;
    for (const char c : varints) {
       const auto byte = static_cast<unsigned char>(c);
       if (shift > 28)
-         throw std::runtime_error("a quality block is damaged");
+         throw std::runtime_error(damaged);
       n |= static_cast<uint32_t>(byte & 0x7f) << shift;
       shift += 7;
       if (byte < 0x80) {
          if (n > static_cast<uint32_t>(std::numeric_limits<int>::max()))
-            throw std::runtime_error("a quality block is damaged");
+            throw std::runtime_error(damaged);
          lengths.push_back(static_cast<int>(n));
          total += n;
          n = 0;
          shift = 0;
       }
    }
-   quals = Unrans(&bytes.at(kHeader + lengthsSize), bytes.size() - kHeader - lengthsSize);
-   if (shift != 0 || lengths.size() != records || quals.size() != total)
+   if (shift != 0 || lengths.size() != records)
+      throw std::runtime_error(damaged);
+   return kHeader + lengthsSize;
+}
+
+// Fills \p lengths and \p quals, as SAM text, from a quality block that holds
+// \p records qualities.
+void DecodeQualityBlock(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::string &quals)
+{
+   if (bytes.size() < 2)
       throw std::runtime_error("a quality block is damaged");
+   if (bytes.front() == kQualRans) {
+      std::size_t total = 0;
+      const std::size_t start = ReadLengths(bytes, records, lengths, total, /*what=*/"a quality block");
+      // Straight into quals, which may hold an earlier block: no copy, and only
+      // a larger block's tail is zero-filled.
+      quals.resize(total);
+      auto size = static_cast<unsigned int>(total);
+      if (total > std::numeric_limits<unsigned int>::max() ||
+          !rans_uncompress_to_4x16(AsBytes(&bytes.at(start)), static_cast<unsigned int>(bytes.size() - start),
+                                   AsBytes(quals.data()), &size) ||
+          size != total)
+         throw std::runtime_error("a quality block is damaged");
+   } else if (bytes.front() == kQualFqzcomp) {
+      std::size_t size = 0;
+      lengths.assign(records, 0);
+      char *out = fqz_decompress(&bytes.at(1), bytes.size() - 1, &size, lengths.data(), static_cast<int>(records));
+      if (!out)
+         throw std::runtime_error("fqzcomp could not decode a quality block");
+      quals.assign(out, size);
+      free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
+   } else {
+      throw std::runtime_error("a quality block has an unknown codec");
+   }
+   for (auto &c : quals)
+      c = static_cast<char>(c + '!');
+}
+
+// Fills \p lengths and \p seqs from a block that holds \p records sequences.
+void DecodeSeqBlock(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::string &seqs)
+{
+   if (bytes.size() < 2)
+      throw std::runtime_error("a block of bases is damaged");
+   if (bytes.front() != kSeqDeflate)
+      throw std::runtime_error("a block of bases has an unknown codec");
+   std::size_t total = 0;
+   const std::size_t start = ReadLengths(bytes, records, lengths, total, /*what=*/"a block of bases");
+   // seqs may hold an earlier block, and inflating writes every byte, so only a
+   // larger block's tail is zero-filled.
+   seqs.resize(total);
+   const std::unique_ptr<libdeflate_decompressor, void (*)(libdeflate_decompressor *)> inflate(
+      libdeflate_alloc_decompressor(), libdeflate_free_decompressor);
+   if (!inflate)
+      throw std::bad_alloc();
+   // Without a place for the actual size, libdeflate fails unless the stream
+   // gives exactly `total` bytes.
+   if (libdeflate_deflate_decompress(inflate.get(), &bytes.at(start), bytes.size() - start, seqs.data(), total,
+                                     nullptr) != LIBDEFLATE_SUCCESS)
+      throw std::runtime_error("a block of bases is damaged");
 }
 
 // Ends that do not rise, or that run past the last row, would send a row to a
@@ -149,16 +223,25 @@ void CheckBlockEnds(const std::vector<uint64_t> &ends, ROOT::NTupleSize_t rows)
 
 } // namespace
 
+void BlockWriter::FreeDeflate::operator()(libdeflate_compressor *c) const
+{
+   libdeflate_free_compressor(c);
+}
+
 BlockWriter::BlockWriter(std::unique_ptr<ROOT::REntry> first, std::unique_ptr<ROOT::REntry> second, FillFn fill,
                          std::size_t block_records)
    : m_entries{std::move(first), std::move(second)},
      m_fill(std::move(fill)),
-     m_blockRecords(std::max<std::size_t>(block_records, 1))
+     m_blockRecords(std::max<std::size_t>(block_records, 1)),
+     m_deflate(libdeflate_alloc_compressor(kDeflateLevel))
 {
+   if (!m_deflate)
+      throw std::bad_alloc();
    for (std::size_t i = 0; i < 2; i++) {
       m_records.at(i) = m_entries.at(i)->GetPtr<RAMNTupleRecord>("record").get();
       m_qualBlobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField).get();
       m_nameBlobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kNameBlockField).get();
+      m_seqBlobs.at(i) = m_entries.at(i)->GetPtr<std::vector<std::uint8_t>>(RAMNTupleRecord::kSeqBlockField).get();
    }
 }
 
@@ -186,6 +269,19 @@ void BlockWriter::Add()
       rec.SetBit(RAMNTupleRecord::kQualInBlock);
    } else {
       rec.compression_flags &= ~static_cast<uint32_t>(RAMNTupleRecord::kQualInBlock);
+   }
+
+   // kSeqInBlock goes out meaning the bases are in the block; "*" stays in the
+   // record. The block has a length for every record, 0 for those, so that a
+   // reader finds a record's bases without reading the flags.
+   if (!rec.seq.empty() && rec.seq != "*") {
+      m_seqs += rec.seq;
+      m_seqLengths.push_back(static_cast<uint32_t>(rec.seq.size()));
+      rec.seq.clear();
+      rec.SetBit(RAMNTupleRecord::kSeqInBlock);
+   } else {
+      m_seqLengths.push_back(0);
+      rec.compression_flags &= ~static_cast<uint32_t>(RAMNTupleRecord::kSeqInBlock);
    }
    m_rows++;
 
@@ -217,8 +313,18 @@ void BlockWriter::Finish()
       m_qualBlobs.at(last)->insert(m_qualBlobs.at(last)->end(), bytes.begin(), bytes.end());
       free(packed); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
    } else if (!m_lengths.empty()) {
-      const std::string bytes = RansBlock(m_lengths, m_quals);
+      const std::string bytes = BlockWithLengths(kQualRans, m_lengths, Rans(m_quals));
       m_qualBlobs.at(last)->assign(bytes.begin(), bytes.end());
+   }
+   if (!m_seqs.empty()) {
+      std::string packed(libdeflate_deflate_compress_bound(m_deflate.get(), m_seqs.size()), '\0');
+      const std::size_t size =
+         libdeflate_deflate_compress(m_deflate.get(), m_seqs.data(), m_seqs.size(), packed.data(), packed.size());
+      if (size == 0)
+         throw std::runtime_error("libdeflate could not compress a block of bases");
+      packed.resize(size);
+      const std::string bytes = BlockWithLengths(kSeqDeflate, m_seqLengths, packed);
+      m_seqBlobs.at(last)->assign(bytes.begin(), bytes.end());
    }
    int size = 0;
    int lastStart = 0;
@@ -233,6 +339,7 @@ void BlockWriter::Finish()
    m_fill(*m_entries.at(last));
    m_qualBlobs.at(last)->clear();
    m_nameBlobs.at(last)->clear();
+   m_seqBlobs.at(last)->clear();
 
    m_rowsSinceTake += m_rows;
    m_blockEnds.push_back(m_rowsSinceTake - 1);
@@ -243,6 +350,8 @@ void BlockWriter::Finish()
    m_lengths.clear();
    m_flags.clear();
    m_fqzcomp = false;
+   m_seqs.clear();
+   m_seqLengths.clear();
 }
 
 std::vector<uint64_t> BlockWriter::TakeBlockEnds()
@@ -251,15 +360,123 @@ std::vector<uint64_t> BlockWriter::TakeBlockEnds()
    return std::exchange(m_blockEnds, {});
 }
 
-QualityBlockReader::QualityBlockReader(RAMFile &file)
-   : m_flagsView(file.GetReader().GetView<uint32_t>("record.compression_flags")),
+FlaggedBlockReader::FlaggedBlockReader(RAMFile &file, const char *field, uint32_t bit, DecodeFn decode,
+                                       std::size_t readAhead, bool everyRow)
+   : m_field(field),
+     m_bit(bit),
+     m_decode(decode),
+     m_everyRow(everyRow),
+     m_flagsView(file.GetReader().GetView<uint32_t>("record.compression_flags")),
      m_ends(file.GetMetadata().block_ends),
-     m_readAhead(std::min<std::size_t>(kQualityReadAhead, std::max(1U, std::thread::hardware_concurrency())))
+     m_readAhead(std::min<std::size_t>(readAhead, std::max(1U, std::thread::hardware_concurrency())))
 {
    ROOT::RNTupleReader &reader = file.GetReader();
-   if (reader.GetDescriptor().FindFieldId(RAMNTupleRecord::kQualBlockField) != ROOT::kInvalidDescriptorId)
-      m_view.emplace(reader.GetView<std::vector<std::uint8_t>>(RAMNTupleRecord::kQualBlockField));
+   if (reader.GetDescriptor().FindFieldId(field) != ROOT::kInvalidDescriptorId)
+      m_view.emplace(reader.GetView<std::vector<std::uint8_t>>(field));
    CheckBlockEnds(m_ends, reader.GetNEntries());
+}
+
+std::string_view FlaggedBlockReader::FromBlock(ROOT::NTupleSize_t row)
+{
+   if (m_block == kNoBlock || row < m_firstRow || row > m_ends[m_block]) {
+      const auto it = std::lower_bound(m_ends.begin(), m_ends.end(), static_cast<uint64_t>(row));
+      if (it == m_ends.end() || !m_view)
+         throw std::runtime_error("record " + std::to_string(row) + " has no block in " + m_field);
+      Load(static_cast<std::size_t>(it - m_ends.begin()));
+   }
+
+   const auto i = static_cast<std::size_t>(row - m_firstRow);
+   const std::size_t slot = m_everyRow ? i : m_current.slots[i];
+   const std::string_view values = m_current.values;
+   return values.substr(m_current.offsets[slot], static_cast<std::size_t>(m_current.lengths[slot]));
+}
+
+FlaggedBlockReader::Block FlaggedBlockReader::Read(std::size_t block)
+{
+   Block b;
+   if (!m_spare.empty()) {
+      b = std::move(m_spare.back());
+      m_spare.pop_back();
+   }
+   const uint64_t first = block == 0 ? 0 : m_ends[block - 1] + 1;
+   const auto rows = static_cast<std::size_t>(m_ends[block] - first + 1);
+   b.records = 0;
+   b.bytes.clear();
+   b.slots.clear();
+   if (m_everyRow) {
+      // A block without values is empty, and no row of it has the bit.
+      const std::vector<std::uint8_t> &bytes = (*m_view)(m_ends[block]);
+      if (!bytes.empty()) {
+         b.records = rows;
+         b.bytes.assign(bytes.begin(), bytes.end());
+      }
+      return b;
+   }
+   b.slots.assign(rows, 0);
+   for (std::size_t i = 0; i < rows; i++) {
+      if (m_flagsView(first + i) & m_bit)
+         b.slots[i] = b.records++;
+   }
+   if (b.records > 0) {
+      const std::vector<std::uint8_t> &bytes = (*m_view)(m_ends[block]);
+      b.bytes.assign(bytes.begin(), bytes.end());
+   }
+   return b;
+}
+
+FlaggedBlockReader::Block FlaggedBlockReader::Decode(Block b, DecodeFn decode)
+{
+   if (b.records > 0) {
+      decode(b.bytes, b.records, b.lengths, b.values);
+   } else {
+      b.lengths.clear();
+      b.values.clear();
+   }
+   b.offsets.resize(b.records);
+   std::size_t offset = 0;
+   for (std::size_t i = 0; i < b.records; i++) {
+      b.offsets[i] = offset;
+      offset += static_cast<std::size_t>(b.lengths[i]);
+   }
+   return b;
+}
+
+void FlaggedBlockReader::Load(std::size_t block)
+{
+   // Read ahead one block more for each consecutive block, so random lookups start nothing.
+   m_run = (m_block != kNoBlock && block == m_block + 1) ? m_run + 1 : 0;
+
+   Block next;
+   auto ahead = m_ahead.find(block);
+   if (ahead != m_ahead.end()) {
+      // Out of the map first, so that a block that failed fails again if asked for again.
+      std::future<Block> done = std::move(ahead->second);
+      m_ahead.erase(ahead);
+      next = done.get();
+   } else {
+      next = Decode(Read(block), m_decode);
+   }
+   // One spare is enough during a scan: each block loaded frees one, and each
+   // block read ahead takes one.
+   if (m_spare.size() <= m_readAhead)
+      m_spare.push_back(std::move(m_current));
+   m_current = std::move(next);
+   m_block = block;
+   m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
+
+   const std::size_t depth = std::min(m_run, m_readAhead);
+   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
+      // A thread for each block. Threads kept for the reader's life took more
+      // CPU: 28.4 s instead of 25.7 s for a full read of chr20.
+      if (m_ahead.count(next) == 0)
+         m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next), m_decode));
+   }
+}
+
+QualityBlockReader::QualityBlockReader(RAMFile &file)
+   : FlaggedBlockReader(file, RAMNTupleRecord::kQualBlockField, RAMNTupleRecord::kQualInBlock, DecodeQualityBlock,
+                        kQualityReadAhead, /*everyRow=*/false)
+{
 }
 
 std::string_view QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row)
@@ -268,89 +485,20 @@ std::string_view QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupl
       m_text = rec.GetQUAL();
       return m_text;
    }
-
-   const auto it = std::lower_bound(m_ends.begin(), m_ends.end(), static_cast<uint64_t>(row));
-   if (it == m_ends.end() || !m_view)
-      throw std::runtime_error("record " + std::to_string(row) + " has no quality block");
-   const auto block = static_cast<std::size_t>(it - m_ends.begin());
-   if (block != m_block)
-      Load(block);
-
-   const std::size_t slot = m_current.slots[static_cast<std::size_t>(row - m_firstRow)];
-   const std::string_view quals = m_current.quals;
-   return quals.substr(m_current.offsets[slot], static_cast<std::size_t>(m_current.lengths[slot]));
+   return FromBlock(row);
 }
 
-QualityBlockReader::Packed QualityBlockReader::Read(std::size_t block)
+SeqBlockReader::SeqBlockReader(RAMFile &file)
+   : FlaggedBlockReader(file, RAMNTupleRecord::kSeqBlockField, RAMNTupleRecord::kSeqInBlock, DecodeSeqBlock,
+                        kSeqReadAhead, /*everyRow=*/true)
 {
-   const uint64_t first = block == 0 ? 0 : m_ends[block - 1] + 1;
-   Packed p;
-   p.slots.assign(static_cast<std::size_t>(m_ends[block] - first + 1), 0);
-   for (std::size_t i = 0; i < p.slots.size(); i++) {
-      if (m_flagsView(first + i) & RAMNTupleRecord::kQualInBlock)
-         p.slots[i] = p.records++;
-   }
-   if (p.records > 0) {
-      const std::vector<std::uint8_t> &bytes = (*m_view)(m_ends[block]);
-      p.bytes.assign(bytes.begin(), bytes.end());
-   }
-   return p;
 }
 
-QualityBlockReader::Block QualityBlockReader::Decode(Packed packed)
+std::string_view SeqBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupleSize_t row)
 {
-   Block b;
-   b.slots = std::move(packed.slots);
-   b.lengths.assign(packed.records, 0);
-   if (packed.records > 0) {
-      std::vector<char> &bytes = packed.bytes;
-      if (bytes.size() < 2)
-         throw std::runtime_error("a quality block is damaged");
-      if (bytes.front() == kQualRans) {
-         DecodeRansBlock(bytes, packed.records, b.lengths, b.quals);
-      } else if (bytes.front() == kQualFqzcomp) {
-         std::size_t size = 0;
-         char *out =
-            fqz_decompress(&bytes.at(1), bytes.size() - 1, &size, b.lengths.data(), static_cast<int>(packed.records));
-         if (!out)
-            throw std::runtime_error("fqzcomp could not decode a quality block");
-         b.quals.assign(out, size);
-         free(out); // NOLINT(cppcoreguidelines-owning-memory,cppcoreguidelines-no-malloc): allocated by htscodecs
-      } else {
-         throw std::runtime_error("a quality block has an unknown codec");
-      }
-      for (auto &c : b.quals)
-         c = static_cast<char>(c + '!');
-   }
-   b.offsets.resize(packed.records);
-   std::size_t offset = 0;
-   for (std::size_t i = 0; i < packed.records; i++) {
-      b.offsets[i] = offset;
-      offset += static_cast<std::size_t>(b.lengths[i]);
-   }
-   return b;
-}
-
-void QualityBlockReader::Load(std::size_t block)
-{
-   // Read ahead one block more for each consecutive block, so random lookups start nothing.
-   m_run = (m_block != kNoBlock && block == m_block + 1) ? m_run + 1 : 0;
-
-   auto ahead = m_ahead.find(block);
-   if (ahead != m_ahead.end()) {
-      m_current = ahead->second.get();
-      m_ahead.erase(ahead);
-   } else {
-      m_current = Decode(Read(block));
-   }
-   m_block = block;
-   m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
-
-   const std::size_t depth = std::min(m_run, m_readAhead);
-   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
-      if (m_ahead.count(next) == 0)
-         m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next)));
-   }
+   if (!rec.TestBit(RAMNTupleRecord::kSeqInBlock))
+      return rec.GetSEQ();
+   return FromBlock(row);
 }
 
 NameBlockReader::NameBlockReader(RAMFile &file)

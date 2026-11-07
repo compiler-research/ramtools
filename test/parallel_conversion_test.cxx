@@ -105,6 +105,7 @@ Dump ReadBack(const char *file)
    d.block_ends = meta.block_ends;
    ROOT::RNTupleReader &reader = ram->GetReader();
    auto view = reader.GetView<RAMNTupleRecord>("record");
+   SeqBlockReader seqs(*ram);
    QualityBlockReader quals(*ram);
    NameBlockReader names(*ram);
    for (auto i : reader.GetEntryRange()) {
@@ -113,8 +114,9 @@ Dump ReadBack(const char *file)
       std::string line = std::string(names.Get(i)) + "\t" + std::to_string(r.GetFLAG()) + "\t" +
                          ram->GetRname(r.GetREFID()) + "\t" + std::to_string(r.GetPOS()) + "\t" +
                          std::to_string(r.GetMAPQ()) + "\t" + r.GetCIGAR() + "\t" + ram->GetRnext(r.GetREFNEXT()) +
-                         "\t" + std::to_string(r.GetPNEXT(sameRef)) + "\t" + std::to_string(r.GetTLEN(sameRef)) + "\t" +
-                         r.GetSEQ() + "\t";
+                         "\t" + std::to_string(r.GetPNEXT(sameRef)) + "\t" + std::to_string(r.GetTLEN(sameRef)) + "\t";
+      line += seqs.Get(r, i);
+      line += "\t";
       line += quals.Get(r, i);
       ram->AppendTags(r, line);
       d.lines.push_back(line);

@@ -44,7 +44,7 @@ The suites live in `test/`:
 | `bam_conversion` | BAM input through htslib, compared with the same reads converted from SAM |
 | `chromosome_split_test` | split output against the unsplit file |
 | `parallel_conversion_test` | `-threads` conversion with tiny blocks: the same records as one block, the sort check across block boundaries, long headers, malformed lines and read errors |
-| `record_blocks_test` | name and quality blocks, with rANS and with `-fqzcomp`: which names and qualities go into a block, reading them back in any order, the codec each block records, that names are not a column, and damaged blocks and block ends |
+| `record_blocks_test` | name, base and quality blocks, with rANS and with `-fqzcomp`: which names, bases and qualities go into a block, reading them back in any order, the codec each block records, that names are not a column, and damaged blocks and block ends |
 | `ramdump_test` | the built tools on a fixture: the dump reproduces the input and counts follow samtools' rules |
 
 Run one suite on its own while you work, it is faster than `ctest`:
@@ -106,8 +106,8 @@ Every pull request runs four checks:
 A file being read keeps what its METADATA holds, the reference names, the
 longest span, the sort flag, the block ends, the SAM header and the records
 per reference, in the `RAMFile` that `RAMFile::Open()` returns. Pass that
-object to `ramntuplescan`, `NameBlockReader`, `QualityBlockReader` and the
-reference name lookups;
+object to `ramntuplescan`, `NameBlockReader`, `SeqBlockReader`,
+`QualityBlockReader` and the reference name lookups;
 nothing about an open file is static, so several can be open in one process.
 The test `TwoOpenFilesKeepTheirOwnState` checks that.
 
@@ -180,3 +180,19 @@ policy, with fqzcomp. Qualities binned with `-illumina` or dropped with
 `-dropqual` stay in `qual`, as does `*`. Read them with `QualityBlockReader`,
 which returns the quality of any record, from its block or from `qual`, as a
 view that is valid until the next call.
+
+## Bases
+
+The bases go into the same blocks, in `seqblock`, and the record's `seq` stays
+empty, with `kSeqInBlock` set; `*` and an empty SEQ stay in `seq`. A block
+holds a codec byte (1, DEFLATE), a length for every record of the block, 0
+where SEQ stays in the record, compressed with rANS as in a quality block, then
+the bases as text in one raw DEFLATE stream from libdeflate at level 6. With a
+length for every record, a reader finds a record's bases without reading the
+flags. The text is not packed into 4 bits, so that
+overlapping reads stay byte-aligned for DEFLATE to match. ROOT compresses a
+column with zstd at twice the level it is given, level 10 for the converters'
+505, which on bases is both larger and twice as slow as DEFLATE. Read the
+bases with `SeqBlockReader`, which returns the SEQ of any record, from its
+block or from `seq`. A program that reads the columns directly, such as an
+RDataFrame, has to decode `seqblock` the same way.

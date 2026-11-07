@@ -88,6 +88,21 @@ the README for what that means before 1.0.
   region of 1 kb in a file kept open takes 8.3 ms instead of 6.4 ms, because
   its pages are larger, and as long as before in a process of its own. Files
   written before read as before ([#127]).
+- The bases go into blocks of 10,000 records, in a field `seqblock`, compressed
+  with libdeflate at level 6, instead of into a column that RNTuple compresses.
+  ROOT runs zstd at twice the level it is given, so the converters' 505 is
+  zstd's level 10, which on text of four letters is both larger and twice as
+  slow; the converters' help and the README said level 5. On chromosome 20 of
+  NA12878 the file is 417.9 MB instead of 429.6 MB, and converting from SAM on
+  one thread takes 112.5 s instead of 128.8 s. A full read takes 15.1 s instead
+  of 16.3 s on one thread, and 25.7 s of CPU instead of 26.4 s: the block
+  readers now decode into the memory of a block they are done with, and rANS
+  decodes the qualities in place. Reading only the bases takes 2.9 s instead of
+  3.9 s, but 4.3 s of CPU instead of 3.9 s.
+  `record.seq` now holds only `*`: a program that reads the columns directly
+  has to decode `seqblock`, with `SeqBlockReader` in the library. The format
+  version becomes 10, and files written before must be converted again.
+  libdeflate is the system's, or version 1.26 built from source ([#128]).
 - `samtoramntuple -threads N` holds up to N + 1 blocks of 64 MB in memory
   instead of 2N + 1. On 2 million records of chromosome 11 the peak goes from
   695 to 426 MB on 4 threads and from 1052 to 725 MB on 8, in the same time
@@ -343,4 +358,5 @@ it stay readable by every later release.
 [#125]: https://github.com/compiler-research/ramtools/pull/125
 [#126]: https://github.com/compiler-research/ramtools/pull/126
 [#127]: https://github.com/compiler-research/ramtools/pull/127
+[#128]: https://github.com/compiler-research/ramtools/pull/128
 [#<N>]: https://github.com/compiler-research/ramtools/pull/<N>
