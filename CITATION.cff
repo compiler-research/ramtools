@@ -10,12 +10,16 @@ abstract: >-
 authors:
   - given-names: Martin
     family-names: Vassilev
+  - given-names: Alexander
+    family-names: Penev
   - given-names: Aditya
     family-names: Pandey
   - given-names: Jose Javier
     family-names: Gonzalez Ortiz
   - given-names: Fons
     family-names: Rademakers
+  - given-names: Jeffrey
+    family-names: Zhang
   - given-names: Vassil
     family-names: Vassilev
 contact:
@@ -31,8 +35,8 @@ identifiers:
     description: Version 0.1.0.
 repository-code: "https://github.com/compiler-research/ramtools"
 license: Apache-2.0
-version: 0.1.0
-date-released: "2026-10-14"
+version: 0.2.0
+date-released: "2026-11-07"
 keywords:
   - genomics
   - sequence alignment
