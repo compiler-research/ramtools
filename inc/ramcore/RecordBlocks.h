@@ -104,11 +104,15 @@ protected:
    /// \p records values. Runs on other threads.
    using DecodeFn = void (*)(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths,
                              std::string &values);
+   /// Whether the block with these bytes decodes so slowly that the blocks
+   /// after it are worth reading ahead from the next cluster too.
+   using SlowFn = bool (*)(const std::vector<char> &bytes);
 
    /// With \p everyRow, a block holds a value for every row, empty for those
-   /// without the bit, so finding a row's value needs no flags.
-   FlaggedBlockReader(RAMFile &file, const char *field, uint32_t bit, DecodeFn decode, std::size_t readAhead,
-                      bool everyRow);
+   /// without the bit, so finding a row's value needs no flags. \p slow may be
+   /// null: no block is slow.
+   FlaggedBlockReader(RAMFile &file, const char *field, uint32_t bit, DecodeFn decode, SlowFn slow,
+                      std::size_t readAhead, bool everyRow);
 
    /// The value of \p row, whose record has the bit. Valid until the next call.
    /// A view into the decoded block, not a copy: copying every quality out cost
@@ -138,10 +142,12 @@ private:
    std::string m_field;
    uint32_t m_bit;
    DecodeFn m_decode;
+   SlowFn m_slow;
    bool m_everyRow;
    ROOT::RNTupleView<uint32_t> m_flagsView;
    std::optional<ROOT::RNTupleView<std::vector<std::uint8_t>>> m_view;
-   std::vector<uint64_t> m_ends; ///< Last row of each block.
+   std::vector<uint64_t> m_ends;        ///< Last row of each block.
+   std::vector<std::size_t> m_clusters; ///< Per block, with the cluster cache: its cluster, by number.
    std::size_t m_readAhead;
    std::size_t m_block = kNoBlock;
    std::size_t m_run = 0; ///< Consecutive blocks read so far.
@@ -195,7 +201,8 @@ private:
    void Load(std::size_t block);
 
    ROOT::RNTupleView<std::vector<std::uint8_t>> m_view;
-   std::vector<uint64_t> m_ends; ///< Last row of each block.
+   std::vector<uint64_t> m_ends;        ///< Last row of each block.
+   std::vector<std::size_t> m_clusters; ///< Per block, with the cluster cache: its cluster, by number.
    std::size_t m_block = kNoBlock;
    std::size_t m_run = 0; ///< Consecutive blocks read so far.
    uint64_t m_firstRow = 0;

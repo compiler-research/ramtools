@@ -86,11 +86,12 @@ std::unique_ptr<RAMFile> RAMFile::Open(const std::string &path, const ROOT::RNTu
    RAMFileMetadata meta;
    if (!ReadMetadata(path, meta))
       return nullptr;
-   return std::make_unique<RAMFile>(std::move(reader), std::move(meta));
+   return std::make_unique<RAMFile>(std::move(reader), std::move(meta),
+                                    options.GetClusterCache() != ROOT::RNTupleReadOptions::EClusterCache::kOff);
 }
 
-RAMFile::RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta)
-   : m_reader(std::move(reader)), m_meta(std::move(meta)), m_tags(m_meta)
+RAMFile::RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta, bool clusterCache)
+   : m_reader(std::move(reader)), m_meta(std::move(meta)), m_clusterCache(clusterCache), m_tags(m_meta)
 {
    for (std::size_t i = 0; i < m_meta.rname_refs.size(); i++)
       m_rnameIds.emplace(m_meta.rname_refs[i], static_cast<int32_t>(i));
