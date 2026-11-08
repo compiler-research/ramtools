@@ -239,7 +239,8 @@ std::vector<std::size_t> BlockClusters(const ROOT::RNTupleDescriptor &desc, cons
    std::vector<std::size_t> clusters;
    clusters.reserve(ends.size());
    for (const uint64_t end : ends)
-      clusters.push_back(static_cast<std::size_t>(std::upper_bound(firsts.begin(), firsts.end(), end) - firsts.begin()));
+      clusters.push_back(
+         static_cast<std::size_t>(std::upper_bound(firsts.begin(), firsts.end(), end) - firsts.begin()));
    return clusters;
 }
 
@@ -499,8 +500,8 @@ void FlaggedBlockReader::Load(std::size_t block)
    // 4.4 to 4.5 s for 2 million records, so a slow block still reads ahead.
    const bool anyCluster = m_clusters.empty() || (m_slow != nullptr && m_slow(m_current.bytes));
    const std::size_t depth = std::min(m_run, m_readAhead);
-   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth &&
-                                      (anyCluster || m_clusters[next] == m_clusters[block]);
+   for (std::size_t next = block + 1;
+        next < m_ends.size() && next <= block + depth && (anyCluster || m_clusters[next] == m_clusters[block]);
         next++) {
       // A thread for each block. Threads kept for the reader's life took more
       // CPU: 28.4 s instead of 25.7 s for a full read of chr20.
@@ -607,8 +608,8 @@ void NameBlockReader::Load(std::size_t block)
    // With ROOT's cluster cache, only blocks of this block's cluster, as
    // FlaggedBlockReader::Load() says.
    const std::size_t depth = std::min(m_run, kNameReadAhead);
-   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth &&
-                                      (m_clusters.empty() || m_clusters[next] == m_clusters[block]);
+   for (std::size_t next = block + 1;
+        next < m_ends.size() && next <= block + depth && (m_clusters.empty() || m_clusters[next] == m_clusters[block]);
         next++) {
       if (m_ahead.count(next) == 0)
          m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next), next, rows(next)));

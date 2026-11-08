@@ -376,10 +376,11 @@ TEST_F(RecordBlocksTest, AFullReadReadsEachClusterOnce)
    constexpr std::size_t kBlock = 4;
    constexpr std::size_t kClusterRows = 16;
    constexpr std::size_t kLength = 30;
+   const std::string bases = "ACGT";
    std::vector<Read> reads;
    for (std::size_t i = 0; i < kReads; i++)
       reads.push_back({0, std::string(kLength, static_cast<char>('!' + i % 40)), "read" + std::to_string(i),
-                       std::string(kLength, "ACGT"[i % 4])});
+                       std::string(kLength, bases.at(i % bases.size()))});
    Write(reads, kBlock, kRansPolicy, /*ends=*/{}, /*damage=*/nullptr, RAMNTupleRecord::kQualBlockField, kClusterRows);
 
    ROOT::RNTupleReadOptions options;
