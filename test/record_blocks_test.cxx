@@ -378,8 +378,9 @@ TEST_F(RecordBlocksTest, AFullReadReadsEachClusterOnce)
    constexpr std::size_t kLength = 30;
    const std::string bases = "ACGT";
    std::vector<Read> reads;
+   reads.reserve(kReads);
    for (std::size_t i = 0; i < kReads; i++)
-      reads.push_back({0, std::string(kLength, static_cast<char>('!' + i % 40)), "read" + std::to_string(i),
+      reads.push_back({0, std::string(kLength, static_cast<char>('!' + (i % 40))), "read" + std::to_string(i),
                        std::string(kLength, bases.at(i % bases.size()))});
    Write(reads, kBlock, kRansPolicy, /*ends=*/{}, /*damage=*/nullptr, RAMNTupleRecord::kQualBlockField, kClusterRows);
 
