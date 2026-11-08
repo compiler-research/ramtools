@@ -36,6 +36,10 @@
 #include <utility>
 #include <vector>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 namespace {
 
 // Fields go into one buffer handed to fwrite in 1 MB blocks; formatting
@@ -440,10 +444,34 @@ bool ParseThreads(const std::string &text, int &out)
    return true;
 }
 
+// ROOT reads each cluster into a buffer of its own, about 15 MB in the file of
+// NA12878's HiSeq chromosome 20. With glibc's defaults a freed buffer often
+// goes back to the kernel and the next one faults its pages in again, more or
+// less often with the order in which the threads free memory: a full read of
+// that file took 135,000 to 902,000 page faults, 6.2 to 9.1 s of system time
+// and 24.3 to 27.5 s. With buffers up to 32 MB (glibc's largest mmap
+// threshold) kept in the heap, and up to 64 MB of it kept free (32 MB is too
+// little): 49,000 to 98,000 faults, 5.9 to 6.2 s and 23.7 to 24.8 s. On
+// chromosome 20, eight threads spend 1.0 s in the kernel instead of 3.2 s and
+// a 10 Mb region 0.15 s instead of 0.56 s, for more peak memory: 640 MB
+// instead of 580 MB, and 67 MB instead of 60 MB. Setting either stops glibc
+// from raising the mmap threshold itself, so both are set. Here, not in the
+// library, since they hold for the whole process.
+void KeepClusterBuffers()
+{
+#if defined(__GLIBC__)
+   constexpr int kMmapThreshold = 32 << 20;
+   constexpr int kTrimThreshold = 64 << 20;
+   mallopt(M_MMAP_THRESHOLD, kMmapThreshold);
+   mallopt(M_TRIM_THRESHOLD, kTrimThreshold);
+#endif
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
 {
+   KeepClusterBuffers();
    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
    const std::vector<std::string> args(argv + 1, argv + argc);
 

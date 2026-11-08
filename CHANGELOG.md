@@ -7,6 +7,17 @@ the README for what that means before 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- `ramdump` keeps the buffers ROOT reads clusters into, of about 15 MB, in the
+  heap. glibc gave them back to the kernel, and the next cluster faulted its
+  pages in again, more or less often with the order in which threads freed
+  memory: a full read of NA12878's HiSeq chromosome 20 took 135,000 to 902,000
+  page faults and 24.3 to 27.5 s, and now 49,000 to 98,000 and 23.7 to 24.8 s.
+  On chromosome 20, eight threads spend 1.0 s in the kernel instead of 3.2 s and
+  a 10 Mb region 0.15 s instead of 0.56 s, for more peak memory: 640 MB instead
+  of 580 MB, and 67 MB instead of 60 MB ([#131]).
+
 ## [0.2.0] - 2026-11-07
 
 The format of this release stores the typed SAM tags in columns of their own, the
@@ -372,3 +383,4 @@ it stay readable by every later release.
 [#126]: https://github.com/compiler-research/ramtools/pull/126
 [#127]: https://github.com/compiler-research/ramtools/pull/127
 [#128]: https://github.com/compiler-research/ramtools/pull/128
+[#131]: https://github.com/compiler-research/ramtools/pull/131
