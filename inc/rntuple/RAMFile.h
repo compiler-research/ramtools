@@ -21,10 +21,13 @@ public:
    /// has another format version. \p options are for the reader of the records.
    static std::unique_ptr<RAMFile> Open(const std::string &path, const ROOT::RNTupleReadOptions &options = {});
 
-   RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta);
+   RAMFile(std::unique_ptr<ROOT::RNTupleReader> reader, RAMFileMetadata meta, bool clusterCache = true);
 
    ROOT::RNTupleReader &GetReader() { return *m_reader; }
    [[nodiscard]] const RAMFileMetadata &GetMetadata() const { return m_meta; }
+   /// Whether the reader of the records loads whole clusters, with ROOT's
+   /// cluster cache, as it does unless the options of Open() turn it off.
+   [[nodiscard]] bool UsesClusterCache() const { return m_clusterCache; }
 
    /// The name of reference \p refid; "*" for -1 or an id the file does not have.
    [[nodiscard]] const std::string &GetRname(int32_t refid) const { return Name(m_meta.rname_refs, refid); }
@@ -47,6 +50,7 @@ private:
 
    std::unique_ptr<ROOT::RNTupleReader> m_reader;
    RAMFileMetadata m_meta;
+   bool m_clusterCache;
    RAMTagReader m_tags;
    std::unordered_map<std::string, int32_t> m_rnameIds;
 };

@@ -4,7 +4,10 @@
 
 #include <ROOT/REntry.hxx>
 #include <ROOT/RNTupleDescriptor.hxx>
+#include <ROOT/RNTupleMetrics.hxx>
+#include <ROOT/RNTupleReadOptions.hxx>
 #include <ROOT/RNTupleTypes.hxx>
+#include <ROOT/RNTupleWriteOptions.hxx>
 #include <ROOT/RNTupleWriter.hxx>
 #include <TFile.h>
 
@@ -41,22 +44,34 @@ const uint8_t kDeflateCodec = 1;
 using Damage = std::function<void(std::vector<std::uint8_t> &)>;
 
 // Writes the reads; \p ends, when given, replaces the block ends, and \p damage
-// changes every block of \p field, as in a damaged file.
+// changes every block of \p field, as in a damaged file. With \p clusterRows, a
+// cluster ends every so many rows, and pages hold 64 bytes at most, so that a
+// column has several pages in a cluster.
 void Write(const std::vector<Read> &reads, std::size_t block, uint32_t policy, const std::vector<uint64_t> &ends = {},
-           const Damage &damage = nullptr, const char *field = RAMNTupleRecord::kQualBlockField)
+           const Damage &damage = nullptr, const char *field = RAMNTupleRecord::kQualBlockField,
+           std::size_t clusterRows = 0)
 {
    std::unique_ptr<TFile> file(TFile::Open(kFile, "RECREATE"));
    RAMFileMetadata meta;
    meta.rname_refs = {"chr1"};
    {
-      auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file);
+      ROOT::RNTupleWriteOptions options;
+      if (clusterRows > 0) {
+         constexpr std::size_t kPageBytes = 64;
+         options.SetInitialUnzippedPageSize(kPageBytes);
+         options.SetMaxUnzippedPageSize(kPageBytes);
+      }
+      auto writer = ROOT::RNTupleWriter::Append(RAMNTupleRecord::MakeModel(), "RAM", *file, options);
+      std::size_t rows = 0;
       BlockWriter out(
          writer->GetModel().CreateEntry(), writer->GetModel().CreateEntry(),
-         [&writer, &damage, field](ROOT::REntry &e) {
+         [&writer, &damage, field, clusterRows, &rows](ROOT::REntry &e) {
             auto &blob = *e.GetPtr<std::vector<std::uint8_t>>(field);
             if (damage && !blob.empty())
                damage(blob);
             writer->Fill(e);
+            if (clusterRows > 0 && ++rows % clusterRows == 0)
+               writer->CommitCluster();
          },
          block);
       for (const auto &read : reads) {
@@ -350,6 +365,55 @@ TEST_F(RecordBlocksTest, ADamagedBlockReadAheadIsReported)
       EXPECT_EQ(seqs.Get(view(row), row), reads[row].seq) << "row " << row;
    EXPECT_THROW(seqs.Get(view(4), 4), std::runtime_error);
    EXPECT_THROW(seqs.Get(view(5), 5), std::runtime_error);
+}
+
+// Reading every record in order, as ramdump does, reads each cluster once: the
+// blocks read ahead stay in the cluster the records are in. A block read ahead
+// from the next cluster made ROOT drop the records' cluster and read it again.
+TEST_F(RecordBlocksTest, AFullReadReadsEachClusterOnce)
+{
+   constexpr std::size_t kReads = 96;
+   constexpr std::size_t kBlock = 4;
+   constexpr std::size_t kClusterRows = 16;
+   constexpr std::size_t kLength = 30;
+   const std::string bases = "ACGT";
+   std::vector<Read> reads;
+   reads.reserve(kReads);
+   for (std::size_t i = 0; i < kReads; i++)
+      reads.push_back({0, std::string(kLength, static_cast<char>('!' + (i % 40))), "read" + std::to_string(i),
+                       std::string(kLength, bases.at(i % bases.size()))});
+   Write(reads, kBlock, kRansPolicy, /*ends=*/{}, /*damage=*/nullptr, RAMNTupleRecord::kQualBlockField, kClusterRows);
+
+   ROOT::RNTupleReadOptions options;
+   options.SetEnableMetrics(true);
+   auto file = RAMFile::Open(kFile, options);
+   ASSERT_NE(file, nullptr);
+   ROOT::RNTupleReader &reader = file->GetReader();
+   const auto &desc = reader.GetDescriptor();
+   ASSERT_EQ(desc.GetNClusters(), kReads / kClusterRows);
+   std::uint64_t stored = 0;
+   for (const auto &cluster : desc.GetClusterIterable()) {
+      for (const auto &column : desc.GetColumnIterable()) {
+         if (!cluster.ContainsColumn(column.GetPhysicalId()))
+            continue;
+         for (const auto &page : cluster.GetPageRange(column.GetPhysicalId()).GetPageInfos())
+            stored += page.GetLocator().GetNBytesOnStorage();
+      }
+   }
+
+   auto view = reader.GetView<RAMNTupleRecord>("record");
+   NameBlockReader names(*file);
+   SeqBlockReader seqs(*file);
+   QualityBlockReader quals(*file);
+   for (std::size_t row = 0; row < kReads; row++) {
+      const RAMNTupleRecord &rec = view(row);
+      EXPECT_EQ(names.Get(row), reads[row].name) << "row " << row;
+      EXPECT_EQ(seqs.Get(rec, row), reads[row].seq) << "row " << row;
+      EXPECT_EQ(quals.Get(rec, row), reads[row].qual) << "row " << row;
+   }
+   const auto *payload = reader.GetMetrics().GetCounter("RNTupleReader.RPageSourceFile.szReadPayload");
+   ASSERT_NE(payload, nullptr);
+   EXPECT_LE(payload->GetValueAsInt(), static_cast<std::int64_t>(stored));
 }
 
 // Names go into blocks whatever the quality policy, and come back in any order:

@@ -18,6 +18,18 @@ the README for what that means before 1.0.
   a 10 Mb region 0.15 s instead of 0.56 s, for more peak memory: 640 MB instead
   of 580 MB, and 67 MB instead of 60 MB ([#131]).
 
+### Changed
+
+- A full read reads each cluster of the file once. The readers of names,
+  qualities and bases read ahead only within the cluster the records are in:
+  ROOT keeps the cluster it is asked for and the next one, so a block read ahead
+  from the next cluster dropped the records' cluster, and they read it again.
+  NA12878's HiSeq chromosome 20 now reads 2.2 GB instead of 6.6 GB of its 2.2 GB
+  file, in 19.3 to 19.9 s instead of 23.8 to 24.4 s; chromosome 20 reads 0.42 GB
+  instead of 2.04 GB, in 14.5 to 15.2 s instead of 15.1 to 16.0 s. Blocks of
+  fqzcomp, slow to decode, still read ahead from the next cluster; regions,
+  which are read without the cluster cache, and `-@ N` are as before ([#132]).
+
 ## [0.2.0] - 2026-11-07
 
 The format of this release stores the typed SAM tags in columns of their own, the
@@ -384,3 +396,4 @@ it stay readable by every later release.
 [#127]: https://github.com/compiler-research/ramtools/pull/127
 [#128]: https://github.com/compiler-research/ramtools/pull/128
 [#131]: https://github.com/compiler-research/ramtools/pull/131
+[#132]: https://github.com/compiler-research/ramtools/pull/132

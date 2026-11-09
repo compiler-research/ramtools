@@ -3,6 +3,7 @@
 #include "rntuple/RAMNTupleRecord.h"
 
 #include <ROOT/REntry.hxx>
+#include <ROOT/RNTupleDescriptor.hxx>
 #include <ROOT/RNTupleReader.hxx>
 #include <ROOT/RNTupleTypes.hxx>
 #include <htscodecs/fqzcomp_qual.h>
@@ -188,6 +189,12 @@ void DecodeQualityBlock(std::vector<char> &bytes, std::size_t records, std::vect
       c = static_cast<char>(c + '!');
 }
 
+// A quality block of fqzcomp, which decodes 25 times slower than rANS.
+bool IsFqzcompBlock(const std::vector<char> &bytes)
+{
+   return !bytes.empty() && bytes.front() == kQualFqzcomp;
+}
+
 // Fills \p lengths and \p seqs from a block that holds \p records sequences.
 void DecodeSeqBlock(std::vector<char> &bytes, std::size_t records, std::vector<int> &lengths, std::string &seqs)
 {
@@ -219,6 +226,22 @@ void CheckBlockEnds(const std::vector<uint64_t> &ends, ROOT::NTupleSize_t rows)
       if ((i > 0 && ends[i] <= ends[i - 1]) || ends[i] >= rows)
          throw std::runtime_error("the block ends in the file are damaged");
    }
+}
+
+// For each block, a number for the cluster that holds its last row, and so its
+// bytes: equal numbers, the same cluster.
+std::vector<std::size_t> BlockClusters(const ROOT::RNTupleDescriptor &desc, const std::vector<uint64_t> &ends)
+{
+   std::vector<uint64_t> firsts;
+   for (const auto &cluster : desc.GetClusterIterable())
+      firsts.push_back(cluster.GetFirstEntryIndex());
+   std::sort(firsts.begin(), firsts.end());
+   std::vector<std::size_t> clusters;
+   clusters.reserve(ends.size());
+   for (const uint64_t end : ends)
+      clusters.push_back(
+         static_cast<std::size_t>(std::upper_bound(firsts.begin(), firsts.end(), end) - firsts.begin()));
+   return clusters;
 }
 
 } // namespace
@@ -360,11 +383,12 @@ std::vector<uint64_t> BlockWriter::TakeBlockEnds()
    return std::exchange(m_blockEnds, {});
 }
 
-FlaggedBlockReader::FlaggedBlockReader(RAMFile &file, const char *field, uint32_t bit, DecodeFn decode,
+FlaggedBlockReader::FlaggedBlockReader(RAMFile &file, const char *field, uint32_t bit, DecodeFn decode, SlowFn slow,
                                        std::size_t readAhead, bool everyRow)
    : m_field(field),
      m_bit(bit),
      m_decode(decode),
+     m_slow(slow),
      m_everyRow(everyRow),
      m_flagsView(file.GetReader().GetView<uint32_t>("record.compression_flags")),
      m_ends(file.GetMetadata().block_ends),
@@ -374,6 +398,8 @@ FlaggedBlockReader::FlaggedBlockReader(RAMFile &file, const char *field, uint32_
    if (reader.GetDescriptor().FindFieldId(field) != ROOT::kInvalidDescriptorId)
       m_view.emplace(reader.GetView<std::vector<std::uint8_t>>(field));
    CheckBlockEnds(m_ends, reader.GetNEntries());
+   if (file.UsesClusterCache())
+      m_clusters = BlockClusters(reader.GetDescriptor(), m_ends);
 }
 
 std::string_view FlaggedBlockReader::FromBlock(ROOT::NTupleSize_t row)
@@ -464,8 +490,19 @@ void FlaggedBlockReader::Load(std::size_t block)
    m_block = block;
    m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
 
+   // With ROOT's cluster cache, only blocks of this block's cluster: the cache
+   // keeps the cluster it is asked for and the next one, so a block read ahead
+   // from the next cluster dropped the one the records were still in, and they
+   // read it again. A full read of NA12878's HiSeq chromosome 20 read 6.6 GB of
+   // its 2.2 GB file. Without the cache pages are read one by one, and waiting
+   // for the first block of each cluster only made a region slower. So did it
+   // for fqzcomp, whose blocks take about 60 ms each: 5.5 to 5.9 s instead of
+   // 4.4 to 4.5 s for 2 million records, so a slow block still reads ahead.
+   const bool anyCluster = m_clusters.empty() || (m_slow != nullptr && m_slow(m_current.bytes));
    const std::size_t depth = std::min(m_run, m_readAhead);
-   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
+   for (std::size_t next = block + 1;
+        next < m_ends.size() && next <= block + depth && (anyCluster || m_clusters[next] == m_clusters[block]);
+        next++) {
       // A thread for each block. Threads kept for the reader's life took more
       // CPU: 28.4 s instead of 25.7 s for a full read of chr20.
       if (m_ahead.count(next) == 0)
@@ -475,7 +512,7 @@ void FlaggedBlockReader::Load(std::size_t block)
 
 QualityBlockReader::QualityBlockReader(RAMFile &file)
    : FlaggedBlockReader(file, RAMNTupleRecord::kQualBlockField, RAMNTupleRecord::kQualInBlock, DecodeQualityBlock,
-                        kQualityReadAhead, /*everyRow=*/false)
+                        IsFqzcompBlock, kQualityReadAhead, /*everyRow=*/false)
 {
 }
 
@@ -490,7 +527,7 @@ std::string_view QualityBlockReader::Get(const RAMNTupleRecord &rec, ROOT::NTupl
 
 SeqBlockReader::SeqBlockReader(RAMFile &file)
    : FlaggedBlockReader(file, RAMNTupleRecord::kSeqBlockField, RAMNTupleRecord::kSeqInBlock, DecodeSeqBlock,
-                        kSeqReadAhead, /*everyRow=*/true)
+                        /*slow=*/nullptr, kSeqReadAhead, /*everyRow=*/true)
 {
 }
 
@@ -506,6 +543,8 @@ NameBlockReader::NameBlockReader(RAMFile &file)
      m_ends(file.GetMetadata().block_ends)
 {
    CheckBlockEnds(m_ends, file.GetReader().GetNEntries());
+   if (file.UsesClusterCache())
+      m_clusters = BlockClusters(file.GetReader().GetDescriptor(), m_ends);
 }
 
 std::string_view NameBlockReader::Get(ROOT::NTupleSize_t row)
@@ -566,8 +605,12 @@ void NameBlockReader::Load(std::size_t block)
    m_block = block;
    m_firstRow = block == 0 ? 0 : m_ends[block - 1] + 1;
 
+   // With ROOT's cluster cache, only blocks of this block's cluster, as
+   // FlaggedBlockReader::Load() says.
    const std::size_t depth = std::min(m_run, kNameReadAhead);
-   for (std::size_t next = block + 1; next < m_ends.size() && next <= block + depth; next++) {
+   for (std::size_t next = block + 1;
+        next < m_ends.size() && next <= block + depth && (m_clusters.empty() || m_clusters[next] == m_clusters[block]);
+        next++) {
       if (m_ahead.count(next) == 0)
          m_ahead.emplace(next, std::async(std::launch::async, Decode, Read(next), next, rows(next)));
    }
